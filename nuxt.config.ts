@@ -7,7 +7,8 @@ export default defineNuxtConfig({
   modules: [
     '@nuxtjs/tailwindcss',
     '@vueuse/motion/nuxt',
-    '@nuxt/image'
+    '@nuxt/image',
+    'motion-v/nuxt'
   ],
   app: {
     head: {

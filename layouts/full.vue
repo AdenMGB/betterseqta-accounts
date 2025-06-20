@@ -8,7 +8,7 @@
         <UserCircleIcon class="w-8 h-8 text-primary-500" />
         <span class="text-xl font-semibold text-gray-900 dark:text-white">BetterSEQTA+ Account</span>
       </div>
-      <nav class="flex flex-col gap-2">
+      <nav class="flex flex-col gap-2 flex-1">
         <NuxtLink to="/" class="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-primary-500 hover:text-white transition-all duration-200">
           <HomeIcon class="w-5 h-5" />
           Dashboard
@@ -26,9 +26,6 @@
           Messages
         </NuxtLink>
       </nav>
-      <div class="mt-auto flex flex-col gap-2">
-        <Button variant="primary" size="md" @click="auth.logout">Logout</Button>
-      </div>
     </div>
     <!-- Main Content -->
     <div class="flex-1 flex flex-col min-h-screen">
@@ -53,7 +50,30 @@
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z"/></svg>
             </span>
           </button>
-          <UserAvatar v-if="auth.user.value" :user="auth.user.value" />
+          <Menu as="div" class="relative">
+            <MenuButton class="p-1 rounded-full transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700">
+              <UserAvatar v-if="auth.user.value" :user="auth.user.value" />
+            </MenuButton>
+            <transition
+              enter-active-class="transition duration-100 ease-out"
+              enter-from-class="transform scale-95 opacity-0"
+              enter-to-class="transform scale-100 opacity-100"
+              leave-active-class="transition duration-75 ease-in"
+              leave-from-class="transform scale-100 opacity-100"
+              leave-to-class="transform scale-95 opacity-0"
+            >
+              <MenuItems class="absolute right-0 mt-2 w-48 origin-top-right divide-y divide-gray-100 dark:divide-gray-700 rounded-md bg-white dark:bg-gray-800 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                <div class="px-1 py-1">
+                  <MenuItem v-slot="{ active }">
+                    <button @click="auth.logout" :class="[active ? 'bg-primary-500 text-white' : 'text-gray-900 dark:text-white', 'group flex w-full items-center rounded-md px-2 py-2 text-sm']">
+                      <ArrowRightOnRectangleIcon class="mr-2 h-5 w-5" />
+                      Logout
+                    </button>
+                  </MenuItem>
+                </div>
+              </MenuItems>
+            </transition>
+          </Menu>
         </div>
       </div>
       <!-- Page Content -->
@@ -61,15 +81,17 @@
         <slot />
       </main>
     </div>
+    <Toast />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAuth } from '~/composables/useAuth'
-import Button from '~/components/ui/Button.vue'
 import UserAvatar from '~/components/UserAvatar.vue'
-import { HomeIcon, Cog6ToothIcon, UserCircleIcon, UserGroupIcon, ChatBubbleLeftRightIcon } from '@heroicons/vue/24/outline'
+import Toast from '~/components/ui/Toast.vue'
+import { HomeIcon, Cog6ToothIcon, UserCircleIcon, UserGroupIcon, ChatBubbleLeftRightIcon, ArrowRightOnRectangleIcon } from '@heroicons/vue/24/outline'
+import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
 
 const auth = useAuth()
 const isDark = ref(false)

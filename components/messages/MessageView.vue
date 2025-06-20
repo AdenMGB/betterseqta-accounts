@@ -8,19 +8,29 @@
 
     <!-- Messages -->
     <div ref="messageContainer" class="flex-1 p-4 overflow-y-auto space-y-4">
-      <div v-for="message in messages" :key="message.id" class="flex" :class="message.senderId === auth.user.value?.id ? 'justify-end' : 'justify-start'">
-        <div class="flex flex-col" :class="message.senderId === auth.user.value?.id ? 'items-end' : 'items-start'">
-          <div 
-            :class="message.senderId === auth.user.value?.id 
-              ? 'bg-primary-500 text-white' 
-              : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'"
-            class="inline-block px-4 py-2 rounded-lg max-w-xs lg:max-w-md"
-          >
-            <p>{{ message.content }}</p>
+      <AnimatePresence>
+        <motion.div
+          v-for="message in messages"
+          :key="message.id"
+          class="flex"
+          :class="message.senderId === auth.user.value?.id ? 'justify-end' : 'justify-start'"
+          :initial="{ opacity: 0, y: 20 }"
+          :animate="{ opacity: 1, y: 0 }"
+          :exit="{ opacity: 0, y: -20 }"
+        >
+          <div class="flex flex-col" :class="message.senderId === auth.user.value?.id ? 'items-end' : 'items-start'">
+            <div 
+              :class="message.senderId === auth.user.value?.id 
+                ? 'bg-primary-500 text-white' 
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'"
+              class="inline-block px-4 py-2 rounded-lg max-w-xs lg:max-w-md"
+            >
+              <p>{{ message.content }}</p>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ new Date(message.createdAt).toLocaleTimeString() }}</p>
           </div>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ new Date(message.createdAt).toLocaleTimeString() }}</p>
-        </div>
-      </div>
+        </motion.div>
+      </AnimatePresence>
     </div>
 
     <!-- Message Input -->
@@ -41,6 +51,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useAuth } from '~/composables/useAuth'
+import { motion, AnimatePresence } from 'motion-v'
 
 interface ConversationUser {
   id: number;

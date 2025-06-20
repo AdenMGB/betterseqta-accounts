@@ -1,10 +1,13 @@
 <template>
   <div>
     <ul v-if="requests.length" class="space-y-4">
-      <li
-        v-for="request in requests"
+      <motion.li
+        v-for="(request, index) in requests"
         :key="request.id"
         class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700"
+        :initial="{ opacity: 0, y: 20 }"
+        :animate="{ opacity: 1, y: 0, transition: { delay: index * 0.1 } }"
+        :while-hover="{ scale: 1.02, transition: { duration: 0.2 } }"
       >
         <div class="flex items-center gap-4">
           <img :src="request.requester.pfpUrl || `https://api.dicebear.com/7.x/thumbs/svg?seed=${request.requester.username}`" :alt="request.requester.displayName" class="w-12 h-12 rounded-full object-cover">
@@ -17,7 +20,7 @@
           <button @click="acceptRequest(request.id)" class="px-3 py-1 text-sm font-medium text-white bg-green-500 rounded-lg hover:bg-green-600">Accept</button>
           <button @click="rejectRequest(request.id)" class="px-3 py-1 text-sm font-medium text-white bg-red-500 rounded-lg hover:bg-red-600">Reject</button>
         </div>
-      </li>
+      </motion.li>
     </ul>
     <p v-else class="text-gray-500 dark:text-gray-400">You have no pending friend requests.</p>
   </div>
@@ -26,6 +29,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ofetch } from 'ofetch'
+import { motion } from 'motion-v'
 
 interface Requester {
   id: number;
