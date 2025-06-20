@@ -7,18 +7,18 @@
       :enter="{ x: 0, opacity: 1, transition: { duration: 0.4 } }"
     >
       <div class="flex items-center gap-2 mb-8">
-        <svg class="w-8 h-8 text-primary-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+        <UserCircleIcon class="w-8 h-8 text-primary-500" />
         <span class="text-xl font-semibold text-gray-900 dark:text-white">BetterSEQTA+ Account</span>
       </div>
       <nav class="flex flex-col gap-2">
-        <a href="#" class="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-primary-500 hover:text-white transition-all duration-200">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12h18M3 6h18M3 18h18"/></svg>
+        <NuxtLink to="/" class="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-primary-500 hover:text-white transition-all duration-200">
+          <HomeIcon class="w-5 h-5" />
           Dashboard
-        </a>
-        <a href="#" class="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-primary-500 hover:text-white transition-all duration-200">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
-          Placeholder
-        </a>
+        </NuxtLink>
+        <NuxtLink to="/settings" class="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-primary-500 hover:text-white transition-all duration-200">
+          <Cog6ToothIcon class="w-5 h-5" />
+          Settings
+        </NuxtLink>
       </nav>
       <div class="mt-auto flex flex-col gap-2">
         <Button variant="primary" size="md" @click="auth.logout">Logout</Button>
@@ -33,7 +33,7 @@
         :enter="{ y: 0, opacity: 1, transition: { duration: 0.4 } }"
       >
         <div class="flex items-center gap-2">
-          <svg class="w-7 h-7 text-primary-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+          <UserCircleIcon class="w-8 h-8 text-primary-500" />
           <span class="text-lg font-semibold text-gray-900 dark:text-white">BetterSEQTA+ Account</span>
         </div>
         <div class="flex items-center gap-4">
@@ -67,6 +67,7 @@ import { ref, onMounted } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import Button from '~/components/ui/Button.vue'
 import UserAvatar from '~/components/UserAvatar.vue'
+import { HomeIcon, Cog6ToothIcon, UserCircleIcon } from '@heroicons/vue/24/outline'
 
 const auth = useAuth()
 const isDark = ref(false)

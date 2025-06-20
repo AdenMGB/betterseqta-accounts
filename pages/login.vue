@@ -39,7 +39,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 
 definePageMeta({ layout: false })
 
@@ -48,6 +48,7 @@ const password = ref('')
 const error = ref('')
 const loading = ref(false)
 const router = useRouter()
+const route = useRoute()
 
 const onSubmit = async () => {
   error.value = ''
@@ -59,7 +60,10 @@ const onSubmit = async () => {
     })
     if (res.token) {
       localStorage.setItem('token', res.token)
-      router.push('/')
+      const redirect = Array.isArray(route.query.redirect)
+        ? route.query.redirect[0]
+        : route.query.redirect
+      router.push(redirect || '/')
     } else {
       error.value = 'Unexpected response from server.'
     }
