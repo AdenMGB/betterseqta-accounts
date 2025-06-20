@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-white dark:bg-gray-800 transition-colors duration-200">
+  <div class="min-h-screen flex items-center justify-center bg-white dark:bg-gray-900 transition-colors duration-200">
     <div class="w-full max-w-md p-8 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
       <h1 class="text-2xl font-semibold text-center mb-6 text-gray-900 dark:text-white">Login</h1>
       <form @submit.prevent="onSubmit" class="flex flex-col gap-4">
