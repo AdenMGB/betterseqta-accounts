@@ -26,3 +26,4 @@ logs
 data
 
 yarn.lock
+/generated/prisma

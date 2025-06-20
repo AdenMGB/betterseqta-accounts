@@ -14,6 +14,7 @@
     "@headlessui/vue": "^1.7.23",
     "@heroicons/vue": "^2.1.5",
     "@nuxt/image": "^1.10.0",
+    "@prisma/client": "^6.10.1",
     "@types/bcryptjs": "^3.0.0",
     "@types/uuid": "^10.0.0",
     "@vueuse/core": "^10.9.0",
@@ -23,7 +24,10 @@
     "bcryptjs": "^3.0.2",
     "gsap": "^3.12.5",
     "jose": "^6.0.10",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.14.1",
     "nuxt": "3.15.4",
+    "prisma": "^6.10.1",
     "uuid": "^11.1.0",
     "vue": "latest",
     "vue-router": "latest"
@@ -44,6 +48,5 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.8.2",
     "vue-tsc": "^2.2.8"
-  },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  }
 }
