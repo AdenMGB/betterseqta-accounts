@@ -4,6 +4,20 @@
       <h1 class="text-2xl font-semibold text-center mb-6 text-gray-900 dark:text-white">Register</h1>
       <form @submit.prevent="onSubmit" class="flex flex-col gap-4">
         <input
+          v-model="displayName"
+          type="text"
+          placeholder="Display Name"
+          class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200"
+          required
+        />
+        <input
+          v-model="username"
+          type="text"
+          placeholder="Username"
+          class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200"
+          required
+        />
+        <input
           v-model="email"
           type="email"
           placeholder="Email"
@@ -43,6 +57,8 @@ import { useRouter } from 'vue-router'
 
 definePageMeta({ layout: false })
 
+const displayName = ref('')
+const username = ref('')
 const email = ref('')
 const password = ref('')
 const error = ref('')
@@ -55,7 +71,7 @@ const onSubmit = async () => {
   try {
     await $fetch('/api/auth/register', {
       method: 'POST',
-      body: { email: email.value, password: password.value },
+      body: { email: email.value, password: password.value, username: username.value, displayName: displayName.value },
     })
     router.push('/login')
   } catch (err: any) {
