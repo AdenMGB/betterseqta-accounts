@@ -14,11 +14,41 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  username  String   @unique
-  displayName String
-  pfpUrl    String?
-  createdAt DateTime @default(now())
+  id              Int          @id @default(autoincrement())
+  email           String       @unique
+  password        String
+  username        String       @unique
+  displayName     String
+  pfpUrl          String?
+  createdAt       DateTime     @default(now())
+  
+  sentRequests      Friendship[] @relation("sentRequests")
+  receivedRequests  Friendship[] @relation("receivedRequests")
+  sentMessages      Message[]    @relation("sentMessages")
+  receivedMessages  Message[]    @relation("receivedMessages")
+}
+
+model Friendship {
+  id          Int      @id @default(autoincrement())
+  requesterId Int
+  addresseeId Int
+  status      String   @default("PENDING") // PENDING, ACCEPTED, BLOCKED
+  createdAt   DateTime @default(now())
+
+  requester   User @relation("sentRequests", fields: [requesterId], references: [id])
+  addressee   User @relation("receivedRequests", fields: [addresseeId], references: [id])
+
+  @@unique([requesterId, addresseeId])
+}
+
+model Message {
+  id         Int      @id @default(autoincrement())
+  senderId   Int
+  receiverId Int
+  content    String   @db.Text
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  sender     User @relation("sentMessages", fields: [senderId], references: [id])
+  receiver   User @relation("receivedMessages", fields: [receiverId], references: [id])
 }
