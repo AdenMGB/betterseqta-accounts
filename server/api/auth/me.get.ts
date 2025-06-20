@@ -17,7 +17,14 @@ export default defineEventHandler(async (event: H3Event) => {
     if (!user) {
       return sendError(event, createError({ statusCode: 404, statusMessage: 'User not found.' }));
     }
-    return { id: user.id, email: user.email, createdAt: user.createdAt };
+    return {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      displayName: user.displayName,
+      pfpUrl: user.pfpUrl,
+      createdAt: user.createdAt
+    };
   } catch (e) {
     return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid or expired token.' }));
   }

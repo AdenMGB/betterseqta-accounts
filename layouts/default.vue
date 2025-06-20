@@ -51,8 +51,7 @@
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z"/></svg>
             </span>
           </button>
-          <div class="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-700 animate-pulse"></div>
-          <span class="text-gray-700 dark:text-gray-200 font-medium">User</span>
+          <UserAvatar v-if="auth.user.value" :user="auth.user.value" />
         </div>
       </motion-div>
       <!-- Page Content -->
@@ -67,6 +66,7 @@
 import { ref, onMounted } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import Button from '~/components/ui/Button.vue'
+import UserAvatar from '~/components/UserAvatar.vue'
 
 const auth = useAuth()
 const isDark = ref(false)
@@ -82,6 +82,7 @@ const toggleDarkMode = () => {
 }
 
 onMounted(() => {
+  auth.fetchUser()
   // Set initial theme from localStorage or system preference
   const theme = localStorage.getItem('theme')
   if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
