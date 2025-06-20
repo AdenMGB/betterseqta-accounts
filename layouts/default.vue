@@ -21,7 +21,7 @@
         </a>
       </nav>
       <div class="mt-auto flex flex-col gap-2">
-        <button class="w-full px-4 py-2 rounded-lg bg-primary-500 text-white font-medium transition-all duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">Logout</button>
+        <Button variant="primary" size="md" @click="auth.logout">Logout</Button>
       </div>
     </motion-div>
     <!-- Main Content -->
@@ -65,7 +65,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useAuth } from '~/composables/useAuth'
+import Button from '~/components/ui/Button.vue'
 
+const auth = useAuth()
 const isDark = ref(false)
 
 const updateDarkMode = () => {

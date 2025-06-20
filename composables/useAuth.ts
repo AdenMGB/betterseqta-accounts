@@ -29,7 +29,10 @@ export function useAuth() {
     }
   }
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await $fetch('/api/auth/logout', { method: 'POST' })
+    } catch (e) {}
     localStorage.removeItem('token')
     user.value = null
     router.push('/login')

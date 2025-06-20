@@ -41,6 +41,8 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
+definePageMeta({ layout: false })
+
 const email = ref('')
 const password = ref('')
 const error = ref('')
