@@ -27,3 +27,5 @@ data
 
 yarn.lock
 /generated/prisma
+
+public/uploads
