@@ -21,8 +21,6 @@ import { useRoute } from 'vue-router'
 import ConversationList from '~/components/messages/ConversationList.vue'
 import MessageView from '~/components/messages/MessageView.vue'
 
-definePageMeta({ layout: 'full' })
-
 interface ConversationUser {
   id: number;
   username: string;
@@ -56,4 +54,4 @@ onMounted(async () => {
     console.error('Failed to fetch friends for conversations:', error)
   }
 })
-</script> 
+</script>

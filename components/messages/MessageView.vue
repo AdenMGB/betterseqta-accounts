@@ -1,7 +1,7 @@
 <template>
-  <div class="h-full flex flex-col">
+  <div class="h-full flex flex-col overflow-hidden">
     <!-- Header -->
-    <div class="p-4 border-b border-gray-200 dark:border-gray-700">
+    <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
       <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ conversation.displayName }}</h2>
       <p class="text-sm text-gray-500 dark:text-gray-400">@{{ conversation.username }}</p>
     </div>
@@ -19,9 +19,9 @@
           :exit="{ opacity: 0, y: -20 }"
         >
           <div class="flex flex-col" :class="message.senderId === auth.user.value?.id ? 'items-end' : 'items-start'">
-            <div 
-              :class="message.senderId === auth.user.value?.id 
-                ? 'bg-primary-500 text-white' 
+            <div
+              :class="message.senderId === auth.user.value?.id
+                ? 'bg-primary-500 text-white'
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white'"
               class="inline-block px-4 py-2 rounded-lg max-w-xs lg:max-w-md"
             >
@@ -34,7 +34,7 @@
     </div>
 
     <!-- Message Input -->
-    <div class="p-4 border-t border-gray-200 dark:border-gray-700">
+    <div class="p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
       <form @submit.prevent="sendMessage" class="flex items-center gap-2">
         <input
           v-model="newMessage"
@@ -85,14 +85,20 @@ const scrollToBottom = () => {
   })
 }
 
-const fetchMessages = async () => {
+const fetchMessages = async (forceScroll = false) => {
   if (!props.conversation) return
   try {
+    const el = messageContainer.value
+    const shouldScroll = forceScroll || !el || (el.scrollHeight - el.scrollTop <= el.clientHeight + 50)
+
     const response = await $fetch<Message[]>(`/api/messages/${props.conversation.id}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
     })
     messages.value = response
-    scrollToBottom()
+
+    if (shouldScroll) {
+      scrollToBottom()
+    }
   } catch (error) {
     console.error('Failed to fetch messages:', error)
   }
@@ -110,7 +116,7 @@ const sendMessage = async () => {
       }
     })
     newMessage.value = ''
-    fetchMessages() // Refresh messages after sending
+    await fetchMessages(true) // Refresh messages and force scroll
   } catch (error) {
     console.error('Failed to send message:', error)
   }
@@ -118,12 +124,12 @@ const sendMessage = async () => {
 
 watch(() => props.conversation, (newVal) => {
   if (newVal) {
-    fetchMessages()
+    fetchMessages(true)
   }
 }, { immediate: true })
 
 onMounted(() => {
-  pollInterval = setInterval(fetchMessages, 3000) // Poll every 3 seconds
+  pollInterval = setInterval(() => fetchMessages(false), 3000) // Poll every 3 seconds
 })
 
 onUnmounted(() => {
