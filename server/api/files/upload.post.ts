@@ -9,11 +9,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 // Ensure the path is relative to the project root
 const UPLOAD_DIR = path.resolve(process.cwd(), 'public', 'uploads');
 
-// Ensure the upload directory exists
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
-
 export const config = {
   api: {
     bodyParser: false,
@@ -21,6 +16,11 @@ export const config = {
 };
 
 export default defineEventHandler(async (event: H3Event) => {
+  // Ensure the upload directory exists on every request
+  if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  }
+
   const auth = getHeader(event, 'authorization');
   if (!auth || !auth.startsWith('Bearer ')) {
     return sendError(event, createError({ statusCode: 401, statusMessage: 'Missing or invalid token.' }));
