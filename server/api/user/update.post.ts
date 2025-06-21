@@ -19,20 +19,32 @@ export default defineEventHandler(async (event: H3Event) => {
   }
 
   const body = await readBody(event);
-  const { displayName, username } = body;
-  if (!displayName || !username) {
-    return sendError(event, createError({ statusCode: 400, statusMessage: 'Display name and username are required.' }));
+  const { displayName, username, pfpUrl } = body;
+  
+  const dataToUpdate: { displayName?: string; username?: string; pfpUrl?: string } = {};
+
+  if (displayName) {
+    dataToUpdate.displayName = displayName;
+  }
+  if (username) {
+     // Check if username is taken by another user
+    const existing = await prisma.user.findUnique({ where: { username } });
+    if (existing && existing.id !== decoded.id) {
+      return sendError(event, createError({ statusCode: 409, statusMessage: 'Username already in use.' }));
+    }
+    dataToUpdate.username = username;
+  }
+  if (pfpUrl) {
+    dataToUpdate.pfpUrl = pfpUrl;
   }
 
-  // Check if username is taken by another user
-  const existing = await prisma.user.findUnique({ where: { username } });
-  if (existing && existing.id !== decoded.id) {
-    return sendError(event, createError({ statusCode: 409, statusMessage: 'Username already in use.' }));
+  if (Object.keys(dataToUpdate).length === 0) {
+    return sendError(event, createError({ statusCode: 400, statusMessage: 'No fields to update provided.' }));
   }
-
+  
   const user = await prisma.user.update({
     where: { id: decoded.id },
-    data: { displayName, username },
+    data: dataToUpdate,
   });
 
   return {
