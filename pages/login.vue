@@ -1,37 +1,63 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-white dark:bg-gray-900 transition-colors duration-200">
-    <div class="w-full max-w-md p-8 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-      <h1 class="text-2xl font-semibold text-center mb-6 text-gray-900 dark:text-white">Login</h1>
-      <form @submit.prevent="onSubmit" class="flex flex-col gap-4">
-        <input
-          v-model="email"
-          type="email"
-          placeholder="Email"
-          class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200"
-          required
-        />
-        <input
-          v-model="password"
-          type="password"
-          placeholder="Password"
-          class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200"
-          required
-        />
-        <button
-          type="submit"
-          class="bg-primary-500 text-white font-medium px-4 py-2 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-          :disabled="loading"
-        >
-          <span v-if="loading">Loading...</span>
-          <span v-else>Login</span>
-        </button>
-        <p v-if="error" class="text-red-500 text-sm flex items-center gap-2 mt-2">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z"/></svg>
-          {{ error }}
-        </p>
-      </form>
-      <div class="mt-4 text-center">
-        <NuxtLink to="/register" class="text-primary-500 hover:underline transition-colors duration-200">Don't have an account? Register</NuxtLink>
+  <div class="flex items-center justify-center min-h-screen bg-zinc-100 dark:bg-zinc-900">
+    <div class="w-full max-w-md animate-fade-in">
+      <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-8">
+        <div class="text-center mb-8">
+          <h1 class="text-3xl font-bold text-zinc-900 dark:text-white font-display">Welcome Back</h1>
+          <p class="text-zinc-600 dark:text-zinc-400">Sign in to your BetterSEQTA+ Account</p>
+        </div>
+        <form @submit.prevent="handleLogin" class="space-y-6">
+          <div>
+            <label for="username" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Username</label>
+            <div class="mt-1">
+              <input
+                v-model="username"
+                id="username"
+                name="username"
+                type="text"
+                required
+                class="w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
+              >
+            </div>
+          </div>
+
+          <div>
+            <label for="password" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Password</label>
+            <div class="mt-1">
+              <input
+                v-model="password"
+                id="password"
+                name="password"
+                type="password"
+                required
+                class="w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
+              >
+            </div>
+          </div>
+
+          <div v-if="error" class="text-red-500 dark:text-red-400 text-sm text-center">
+            {{ error }}
+          </div>
+
+          <div>
+            <button
+              type="submit"
+              :disabled="loading"
+              class="w-full flex justify-center py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-zinc-100 dark:focus:ring-offset-zinc-900 focus:ring-primary-500 transition-all duration-200 disabled:bg-primary-500/50 dark:disabled:bg-primary-800 disabled:cursor-not-allowed"
+            >
+              <LoadingSpinner v-if="loading" size="sm" />
+              <span v-else>Sign In</span>
+            </button>
+          </div>
+        </form>
+        <div class="mt-6 text-center">
+          <p class="text-sm text-zinc-600 dark:text-zinc-400">
+            Don't have an account?
+            <NuxtLink to="/register" class="font-medium text-primary-600 dark:text-primary-500 hover:text-primary-500 dark:hover:text-primary-400">
+              Sign up
+            </NuxtLink>
+          </p>
+        </div>
       </div>
     </div>
   </div>
@@ -40,35 +66,32 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 
 definePageMeta({ layout: false })
 
-const email = ref('')
+const username = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
 const router = useRouter()
 const route = useRoute()
 
-const onSubmit = async () => {
-  error.value = ''
+const handleLogin = async () => {
   loading.value = true
+  error.value = ''
   try {
-    const res = await $fetch('/api/auth/login', {
+    const res: any = await $fetch('/api/auth/login', {
       method: 'POST',
-      body: { email: email.value, password: password.value },
+      body: { email: username.value, password: password.value },
     })
     if (res.token) {
       localStorage.setItem('token', res.token)
-      const redirect = Array.isArray(route.query.redirect)
-        ? route.query.redirect[0]
-        : route.query.redirect
-      router.push(redirect || '/')
-    } else {
-      error.value = 'Unexpected response from server.'
+      const redirect = route.query.redirect as string || '/'
+      router.push(redirect)
     }
   } catch (err: any) {
-    error.value = err?.data?.statusMessage || 'Login failed.'
+    error.value = err?.data?.statusMessage || 'An unknown error occurred'
   } finally {
     loading.value = false
   }

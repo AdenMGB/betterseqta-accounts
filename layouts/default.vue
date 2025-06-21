@@ -1,63 +1,56 @@
 <template>
-  <div class="min-h-screen flex bg-white dark:bg-gray-900 transition-colors duration-200">
+  <div class="min-h-screen w-full bg-zinc-100 dark:bg-zinc-900 text-zinc-800 dark:text-zinc-300">
     <!-- Sidebar -->
-    <motion-div
-      class="hidden md:flex flex-col w-64 bg-gray-100 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-4 gap-4 transition-all duration-200"
-      :initial="{ x: -40, opacity: 0 }"
-      :enter="{ x: 0, opacity: 1, transition: { duration: 0.4 } }"
-    >
-      <div class="flex items-center gap-2 mb-8">
+    <div class="hidden md:flex flex-col fixed top-0 left-0 w-64 h-full p-4">
+      <div class="flex items-center gap-2 mb-8 animate-slide-down">
         <UserCircleIcon class="w-8 h-8 text-primary-500" />
-        <span class="text-xl font-semibold text-gray-900 dark:text-white">BetterSEQTA+ Account</span>
+        <span class="text-xl font-bold text-zinc-900 dark:text-white font-display">BetterSEQTA+</span>
       </div>
-      <nav class="flex flex-col gap-2 flex-1">
-        <NuxtLink to="/" class="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-primary-500 hover:text-white transition-all duration-200">
+      <nav class="flex flex-col gap-2 flex-1 animate-fade-in delay-100">
+        <NuxtLink to="/" :class="getLinkClass('/')">
           <HomeIcon class="w-5 h-5" />
           Dashboard
         </NuxtLink>
-        <NuxtLink to="/settings" class="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-primary-500 hover:text-white transition-all duration-200">
+        <NuxtLink to="/settings" :class="getLinkClass('/settings')">
           <Cog6ToothIcon class="w-5 h-5" />
           Settings
         </NuxtLink>
-        <NuxtLink to="/friends" class="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-primary-500 hover:text-white transition-all duration-200">
+        <NuxtLink to="/friends" :class="getLinkClass('/friends')">
           <UserGroupIcon class="w-5 h-5" />
           Friends
         </NuxtLink>
-        <NuxtLink to="/messages" class="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-primary-500 hover:text-white transition-all duration-200">
+        <NuxtLink to="/messages" :class="getLinkClass('/messages')">
           <ChatBubbleLeftRightIcon class="w-5 h-5" />
           Messages
         </NuxtLink>
       </nav>
-    </motion-div>
+      <div class="animate-fade-in delay-200">
+        <button @click="auth.logout" class="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 hover:text-zinc-900 dark:hover:text-white w-full transition-all duration-200">
+          <ArrowRightOnRectangleIcon class="w-5 h-5" />
+          Logout
+        </button>
+      </div>
+    </div>
+
     <!-- Main Content -->
-    <div class="flex-1 flex flex-col min-h-screen">
+    <div class="md:ml-64 flex-1 flex flex-col min-h-screen relative">
+       <div class="absolute inset-0 -z-10 h-full w-full bg-white dark:bg-zinc-900 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px]"></div>
+
       <!-- Header -->
-      <motion-div
-        class="w-full flex items-center justify-between px-6 py-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm transition-all duration-200"
-        :initial="{ y: -20, opacity: 0 }"
-        :enter="{ y: 0, opacity: 1, transition: { duration: 0.4 } }"
+      <header
+        class="w-full flex items-center justify-end px-6 py-4 animate-slide-down"
       >
-        <div class="flex items-center gap-2">
-          <UserCircleIcon class="w-8 h-8 text-primary-500" />
-          <span class="text-lg font-semibold text-gray-900 dark:text-white">BetterSEQTA+ Account</span>
-        </div>
         <div class="flex items-center gap-4">
           <button
             @click="toggleDarkMode"
             :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
-            class="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-primary-500 hover:text-white dark:hover:bg-primary-500 dark:hover:text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+            class="p-2 rounded-full bg-zinc-200/50 dark:bg-zinc-800/50 hover:bg-zinc-300/80 dark:hover:bg-zinc-700/80 text-zinc-800 dark:text-zinc-300 hover:text-black dark:hover:text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-zinc-900"
           >
-            <span v-if="isDark">
-              <!-- Sun Icon -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2m11-11h-2M3 12H1m16.95 7.07l-1.41-1.41M6.34 6.34L4.93 4.93m12.02 0l-1.41 1.41M6.34 17.66l-1.41 1.41"/></svg>
-            </span>
-            <span v-else>
-              <!-- Moon Icon -->
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z"/></svg>
-            </span>
+            <SunIcon v-if="isDark" class="w-5 h-5" />
+            <MoonIcon v-else class="w-5 h-5" />
           </button>
           <Menu as="div" class="relative">
-            <MenuButton class="p-1 rounded-full transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700">
+            <MenuButton class="p-1 rounded-full transition-colors duration-200 hover:bg-zinc-200/80 dark:hover:bg-zinc-800/80">
               <UserAvatar v-if="auth.user.value" :user="auth.user.value" />
             </MenuButton>
             <transition
@@ -68,10 +61,10 @@
               leave-from-class="transform scale-100 opacity-100"
               leave-to-class="transform scale-95 opacity-0"
             >
-              <MenuItems class="absolute right-0 mt-2 w-48 origin-top-right divide-y divide-gray-100 dark:divide-gray-700 rounded-md bg-white dark:bg-gray-800 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
-                <div class="px-1 py-1">
+              <MenuItems class="absolute right-0 mt-2 w-48 origin-top-right rounded-md bg-white dark:bg-zinc-800 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                <div class="p-1">
                   <MenuItem v-slot="{ active }">
-                    <button @click="auth.logout" :class="[active ? 'bg-primary-500 text-white' : 'text-gray-900 dark:text-white', 'group flex w-full items-center rounded-md px-2 py-2 text-sm']">
+                    <button @click="auth.logout" :class="[active ? 'bg-primary-500 text-white' : 'text-zinc-800 dark:text-zinc-300', 'group flex w-full items-center rounded-md px-2 py-2 text-sm']">
                       <ArrowRightOnRectangleIcon class="mr-2 h-5 w-5" />
                       Logout
                     </button>
@@ -81,9 +74,9 @@
             </transition>
           </Menu>
         </div>
-      </motion-div>
+      </header>
       <!-- Page Content -->
-      <main class="flex-1 p-6 md:p-10 bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+      <main class="flex-1 p-6 md:p-10 animate-fade-in delay-200">
         <slot />
       </main>
     </div>
@@ -92,35 +85,47 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuth } from '~/composables/useAuth'
 import UserAvatar from '~/components/UserAvatar.vue'
 import Toast from '~/components/ui/Toast.vue'
-import { HomeIcon, Cog6ToothIcon, UserCircleIcon, UserGroupIcon, ChatBubbleLeftRightIcon, ArrowRightOnRectangleIcon } from '@heroicons/vue/24/outline'
+import { HomeIcon, Cog6ToothIcon, UserCircleIcon, UserGroupIcon, ChatBubbleLeftRightIcon, ArrowRightOnRectangleIcon, SunIcon, MoonIcon } from '@heroicons/vue/24/outline'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
 
 const auth = useAuth()
-const isDark = ref(false)
+const route = useRoute()
+const isDark = ref(true)
 
-const updateDarkMode = () => {
-  isDark.value = document.documentElement.classList.contains('dark')
+const getLinkClass = (path: string) => {
+  const isActive = route.path === path
+  return [
+    'flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200',
+    isActive
+      ? 'bg-primary-500/10 text-primary-500 font-semibold'
+      : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 hover:text-zinc-900 dark:hover:text-white'
+  ]
 }
 
 const toggleDarkMode = () => {
-  document.documentElement.classList.toggle('dark')
   isDark.value = !isDark.value
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+  if (isDark.value) {
+    document.documentElement.classList.add('dark')
+    localStorage.setItem('theme', 'dark')
+  } else {
+    document.documentElement.classList.remove('dark')
+    localStorage.setItem('theme', 'light')
+  }
 }
 
 onMounted(() => {
-  // Set initial theme from localStorage or system preference
   const theme = localStorage.getItem('theme')
   if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    document.documentElement.classList.add('dark')
     isDark.value = true
+    document.documentElement.classList.add('dark')
   } else {
-    document.documentElement.classList.remove('dark')
     isDark.value = false
+    document.documentElement.classList.remove('dark')
   }
 })
 </script> 

@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+const { fontFamily } = require('tailwindcss/defaultTheme')
+
 module.exports = {
   content: [
     './components/**/*.{js,vue,ts}',
@@ -25,18 +27,18 @@ module.exports = {
           800: '#B34B00',
           900: '#994100'
         },
-        dark: {
-          DEFAULT: '#1A1A1A',
-          50: '#2C2C2C',
-          100: '#262626',
-          200: '#1F1F1F',
-          300: '#1A1A1A',
-          400: '#141414',
-          500: '#0F0F0F',
-          600: '#0A0A0A',
-          700: '#050505',
-          800: '#000000',
-          900: '#000000'
+        zinc: {
+          50: '#fafafa',
+          100: '#f4f4f5',
+          200: '#e4e4e7',
+          300: '#d4d4d8',
+          400: '#a1a1aa',
+          500: '#71717a',
+          600: '#52525b',
+          700: '#3f3f46',
+          800: '#27272a',
+          900: '#18181b',
+          950: '#09090b',
         }
       },
       animation: {
@@ -69,6 +71,10 @@ module.exports = {
           '0%': { transform: 'translateX(-20px)', opacity: '0' },
           '100%': { transform: 'translateX(0)', opacity: '1' }
         }
+      },
+      fontFamily: {
+        sans: ['Inter', ...fontFamily.sans],
+        display: ['Inter', ...fontFamily.sans],
       }
     }
   },
