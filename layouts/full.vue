@@ -107,7 +107,6 @@ const toggleDarkMode = () => {
 }
 
 onMounted(() => {
-  auth.fetchUser()
   // Set initial theme from localStorage or system preference
   const theme = localStorage.getItem('theme')
   if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {

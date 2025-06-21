@@ -30,12 +30,17 @@ export function useAuth() {
   }
 
   const logout = async () => {
+    loading.value = true
     try {
       await $fetch('/api/auth/logout', { method: 'POST' })
-    } catch (e) {}
-    localStorage.removeItem('token')
-    user.value = null
-    router.push('/login')
+    } catch (e) {
+      // Ignore errors during logout
+    } finally {
+      localStorage.removeItem('token')
+      user.value = null
+      router.push('/login')
+      loading.value = false
+    }
   }
 
   const isLoggedIn = () => !!user.value
