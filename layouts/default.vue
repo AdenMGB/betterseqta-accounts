@@ -42,7 +42,7 @@
 
       <!-- Header -->
       <header
-        class="w-full flex items-center justify-end px-6 py-4 animate-slide-down"
+        class="w-full flex items-center justify-end px-6 py-4 animate-slide-down main-header"
       >
         <div class="flex items-center gap-4">
           <button
@@ -80,7 +80,7 @@
         </div>
       </header>
       <!-- Page Content -->
-      <main class="flex-1 p-6 md:p-10 animate-fade-in delay-200">
+      <main class="flex-1 p-0 md:p-0 animate-fade-in delay-200">
         <slot />
       </main>
     </div>

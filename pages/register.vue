@@ -1,51 +1,110 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-white dark:bg-gray-900 transition-colors duration-200">
-    <div class="w-full max-w-md p-8 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-      <h1 class="text-2xl font-semibold text-center mb-6 text-gray-900 dark:text-white">Register</h1>
-      <form @submit.prevent="onSubmit" class="flex flex-col gap-4">
-        <input
-          v-model="displayName"
-          type="text"
-          placeholder="Display Name"
-          class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200"
-          required
-        />
-        <input
-          v-model="username"
-          type="text"
-          placeholder="Username"
-          class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200"
-          required
-        />
-        <input
-          v-model="email"
-          type="email"
-          placeholder="Email"
-          class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200"
-          required
-        />
-        <input
-          v-model="password"
-          type="password"
-          placeholder="Password"
-          class="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-200"
-          required
-        />
-        <button
-          type="submit"
-          class="bg-primary-500 text-white font-medium px-4 py-2 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-          :disabled="loading"
-        >
-          <span v-if="loading">Loading...</span>
-          <span v-else>Register</span>
-        </button>
-        <p v-if="error" class="text-red-500 text-sm flex items-center gap-2 mt-2">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z"/></svg>
-          {{ error }}
-        </p>
-      </form>
-      <div class="mt-4 text-center">
-        <NuxtLink to="/login" class="text-primary-500 hover:underline transition-colors duration-200">Already have an account? Login</NuxtLink>
+  <div class="flex items-center justify-center min-h-screen bg-zinc-100 dark:bg-zinc-900">
+    <div class="w-full max-w-md animate-fade-in">
+      <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-8">
+        <div class="text-center mb-8">
+          <h1 class="text-3xl font-bold text-zinc-900 dark:text-white font-display">Create Account</h1>
+          <p class="text-zinc-600 dark:text-zinc-400">Join BetterSEQTA+ and start connecting</p>
+        </div>
+        <form @submit.prevent="onSubmit" class="space-y-6">
+          <div>
+            <label for="displayName" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Display Name</label>
+            <div class="mt-1">
+              <input
+                v-model="displayName"
+                id="displayName"
+                name="displayName"
+                type="text"
+                required
+                class="w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
+                placeholder="Enter your display name"
+              >
+            </div>
+          </div>
+
+          <div>
+            <label for="username" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Username</label>
+            <div class="mt-1">
+              <input
+                v-model="username"
+                id="username"
+                name="username"
+                type="text"
+                required
+                class="w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
+                placeholder="Choose a username"
+              >
+            </div>
+          </div>
+
+          <div>
+            <label for="email" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Email</label>
+            <div class="mt-1">
+              <input
+                v-model="email"
+                id="email"
+                name="email"
+                type="email"
+                required
+                class="w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
+                placeholder="Enter your email"
+              >
+            </div>
+          </div>
+
+          <div>
+            <label for="password" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Password</label>
+            <div class="mt-1">
+              <input
+                v-model="password"
+                id="password"
+                name="password"
+                type="password"
+                required
+                class="w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
+                placeholder="Create a password"
+              >
+            </div>
+          </div>
+
+          <div>
+            <label for="confirmPassword" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Confirm Password</label>
+            <div class="mt-1">
+              <input
+                v-model="confirmPassword"
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                required
+                class="w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
+                placeholder="Confirm your password"
+              >
+            </div>
+          </div>
+
+          <div v-if="error" class="text-red-500 dark:text-red-400 text-sm text-center">
+            {{ error }}
+          </div>
+
+          <div>
+            <button
+              type="submit"
+              :disabled="loading"
+              class="w-full flex justify-center py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-zinc-100 dark:focus:ring-offset-zinc-900 focus:ring-primary-500 transition-all duration-200 disabled:bg-primary-500/50 dark:disabled:bg-primary-800 disabled:cursor-not-allowed"
+            >
+              <LoadingSpinner v-if="loading" size="sm" />
+              <span v-else>Create Account</span>
+            </button>
+          </div>
+        </form>
+        <div class="mt-6 text-center">
+          <p class="text-sm text-zinc-600 dark:text-zinc-400">
+            Already have an account?
+            <NuxtLink to="/login" class="font-medium text-primary-600 dark:text-primary-500 hover:text-primary-500 dark:hover:text-primary-400">
+              Sign in
+            </NuxtLink>
+          </p>
+        </div>
       </div>
     </div>
   </div>
@@ -54,6 +113,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 
 definePageMeta({ layout: false })
 
@@ -61,6 +121,7 @@ const displayName = ref('')
 const username = ref('')
 const email = ref('')
 const password = ref('')
+const confirmPassword = ref('')
 const error = ref('')
 const loading = ref(false)
 const router = useRouter()
@@ -68,6 +129,14 @@ const router = useRouter()
 const onSubmit = async () => {
   error.value = ''
   loading.value = true
+  
+  // Check if passwords match
+  if (password.value !== confirmPassword.value) {
+    error.value = 'Passwords do not match.'
+    loading.value = false
+    return
+  }
+  
   try {
     await $fetch('/api/auth/register', {
       method: 'POST',

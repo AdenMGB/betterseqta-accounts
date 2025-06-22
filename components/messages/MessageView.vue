@@ -7,7 +7,7 @@
     </div>
 
     <!-- Messages -->
-    <div ref="messageContainer" class="flex-1 p-4 overflow-y-auto space-y-4">
+    <div ref="messageContainer" class="flex-1 p-4 overflow-y-auto space-y-4 scroll-smooth">
       <AnimatePresence>
         <motion.div
           v-for="message in messages"
