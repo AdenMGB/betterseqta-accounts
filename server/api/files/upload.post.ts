@@ -30,7 +30,6 @@ export default defineEventHandler(async (event: H3Event) => {
   const form = formidable({ 
     multiples: false,
     keepExtensions: true,
-    // Generate a unique filename to prevent overwrites and improve security
     filename: (name, ext, part, form) => {
         const uniqueSuffix = randomBytes(8).toString('hex');
         const fileExtension = path.extname(part.originalFilename || '');
@@ -56,23 +55,17 @@ export default defineEventHandler(async (event: H3Event) => {
   const fileSize = uploadedFile.size || 0;
   const mimeType = uploadedFile.mimetype || 'application/octet-stream';
 
-  // Create user-specific directory
   const userDataDir = path.join(process.cwd(), 'data', 'users', String(decoded.id), 'files');
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true });
   }
 
-  // Move file from temp location to user's secure directory
   const tempFilePath = uploadedFile.filepath;
   const finalFilePath = path.join(userDataDir, newFileName);
   
-  // Copy file to secure location
   fs.copyFileSync(tempFilePath, finalFilePath);
-  
-  // Clean up temp file
   fs.unlinkSync(tempFilePath);
 
-  // Save file metadata to database
   const fileRecord = await prisma.file.create({
     data: {
       userId: decoded.id,

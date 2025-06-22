@@ -36,25 +36,18 @@ export default defineEventHandler(async (event: H3Event) => {
     return sendError(event, createError({ statusCode: 404, statusMessage: 'File not found.' }));
   }
 
-  // Delete the physical file based on its public status
   let filePath: string;
   
   if (file.isPublic) {
-    // Public files are in public/uploads
     filePath = path.join(process.cwd(), 'public', 'uploads', file.storedName);
   } else {
-    // Private files are in data/users/{userId}/files
     filePath = path.join(process.cwd(), 'data', 'users', String(decoded.id), 'files', file.storedName);
   }
 
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
-    console.log(`[DEBUG] Deleted file from: ${filePath}`);
-  } else {
-    console.log(`[DEBUG] File not found on disk at: ${filePath}`);
   }
 
-  // Delete from database
   await prisma.file.delete({
     where: { id: fileId }
   });

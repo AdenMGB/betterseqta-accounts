@@ -39,7 +39,6 @@ export default defineEventHandler(async (event: H3Event) => {
     return sendError(event, createError({ statusCode: 404, statusMessage: 'File not found.' }));
   }
 
-  // Handle file movement if public status is changing
   if (isPublic !== undefined && isPublic !== file.isPublic) {
     const oldPath = file.isPublic 
       ? path.join(process.cwd(), 'public', 'uploads', file.storedName)
@@ -49,7 +48,6 @@ export default defineEventHandler(async (event: H3Event) => {
       ? path.join(process.cwd(), 'public', 'uploads', file.storedName)
       : path.join(process.cwd(), 'data', 'users', String(decoded.id), 'files', file.storedName);
 
-    // Ensure target directory exists
     if (isPublic) {
       const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
       if (!fs.existsSync(uploadsDir)) {
@@ -62,13 +60,9 @@ export default defineEventHandler(async (event: H3Event) => {
       }
     }
 
-    // Move file if it exists
     if (fs.existsSync(oldPath)) {
       fs.copyFileSync(oldPath, newPath);
       fs.unlinkSync(oldPath);
-      console.log(`[DEBUG] Moved file from ${oldPath} to ${newPath}`);
-    } else {
-      console.log(`[DEBUG] File not found at old path: ${oldPath}`);
     }
   }
 
@@ -76,7 +70,6 @@ export default defineEventHandler(async (event: H3Event) => {
   if (filename !== undefined) updateData.filename = filename;
   if (isPublic !== undefined) {
     updateData.isPublic = isPublic;
-    // Update path in database
     updateData.path = isPublic 
       ? `/uploads/${file.storedName}`
       : `/data/users/${decoded.id}/files/${file.storedName}`;
