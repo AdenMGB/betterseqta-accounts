@@ -23,6 +23,10 @@
           <ChatBubbleLeftRightIcon class="w-5 h-5" />
           Messages
         </NuxtLink>
+        <NuxtLink to="/oauth" :class="getLinkClass('/oauth')">
+          <KeyIcon class="w-5 h-5" />
+          Authorize Apps
+        </NuxtLink>
       </nav>
       <div class="animate-fade-in delay-200">
         <button @click="auth.logout" class="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 hover:text-zinc-900 dark:hover:text-white w-full transition-all duration-200">
@@ -90,7 +94,7 @@ import { useRoute } from 'vue-router'
 import { useAuth } from '~/composables/useAuth'
 import UserAvatar from '~/components/UserAvatar.vue'
 import Toast from '~/components/ui/Toast.vue'
-import { HomeIcon, Cog6ToothIcon, UserCircleIcon, UserGroupIcon, ChatBubbleLeftRightIcon, ArrowRightOnRectangleIcon, SunIcon, MoonIcon } from '@heroicons/vue/24/outline'
+import { HomeIcon, Cog6ToothIcon, UserCircleIcon, UserGroupIcon, ChatBubbleLeftRightIcon, ArrowRightOnRectangleIcon, SunIcon, MoonIcon, KeyIcon } from '@heroicons/vue/24/outline'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
 
 const auth = useAuth()

@@ -3,17 +3,23 @@
     <div class="relative">
       <!-- Spinner rings -->
       <div 
-        class="w-6 h-6 border-2 border-gray-300 dark:border-gray-600 rounded-full animate-spin"
+        class="border-2 border-zinc-300 dark:border-zinc-600 rounded-full animate-spin"
         :class="spinnerClass"
       ></div>
       <div 
-        class="absolute top-0 left-0 w-6 h-6 border-2 border-transparent border-t-primary-500 rounded-full animate-spin"
+        class="absolute top-0 left-0 border-2 border-transparent border-t-primary-500 rounded-full animate-spin"
+        :class="spinnerClass"
         :style="{ animationDuration: '1s' }"
+      ></div>
+      <!-- Inner ring for larger sizes -->
+      <div 
+        v-if="size === 'lg'"
+        class="absolute top-1 left-1 w-6 h-6 border border-zinc-400/30 dark:border-zinc-500/30 rounded-full animate-pulse"
       ></div>
     </div>
     
     <!-- Loading text -->
-    <span v-if="text" class="ml-2 text-sm text-gray-600 dark:text-gray-400">
+    <span v-if="text" class="ml-3 text-sm text-zinc-600 dark:text-zinc-400 font-medium">
       {{ text }}
     </span>
   </div>

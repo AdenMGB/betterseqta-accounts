@@ -7,44 +7,49 @@
     leave-from-class="opacity-100"
     leave-to-class="opacity-0"
   >
-    <div v-if="show" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900">
+    <div v-if="show" class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900">
       <div class="text-center">
         <!-- Logo/Icon Animation -->
         <div class="flex items-center justify-center mb-8">
-          <!-- Rings -->
+          <!-- Animated rings -->
           <div class="relative w-24 h-24">
-            <div class="w-full h-full border-2 border-white/30 rounded-full animate-pulse"></div>
-            <div class="absolute top-0 left-0 w-full h-full border-t-2 border-white rounded-full animate-spin" style="animation-duration: 2s;"></div>
+            <div class="w-full h-full border-2 border-zinc-600/30 rounded-full animate-pulse"></div>
+            <div class="absolute top-0 left-0 w-full h-full border-t-2 border-primary-500 rounded-full animate-spin" style="animation-duration: 2s;"></div>
+            <div class="absolute top-2 left-2 w-20 h-20 border-2 border-zinc-500/20 rounded-full animate-pulse" style="animation-delay: 0.5s;"></div>
           </div>
-          <!-- Icon -->
-          <UserCircleIcon class="w-8 h-8 text-white -translate-x-10" />
         </div>
 
         <!-- Loading text -->
-        <div class="space-y-2">
-          <h1 class="text-3xl font-bold text-white">
-            BetterSEQTA + Account
+        <div class="space-y-3">
+          <h1 class="text-3xl font-bold text-white font-display">
+            BetterSEQTA+
           </h1>
-          <p class="text-white/80">
+          <p class="text-zinc-300 text-lg">
             Loading your account...
           </p>
         </div>
 
-        <!-- Bouncing dots -->
-        <div class="flex items-center justify-center space-x-2 mt-4">
-          <div class="w-2 h-2 bg-white rounded-full animate-bounce" style="animation-delay: 0ms;"></div>
-          <div class="w-2 h-2 bg-white rounded-full animate-bounce" style="animation-delay: 150ms;"></div>
-          <div class="w-2 h-2 bg-white rounded-full animate-bounce" style="animation-delay: 300ms;"></div>
+        <!-- Animated dots -->
+        <div class="flex items-center justify-center space-x-2 mt-6">
+          <div class="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style="animation-delay: 0ms;"></div>
+          <div class="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style="animation-delay: 150ms;"></div>
+          <div class="w-2 h-2 bg-primary-500 rounded-full animate-bounce" style="animation-delay: 300ms;"></div>
         </div>
 
         <!-- Progress bar -->
         <div class="mt-8 w-64 mx-auto">
-          <div class="w-full bg-white/20 rounded-full h-1.5">
+          <div class="w-full bg-zinc-700/50 rounded-full h-2 overflow-hidden">
             <div
-              class="bg-white h-1.5 rounded-full transition-all duration-300 ease-out"
+              class="bg-gradient-to-r from-primary-500 to-primary-600 h-2 rounded-full transition-all duration-300 ease-out shadow-lg"
               :style="{ width: `${progress}%` }"
             ></div>
           </div>
+          <p class="text-zinc-400 text-sm mt-2">{{ Math.round(progress) }}%</p>
+        </div>
+
+        <!-- Subtle background pattern -->
+        <div class="absolute inset-0 -z-10 opacity-10">
+          <div class="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px]"></div>
         </div>
       </div>
     </div>
@@ -53,7 +58,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, onUnmounted } from 'vue'
-import { UserCircleIcon } from '@heroicons/vue/24/outline'
 
 interface Props {
   show: boolean
