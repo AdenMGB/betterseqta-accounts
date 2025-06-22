@@ -43,6 +43,26 @@ export default defineNuxtConfig({
       ]
     }
   },
+  nitro: {
+    // Enable file serving
+    storage: {
+      fs: {
+        driver: 'fs',
+        base: './data'
+      }
+    },
+    // Configure route handling
+    routeRules: {
+      '/api/files/**': {
+        cors: true,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }
+      }
+    }
+  },
   postcss: {
     plugins: {
       tailwindcss: {},

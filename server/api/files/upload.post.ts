@@ -4,10 +4,10 @@ import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
 import { randomBytes } from 'crypto';
+import { PrismaClient } from '@prisma/client';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
-// Ensure the path is relative to the project root
-const UPLOAD_DIR = path.resolve(process.cwd(), 'public', 'uploads');
+const prisma = new PrismaClient();
 
 export const config = {
   api: {
@@ -16,11 +16,6 @@ export const config = {
 };
 
 export default defineEventHandler(async (event: H3Event) => {
-  // Ensure the upload directory exists on every request
-  if (!fs.existsSync(UPLOAD_DIR)) {
-    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-  }
-
   const auth = getHeader(event, 'authorization');
   if (!auth || !auth.startsWith('Bearer ')) {
     return sendError(event, createError({ statusCode: 401, statusMessage: 'Missing or invalid token.' }));
@@ -34,7 +29,6 @@ export default defineEventHandler(async (event: H3Event) => {
 
   const form = formidable({ 
     multiples: false,
-    uploadDir: UPLOAD_DIR,
     keepExtensions: true,
     // Generate a unique filename to prevent overwrites and improve security
     filename: (name, ext, part, form) => {
@@ -58,8 +52,50 @@ export default defineEventHandler(async (event: H3Event) => {
 
   const uploadedFile = file[0];
   const newFileName = uploadedFile.newFilename;
+  const originalFilename = uploadedFile.originalFilename || 'unknown';
+  const fileSize = uploadedFile.size || 0;
+  const mimeType = uploadedFile.mimetype || 'application/octet-stream';
 
-  // The file is already saved to the correct directory by formidable
-  // We just need to return the public URL
-  return { url: `/uploads/${newFileName}` };
+  // Create user-specific directory
+  const userDataDir = path.join(process.cwd(), 'data', 'users', String(decoded.id), 'files');
+  if (!fs.existsSync(userDataDir)) {
+    fs.mkdirSync(userDataDir, { recursive: true });
+  }
+
+  // Move file from temp location to user's secure directory
+  const tempFilePath = uploadedFile.filepath;
+  const finalFilePath = path.join(userDataDir, newFileName);
+  
+  // Copy file to secure location
+  fs.copyFileSync(tempFilePath, finalFilePath);
+  
+  // Clean up temp file
+  fs.unlinkSync(tempFilePath);
+
+  // Save file metadata to database
+  const fileRecord = await prisma.file.create({
+    data: {
+      userId: decoded.id,
+      filename: originalFilename,
+      storedName: newFileName,
+      mimeType: mimeType,
+      size: fileSize,
+      path: `/data/users/${decoded.id}/files/${newFileName}`,
+      isPublic: false
+    },
+    select: {
+      id: true,
+      userId: true,
+      filename: true,
+      storedName: true,
+      mimeType: true,
+      size: true,
+      path: true,
+      isPublic: true,
+      createdAt: true,
+      updatedAt: true
+    }
+  });
+
+  return fileRecord;
 }); 
