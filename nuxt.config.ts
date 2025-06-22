@@ -12,14 +12,14 @@ export default defineNuxtConfig({
   ],
   app: {
     head: {
-      title: 'SAB - Student Advisory Body',
+      title: 'BetterSEQTA+',
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
         { 
           hid: 'description', 
           name: 'description', 
-          content: 'Student Advisory Body (SAB) - Empowering student voices across Catholic schools in South Australia' 
+          content: 'BetterSEQTA+ is a social messaging and file management platform designed to enhance your school experience.' 
         }
       ],
       link: [
