@@ -1,7 +1,7 @@
 import { defineEventHandler, sendRedirect } from 'h3';
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
-const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI || 'http://smb.adenmgb.com:100/api/oauth/discord/callback';
+const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI || 'https://accounts.betterseqta.org/api/oauth/discord/callback';
 const DISCORD_SCOPE = 'identify email';
 
 export default defineEventHandler(async (event) => {

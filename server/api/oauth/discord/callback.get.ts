@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
-const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI || 'http://smb.adenmgb.com:100/api/oauth/discord/callback';
+const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI || 'https://accounts.betterseqta.org/api/oauth/discord/callback';
 
 export default defineEventHandler(async (event) => {
   const { code } = getQuery(event);
@@ -73,6 +73,6 @@ export default defineEventHandler(async (event) => {
   // Option 1: Redirect to frontend with token in query (recommended for SPA)
   // Option 2: Return token as JSON (for API clients)
   // Here, we'll redirect to /auth/discord/callback?token=... (frontend should handle this)
-  const frontendRedirect = `http://smb.adenmgb.com:100/auth/discord/callback?token=${token}`;
+  const frontendRedirect = `https://accounts.betterseqta.org/auth/discord/callback?token=${token}`;
   return sendRedirect(event, frontendRedirect, 302);
 }); 

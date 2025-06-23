@@ -10,12 +10,12 @@
           <div>
             <label for="displayName" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Display Name</label>
             <div class="mt-1">
-              <input
-                v-model="displayName"
+        <input
+          v-model="displayName"
                 id="displayName"
                 name="displayName"
-                type="text"
-                required
+          type="text"
+          required
                 class="w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
                 placeholder="Enter your display name"
               >
@@ -25,12 +25,12 @@
           <div>
             <label for="username" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Username</label>
             <div class="mt-1">
-              <input
-                v-model="username"
+        <input
+          v-model="username"
                 id="username"
                 name="username"
-                type="text"
-                required
+          type="text"
+          required
                 class="w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
                 placeholder="Choose a username"
               >
@@ -40,12 +40,12 @@
           <div>
             <label for="email" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Email</label>
             <div class="mt-1">
-              <input
-                v-model="email"
+        <input
+          v-model="email"
                 id="email"
                 name="email"
-                type="email"
-                required
+          type="email"
+          required
                 class="w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
                 placeholder="Enter your email"
               >
@@ -55,8 +55,8 @@
           <div>
             <label for="password" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Password</label>
             <div class="mt-1">
-              <input
-                v-model="password"
+        <input
+          v-model="password"
                 id="password"
                 name="password"
                 type="password"
@@ -74,8 +74,8 @@
                 v-model="confirmPassword"
                 id="confirmPassword"
                 name="confirmPassword"
-                type="password"
-                required
+          type="password"
+          required
                 class="w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
                 placeholder="Confirm your password"
               >
@@ -87,14 +87,14 @@
           </div>
 
           <div>
-            <button
-              type="submit"
-              :disabled="loading"
+        <button
+          type="submit"
+          :disabled="loading"
               class="w-full flex justify-center py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-zinc-100 dark:focus:ring-offset-zinc-900 focus:ring-primary-500 transition-all duration-200 disabled:bg-primary-500/50 dark:disabled:bg-primary-800 disabled:cursor-not-allowed"
-            >
+        >
               <LoadingSpinner v-if="loading" size="sm" />
               <span v-else>Create Account</span>
-            </button>
+        </button>
           </div>
         </form>
         <div class="mt-6 text-center">
