@@ -15,8 +15,10 @@ datasource db {
 
 model User {
   id              Int          @id @default(autoincrement())
-  email           String       @unique
-  password        String
+  email           String?      @unique // Optional for OAuth users
+  password        String?      // Optional for OAuth users
+  provider        String?      // 'discord' or 'credentials'
+  providerId      String?      @unique // Discord user ID or other provider ID
   username        String       @unique
   displayName     String
   pfpUrl          String?
@@ -27,6 +29,8 @@ model User {
   sentMessages      Message[]    @relation("sentMessages")
   receivedMessages  Message[]    @relation("receivedMessages")
   files             File[]       @relation("UserFiles")
+
+  @@unique([provider, providerId])
 }
 
 model Friendship {

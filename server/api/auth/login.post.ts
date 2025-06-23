@@ -15,7 +15,7 @@ export default defineEventHandler(async (event: H3Event) => {
   }
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
+  if (!user || !user.password) {
     return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid credentials.' }));
   }
 

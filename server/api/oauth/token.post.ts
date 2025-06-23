@@ -29,7 +29,7 @@ export default defineEventHandler(async (event: H3Event) => {
   const { email, password } = body;
   if (email && password) {
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid credentials.' }));
+    if (!user || !user.password) return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid credentials.' }));
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid credentials.' }));
