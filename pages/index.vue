@@ -92,14 +92,14 @@ const auth = useAuth()
 const router = useRouter()
 
 interface Requester {
-  id: number;
+  id: string;
   username: string;
   displayName: string;
   pfpUrl: string | null;
 }
 
 interface FriendRequest {
-  id: number;
+  id: string;
   requester: Requester;
 }
 

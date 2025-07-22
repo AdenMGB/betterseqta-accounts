@@ -14,7 +14,7 @@ export default defineEventHandler(async (event: H3Event) => {
   const token = authHeader.slice(7)
   let decoded;
   try {
-    decoded = jwt.verify(token, JWT_SECRET) as { id: number }
+    decoded = jwt.verify(token, JWT_SECRET) as { id: string }
   } catch (e) {
     return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid token' }))
   }
@@ -34,7 +34,7 @@ export default defineEventHandler(async (event: H3Event) => {
   if (groupId) {
     // Validate group membership
     const member = await prisma.groupMember.findFirst({
-      where: { groupId, userId: decoded.id },
+      where: { groupId: groupId as string, userId: decoded.id },
     })
     if (!member) {
       return sendError(event, createError({ statusCode: 403, statusMessage: 'You are not a member of this group' }))
@@ -46,8 +46,8 @@ export default defineEventHandler(async (event: H3Event) => {
       where: {
         status: 'ACCEPTED',
         OR: [
-          { requesterId: decoded.id, addresseeId: receiverId },
-          { requesterId: receiverId, addresseeId: decoded.id },
+          { requesterId: decoded.id, addresseeId: receiverId as string },
+          { requesterId: receiverId as string, addresseeId: decoded.id },
         ],
       },
     })

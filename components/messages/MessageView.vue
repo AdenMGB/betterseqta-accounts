@@ -13,6 +13,7 @@
 
     <!-- Messages -->
     <div ref="messageContainer" class="flex-1 p-4 overflow-y-auto space-y-4 scroll-smooth">
+      <button v-if="hasMore" @click="loadOlderMessages" class="mb-2 px-4 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600">Load older messages</button>
       <AnimatePresence>
         <motion.div
           v-for="message in messages"
@@ -25,7 +26,7 @@
         >
           <div class="flex flex-col relative" :class="message.senderId === auth.user.value?.id ? 'items-end' : 'items-start'">
             <div class="flex items-center gap-2 mb-1" v-if="isGroup && message.sender">
-              <img :src="message.sender.pfpUrl || `https://api.dicebear.com/7.x/thumbs/svg?seed=${message.sender.username}`" :alt="message.sender.displayName || message.sender.username" class="w-7 h-7 rounded-full object-cover border border-gray-300 dark:border-gray-700" />
+              <img :src="getPfpUrl(message.sender.id)" :alt="message.sender.displayName || message.sender.username" class="w-7 h-7 rounded-full object-cover border border-gray-300 dark:border-gray-700" />
               <span class="text-xs font-semibold text-gray-900 dark:text-white">{{ message.sender.displayName || message.sender.username }}</span>
             </div>
             <div
@@ -100,26 +101,27 @@ import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { motion, AnimatePresence } from 'motion-v'
 import MarkdownIt from 'markdown-it'
+import { set, get } from 'idb-keyval'
 
 const md = new MarkdownIt({ breaks: true })
 
 interface ConversationUser {
-  id: number;
+  id: string;
   username?: string;
   displayName?: string;
   name?: string;
-  members?: { id: number; displayName: string }[];
+  members?: { id: string; displayName: string }[];
   pfpUrl?: string | null;
 }
 
 interface Message {
-  id: number;
+  id: string;
   content: string;
-  senderId: number;
+  senderId: string;
   createdAt: string;
   replyTo?: Message;
   attachment?: any;
-  sender?: ConversationUser; // Added sender property
+  sender?: ConversationUser;
 }
 
 const props = defineProps<{
@@ -136,6 +138,8 @@ const messageInput = ref<HTMLInputElement | null>(null)
 const replyToMessage = ref<Message | null>(null)
 const imagePreviewUrl = ref<string | null>(null)
 let pollInterval: any = null
+const page = ref(1)
+const hasMore = ref(true)
 
 const renderMarkdown = (text: string) => md.render(text || '')
 
@@ -147,18 +151,47 @@ const scrollToBottom = () => {
   })
 }
 
-const fetchMessages = async (forceScroll = false) => {
+const chatId = computed(() => props.conversation?.id)
+
+const loadMessagesFromCache = async () => {
+  if (!chatId.value) return
+  const cached = await get<Message[]>(`messages-${chatId.value}`)
+  if (cached && Array.isArray(cached)) {
+    messages.value = cached
+  }
+}
+
+const saveMessagesToCache = async () => {
+  if (!chatId.value) return
+  await set(`messages-${chatId.value}`, messages.value)
+}
+
+const fetchMessages = async (forceScroll = false, pageNum = 1) => {
   if (!props.conversation) return
   try {
     const el = messageContainer.value
     const shouldScroll = forceScroll || !el || (el.scrollHeight - el.scrollTop <= el.clientHeight + 50)
-
-    const response = await $fetch<Message[]>(`/api/messages/${props.conversation.id}`, {
+    let url = `/api/messages/${props.conversation.id}?page=${pageNum}`
+    const response = await $fetch<Message[]>(url, {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
     })
-    messages.value = response
-
-    if (shouldScroll) {
+    if (pageNum > 1) {
+      // Prepend older messages, avoid duplicates
+      const existingIds = new Set(messages.value.map(m => m.id))
+      const newMessages = response.filter(m => !existingIds.has(m.id))
+      messages.value = [...newMessages, ...messages.value]
+      hasMore.value = response.length > 0
+    } else {
+      // Merge new messages (from API) with existing ones, avoiding duplicates
+      const existingIds = new Set(messages.value.map(m => m.id))
+      const newMessages = response.filter(m => !existingIds.has(m.id))
+      messages.value = [...messages.value, ...newMessages]
+      // Sort by createdAt
+      messages.value.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      hasMore.value = response.length > 0
+    }
+    await saveMessagesToCache()
+    if (shouldScroll && pageNum === 1) {
       scrollToBottom()
     }
   } catch (error) {
@@ -192,13 +225,10 @@ const sendMessage = async () => {
     }
   }
   try {
-    const isGroup = !!props.conversation.members && !!props.conversation.name
-    await $fetch('/api/messages', {
+    await $fetch(`/api/messages/${props.conversation.id}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       body: {
-        receiverId: !isGroup ? props.conversation.id : undefined,
-        groupId: isGroup ? props.conversation.id : undefined,
         content: newMessage.value.trim(),
         attachmentId,
         replyToId: replyToMessage.value ? replyToMessage.value.id : undefined,
@@ -206,7 +236,7 @@ const sendMessage = async () => {
     })
     newMessage.value = ''
     replyToMessage.value = null
-    await fetchMessages(true) // Refresh messages and force scroll
+    await fetchMessages(true)
   } catch (error) {
     console.error('Failed to send message:', error)
   }
@@ -263,11 +293,39 @@ function setSelection(input: HTMLInputElement, start: number, end: number) {
 
 const isGroup = computed(() => !!props.conversation.members && !!props.conversation.name)
 
+const pfpCache = ref<Record<string, string>>({})
+
+const getPfpUrl = (userId: string) => {
+  return pfpCache.value[userId] || `https://api.dicebear.com/7.x/thumbs/svg?seed=${userId}`
+}
+
+const fetchPfpUrl = async (userId: string) => {
+  if (pfpCache.value[userId]) return
+  try {
+    const { pfpUrl } = await $fetch(`/api/user/pfp?id=${userId}`)
+    pfpCache.value[userId] = pfpUrl
+  } catch {
+    pfpCache.value[userId] = `https://api.dicebear.com/7.x/thumbs/svg?seed=${userId}`
+  }
+}
+
+watch(messages, (msgs) => {
+  msgs.forEach(msg => {
+    if (msg.sender?.id) fetchPfpUrl(msg.sender.id)
+    // No need to fetch for receiver, as receiver is not included in the message response
+  })
+}, { immediate: true })
+
 watch(() => props.conversation, (newVal) => {
   if (newVal) {
-    fetchMessages(true)
+    page.value = 1
+    loadMessagesFromCache().then(() => fetchMessages(true, 1).then(() => scrollToBottom()))
   }
 }, { immediate: true })
+
+watch(messages, () => {
+  saveMessagesToCache()
+})
 
 watch(selectedFile, (file) => {
   if (file) {
@@ -281,6 +339,11 @@ function removeImage() {
   selectedFile.value = null
   imagePreviewUrl.value = null
   if (fileInput.value) fileInput.value.value = ''
+}
+
+function loadOlderMessages() {
+  page.value += 1
+  fetchMessages(false, page.value)
 }
 
 onMounted(() => {

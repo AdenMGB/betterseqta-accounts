@@ -14,7 +14,7 @@ export default defineEventHandler(async (event: H3Event) => {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as { id: number; email: string };
+      const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string };
       const user = await prisma.user.findUnique({ where: { id: decoded.id } });
       if (!user) return sendError(event, createError({ statusCode: 401, statusMessage: 'User not found.' }));
 

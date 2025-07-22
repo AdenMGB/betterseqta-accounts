@@ -7,15 +7,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecret'
 
 // Define the type for the friendship with included requester and addressee
 interface FriendUser {
-  id: number;
+  id: string;
   username: string;
   displayName: string;
   pfpUrl: string | null;
 }
 
 interface FriendshipWithUsers {
-  requesterId: number;
-  addresseeId: number;
+  requesterId: string;
+  addresseeId: string;
   requester: FriendUser;
   addressee: FriendUser;
 }
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event: H3Event) => {
   const token = authHeader.slice(7)
   let decoded;
   try {
-    decoded = jwt.verify(token, JWT_SECRET) as { id: number }
+    decoded = jwt.verify(token, JWT_SECRET) as { id: string }
   } catch (e) {
     return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid token' }))
   }

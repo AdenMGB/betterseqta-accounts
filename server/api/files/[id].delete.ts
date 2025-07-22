@@ -15,13 +15,13 @@ export default defineEventHandler(async (event: H3Event) => {
   
   let decoded;
   try {
-    decoded = jwt.verify(auth.slice(7), JWT_SECRET) as { id: number };
+    decoded = jwt.verify(auth.slice(7), JWT_SECRET) as { id: string };
   } catch (e) {
     return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid or expired token.' }));
   }
 
-  const fileId = parseInt(event.context.params?.id as string);
-  if (!fileId || isNaN(fileId)) {
+  const fileId = event.context.params?.id as string;
+  if (!fileId) {
     return sendError(event, createError({ statusCode: 400, statusMessage: 'Invalid file ID.' }));
   }
 

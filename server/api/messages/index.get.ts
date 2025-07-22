@@ -14,34 +14,12 @@ export default defineEventHandler(async (event: H3Event) => {
   const token = authHeader.slice(7)
   let decoded;
   try {
-    decoded = jwt.verify(token, JWT_SECRET) as { id: number }
+    decoded = jwt.verify(token, JWT_SECRET) as { id: string }
   } catch (e) {
     return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid token' }))
   }
 
-  // Find all groups the user is a member of
-  const groupMembers = await prisma.groupMember.findMany({
-    where: { userId: decoded.id },
-    include: {
-      group: {
-        include: {
-          members: {
-            include: {
-              user: { select: { id: true, displayName: true } }
-            }
-          }
-        }
-      }
-    }
-  })
+  // This file will be replaced by /api/groups for group listing
 
-  // Format groups for frontend
-  const groups = groupMembers.map(gm => ({
-    id: gm.group.id,
-    name: gm.group.name,
-    iconUrl: gm.group.iconUrl,
-    members: gm.group.members.map(m => ({ id: m.user.id, displayName: m.user.displayName }))
-  }))
-
-  return groups
+  return [] // Return an empty array as group listing is moved
 }) 

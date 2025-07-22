@@ -25,6 +25,7 @@
     "bcryptjs": "^3.0.2",
     "formidable": "^3.5.4",
     "gsap": "^3.12.5",
+    "idb-keyval": "^6.2.2",
     "jose": "^6.0.10",
     "jsonwebtoken": "^9.0.2",
     "markdown-it": "^14.1.0",

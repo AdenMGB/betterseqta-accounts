@@ -51,14 +51,17 @@ import ConversationList from '~/components/messages/ConversationList.vue'
 import MessageView from '~/components/messages/MessageView.vue'
 
 interface ConversationUser {
-  id: number;
+  id: string;
   username: string;
   displayName: string;
   pfpUrl?: string | null;
   name: string;
   iconUrl?: string | null;
-  members?: { id: number; displayName: string }[];
+  members?: { id: string; displayName: string }[];
 }
+
+type FriendApi = { id: string; username: string; displayName: string; pfpUrl?: string | null };
+type GroupApi = { id: string; name: string; iconUrl?: string | null; members?: { id: string; displayName: string }[] };
 
 const route = useRoute()
 const friends = ref<ConversationUser[]>([])
@@ -66,7 +69,7 @@ const groups = ref<ConversationUser[]>([])
 const selectedConversation = ref<ConversationUser | null>(null)
 const isCreateGroupOpen = ref(false)
 const newGroupName = ref('')
-const selectedFriendIds = ref<number[]>([])
+const selectedFriendIds = ref<string[]>([])
 
 const selectConversation = (conv: ConversationUser) => {
   selectedConversation.value = conv
@@ -74,7 +77,7 @@ const selectConversation = (conv: ConversationUser) => {
 
 const createGroup = async () => {
   try {
-    const group = await $fetch('/api/messages/create-group', {
+    const group = await $fetch('/api/groups', {
       method: 'POST',
       body: { name: newGroupName.value, memberIds: selectedFriendIds.value },
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -95,7 +98,7 @@ const createGroup = async () => {
 
 const fetchGroups = async () => {
   try {
-    const groupsRes = await $fetch<any[]>('/api/messages', {
+    const groupsRes = await $fetch<GroupApi[]>('/api/groups', {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
     })
     groups.value = groupsRes.map(g => ({
@@ -113,32 +116,38 @@ const fetchGroups = async () => {
 
 onMounted(async () => {
   try {
-    const [friendsRes, groupsRes] = await Promise.all([
-      $fetch<any[]>('/api/friends', {
+    const [friendsResRaw, groupsResRaw] = await Promise.all([
+      $fetch('/api/friends', {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      }),
-      $fetch<any[]>('/api/messages', {
+      }) as unknown,
+      $fetch('/api/groups', {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      })
+      }) as unknown
     ])
-    friends.value = friendsRes.map(f => ({
-      id: f.id,
-      username: f.username || '',
-      displayName: f.displayName || f.username || '',
-      pfpUrl: f.pfpUrl || null,
-      name: '', // Not a group, so name is empty
-    }))
-    groups.value = groupsRes.map(g => ({
-      id: g.id,
-      name: g.name || '',
-      iconUrl: g.iconUrl || null,
-      members: g.members || [],
-      username: '', // Not a DM, so username is empty
-      displayName: g.name || '',
-    }))
+    const friendsRes = friendsResRaw as FriendApi[];
+    const groupsRes = groupsResRaw as GroupApi[];
+    friends.value = friendsRes
+      .filter((f: any) => typeof f.id === 'string')
+      .map((f: FriendApi) => ({
+        id: f.id,
+        username: f.username || '',
+        displayName: f.displayName || f.username || '',
+        pfpUrl: f.pfpUrl || null,
+        name: '',
+      }))
+    groups.value = groupsRes
+      .filter((g: any) => typeof g.id === 'string')
+      .map((g: GroupApi) => ({
+        id: g.id,
+        name: g.name || '',
+        iconUrl: g.iconUrl || null,
+        members: g.members || [],
+        username: '',
+        displayName: g.name || '',
+      }))
     const friendId = route.query.with
     if (friendId) {
-      const friendToSelect = friends.value.find(f => f.id === Number(friendId))
+      const friendToSelect = friends.value.find(f => f.id === String(friendId))
       if (friendToSelect) {
         selectConversation(friendToSelect)
       }

@@ -31,7 +31,7 @@
           :animate="{ opacity: 1, x: 0, transition: { delay: index * 0.05 } }"
           :while-hover="{ scale: 1.02, transition: { duration: 0.2 } }"
         >
-          <img :src="friend.pfpUrl || `https://api.dicebear.com/7.x/thumbs/svg?seed=${friend.username}`" :alt="friend.displayName" class="w-10 h-10 rounded-full object-cover">
+          <img :src="getPfpUrl(friend.id)" :alt="friend.displayName" class="w-10 h-10 rounded-full object-cover">
           <div>
             <p class="font-semibold text-gray-900 dark:text-white">{{ friend.displayName }}</p>
             <p class="text-sm text-gray-500 dark:text-gray-400">@{{ friend.username }}</p>
@@ -43,26 +43,46 @@
 </template>
 
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import { motion } from 'motion-v'
 
+const pfpCache = ref<Record<string, string>>({})
+
+const getPfpUrl = (userId: string) => {
+  return pfpCache.value[userId] || `https://api.dicebear.com/7.x/thumbs/svg?seed=${userId}`
+}
+
+const fetchPfpUrl = async (userId: string) => {
+  if (pfpCache.value[userId]) return
+  try {
+    const { pfpUrl } = await $fetch(`/api/user/pfp?id=${userId}`)
+    pfpCache.value[userId] = pfpUrl
+  } catch {
+    pfpCache.value[userId] = `https://api.dicebear.com/7.x/thumbs/svg?seed=${userId}`
+  }
+}
+
+const props = defineProps<{ friends: Friend[]; groups: Group[] }>()
+
+watch(() => props.friends, (friends) => {
+  friends.forEach((friend: Friend) => {
+    if (friend.id) fetchPfpUrl(friend.id)
+  })
+}, { immediate: true })
+
 interface Friend {
-  id: number;
+  id: string;
   username: string;
   displayName: string;
   pfpUrl?: string | null;
 }
 
 interface Group {
-  id: number;
+  id: string;
   name: string;
   iconUrl?: string | null;
-  members?: { id: number; displayName: string }[];
+  members?: { id: string; displayName: string }[];
 }
-
-defineProps<{
-  friends: Friend[]
-  groups: Group[]
-}>()
 
 defineEmits(['select-conversation'])
 </script> 

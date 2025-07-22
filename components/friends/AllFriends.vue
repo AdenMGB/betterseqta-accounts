@@ -46,7 +46,7 @@ const router = useRouter()
 const { showToast } = useToast()
 
 interface Friend {
-  id: number;
+  id: string;
   username: string;
   displayName: string;
   pfpUrl: string | null;
@@ -54,9 +54,9 @@ interface Friend {
 
 const friends = ref<Friend[]>([])
 const isRemoveModalOpen = ref(false)
-const friendToRemoveId = ref<number | null>(null)
+const friendToRemoveId = ref<string | null>(null)
 
-const openRemoveModal = (id: number) => {
+const openRemoveModal = (id: string) => {
   friendToRemoveId.value = id
   isRemoveModalOpen.value = true
 }
@@ -67,7 +67,7 @@ const closeRemoveModal = () => {
 }
 
 const confirmRemoveFriend = async () => {
-  if (friendToRemoveId.value === null) return
+  if (!friendToRemoveId.value) return
   try {
     await $fetch('/api/friends/remove', {
       method: 'POST',
@@ -83,7 +83,7 @@ const confirmRemoveFriend = async () => {
   }
 }
 
-const messageFriend = (friendId: number) => {
+const messageFriend = (friendId: string) => {
   router.push(`/messages?with=${friendId}`)
 }
 

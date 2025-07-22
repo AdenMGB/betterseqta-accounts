@@ -1,33 +1,84 @@
-# Social Messaging API
+# BetterSeqta Social Messaging & Friends API
 
-This document describes how to interact with the social messaging and friends features via the API endpoints in `server/api`.
+This document provides a comprehensive guide to the social, friends, messaging, group, and file APIs for BetterSeqta. It covers authentication, friends management, group chats, direct messages, file attachments, pagination, profile picture handling, and frontend caching strategies (including IndexedDB).
 
-## Friends List
+---
 
+## Authentication
+All endpoints require authentication via a Bearer token in the `Authorization` header.
+
+---
+
+## Friends System
+
+### List Friends
 **Endpoint:** `GET /api/friends`
 
-**Description:** Returns a list of your accepted friends.
+Returns a list of your accepted friends.
 
 **Headers:**
 - `Authorization: Bearer <token>`
 
-**Example Request:**
-```http
-GET /api/friends
-Authorization: Bearer <token>
-```
-
-**Example Response:**
+**Response:**
 ```json
 [
   {
-    "id": 2,
+    "id": "uuid",
     "username": "johndoe",
-    "displayName": "John Doe",
-    "pfpUrl": "https://..."
+    "displayName": "John Doe"
   },
   ...
 ]
+```
+
+---
+
+### Send Friend Request
+**Endpoint:** `POST /api/friends/request`
+
+Send a friend request by username.
+
+**Body:**
+```json
+{ "username": "targetUsername" }
+```
+
+**Response:**
+```json
+{ "id": "uuid", "requesterId": "uuid", "addresseeId": "uuid", "status": "PENDING" }
+```
+
+---
+
+### List Pending Friend Requests
+**Endpoint:** `GET /api/friends/requests`
+
+Returns all pending friend requests sent to you.
+
+**Response:**
+```json
+[
+  { "id": "uuid", "requester": { "id": "uuid", "username": "alice", "displayName": "Alice" } },
+  ...
+]
+```
+
+---
+
+### Accept/Reject/Remove Friend
+**Accept:** `POST /api/friends/accept`  
+**Reject:** `POST /api/friends/reject`  
+**Remove:** `POST /api/friends/remove`
+
+**Body:**
+```json
+{ "requestId": "uuid" } // for accept/reject
+{ "friendId": "uuid" }   // for remove
+```
+
+**Response:**
+```json
+{ "success": true }
 ```
 
 ---
@@ -35,25 +86,18 @@ Authorization: Bearer <token>
 ## Group Chats
 
 ### List Groups
+**Endpoint:** `GET /api/groups`
 
-**Endpoint:** `GET /api/messages`
+Returns all group chats the user is a member of.
 
-**Description:** Returns a list of all group chats the user is a member of.
-
-**Headers:**
-- `Authorization: Bearer <token>`
-
-**Example Response:**
+**Response:**
 ```json
 [
   {
-    "id": 1,
+    "id": "uuid",
     "name": "Cool Group",
     "iconUrl": null,
-    "members": [
-      { "id": 1, "displayName": "Alice" },
-      { "id": 2, "displayName": "Bob" }
-    ]
+    "members": [ { "id": "uuid", "displayName": "Alice" }, ... ]
   },
   ...
 ]
@@ -61,180 +105,107 @@ Authorization: Bearer <token>
 
 ---
 
-## Create Group Chat
+### Create Group
+**Endpoint:** `POST /api/groups`
 
-**Endpoint:** `POST /api/messages/create-group`
+**Body:**
+```json
+{ "name": "Cool Group", "memberIds": ["uuid1", "uuid2"] }
+```
 
-**Description:** Create a new group chat with a name and a list of member user IDs. The creator is automatically added as the group owner.
+**Response:**
+```json
+{
+  "id": "uuid",
+  "name": "Cool Group",
+  "members": [ { "id": "uuid", "displayName": "Alice" }, ... ]
+}
+```
 
-**Headers:**
-- `Authorization: Bearer <token>`
-- `Content-Type: application/json`
+---
+
+## Direct & Group Messaging
+
+### Send a Message
+**Endpoint:** `POST /api/messages/[chatId]`
+
+Send a message to a group or DM. Use the chat/group/user UUID as the route param.
 
 **Body:**
 ```json
 {
-  "name": "Cool Group",
-  "memberIds": [2, 3, 4]
+  "content": "Hello!",
+  "replyToId": "uuid",      // optional
+  "attachmentId": "uuid"    // optional
 }
 ```
 
-**Example Request:**
-```http
-POST /api/messages/create-group
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "name": "Cool Group",
-  "memberIds": [2, 3, 4]
-}
-```
-
-**Example Response:**
+**Response:**
 ```json
 {
-  "id": 1,
-  "name": "Cool Group",
-  "members": [
-    { "id": 1, "displayName": "Alice" },
-    { "id": 2, "displayName": "Bob" },
-    { "id": 3, "displayName": "Charlie" },
-    { "id": 4, "displayName": "Dana" }
-  ]
-}
-```
-
----
-
-## Send a Message (DM or Group)
-
-**Endpoint:** `POST /api/messages`
-
-**Description:** Send a message to a friend (DM) or a group chat.
-
-**Headers:**
-- `Authorization: Bearer <token>`
-
-**Body (DM):**
-```json
-{
-  "receiverId": 2,
-  "content": "Hello!"
-}
-```
-
-**Body (Group):**
-```json
-{
-  "groupId": 1,
-  "content": "Hello group!"
-}
-```
-
-**Optional fields:**
-- `replyToId`: (number) ID of the message being replied to
-- `attachmentId`: (number) ID of an uploaded file/image to attach
-
-**Example Request (with attachment and reply):**
-```http
-POST /api/messages
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "receiverId": 2,
-  "content": "Check this out!",
-  "replyToId": 123,
-  "attachmentId": 456
-}
-```
-
-**Example Response:**
-```json
-{
-  "id": 789,
-  "senderId": 1,
-  "receiverId": 2,
-  "content": "Check this out!",
+  "id": "uuid",
+  "senderId": "uuid",
+  "receiverId": "uuid", // for DMs
+  "groupId": "uuid",    // for groups
+  "content": "Hello!",
   "read": false,
   "createdAt": "2024-06-23T12:00:00.000Z",
-  "replyToId": 123,
-  "attachmentId": 456
+  "replyToId": null,
+  "attachmentId": null,
+  "sender": { "id": "uuid", "username": "alice" },
+  "group": { "id": "uuid", "name": "Cool Group" },
+  "replyTo": null,
+  "attachment": null
 }
 ```
 
 ---
 
-## Receive (Get) Messages (DM or Group)
+### Get Messages (Paginated)
+**Endpoint:** `GET /api/messages/[chatId]?page=1`
 
-**Endpoint:** `GET /api/messages/[id]`
+Returns messages for a group or DM, paginated (default: 25 per page, newest first).
 
-**Description:** Get all messages between you and a specific friend (DM), or all messages in a group chat.
-
-**Headers:**
-- `Authorization: Bearer <token>`
-
-**Example Request (DM):**
-```http
-GET /api/messages/2
-Authorization: Bearer <token>
-```
-
-**Example Request (Group):**
-```http
-GET /api/messages/1
-Authorization: Bearer <token>
-```
-
-**Example Response:**
+**Response:**
 ```json
 [
   {
-    "id": 789,
-    "senderId": 1,
-    "receiverId": 2,
+    "id": "uuid",
+    "senderId": "uuid",
+    "receiverId": "uuid",
     "groupId": null,
-    "content": "Check this out!",
+    "content": "Hello!",
     "read": true,
     "createdAt": "2024-06-23T12:00:00.000Z",
-    "replyTo": { "id": 123, "content": "Original message..." },
-    "attachment": {
-      "id": 456,
-      "filename": "cat.jpg",
-      "storedName": "219d393656665f56.JPG",
-      "mimeType": "image/jpeg",
-      "size": 123456,
-      "url": "/api/files/public/219d393656665f56.JPG"
-    },
-    "sender": { "id": 1, "username": "alice", "pfpUrl": null },
-    "receiver": { "id": 2, "username": "johndoe", "pfpUrl": null }
+    "replyToId": null,
+    "attachmentId": null,
+    "sender": { "id": "uuid", "username": "alice" },
+    "group": { "id": "uuid", "name": "Cool Group" },
+    "replyTo": null,
+    "attachment": null
   },
   ...
 ]
 ```
 
+**Pagination:**
+- Use the `?page=` query parameter to load older messages (page 1 = newest, page 2 = next 25 older, etc.).
+- The API returns messages in reverse chronological order; the frontend should reverse them for display.
+
 ---
 
-## File Upload (for Attachments)
+## File Uploads & Attachments
 
+### Upload File
 **Endpoint:** `POST /api/files/upload`
 
-**Description:** Upload a file or image to attach to a message. Returns the file's ID for use in `attachmentId`.
-
-**Headers:**
-- `Authorization: Bearer <token>`
-- `Content-Type: multipart/form-data`
-
 **Body:**
-- `file`: The file to upload (form field)
+- `file`: The file to upload (multipart/form-data)
 
-**File Size Limit:** 30MB
-
-**Example Response:**
+**Response:**
 ```json
 {
-  "id": 456,
+  "id": "uuid",
   "filename": "cat.jpg",
   "storedName": "219d393656665f56.JPG",
   "mimeType": "image/jpeg",
@@ -244,32 +215,86 @@ Authorization: Bearer <token>
 }
 ```
 
-**Accessing Attachments:**
-- Public files can be accessed at `/api/files/public/[storedName]` (no auth required)
+**Access:**
+- Public files: `/api/files/public/[storedName]`
 
 ---
 
-## Markdown Support
+## Profile Pictures (pfpUrl)
 
-- Message content supports Markdown formatting (bold, italic, code, links, lists, etc.).
-- Use the Markdown toolbar in the UI to insert formatting.
+### Get Profile Picture URL
+**Endpoint:** `GET /api/user/pfp?id=<userId>`
+
+Returns the profile picture URL for a user. If not set, returns a DiceBear avatar URL.
+
+**Response:**
+```json
+{ "pfpUrl": "https://..." }
+```
+
+**Frontend Usage:**
+- Fetch and cache pfp URLs as needed (see IndexedDB section below).
 
 ---
 
-## Message Replies
+## Frontend Caching & IndexedDB Strategy
 
-- You can reply to any message by specifying `replyToId` when sending a message.
-- The UI shows a reply preview and quoted message context.
+### Why Use IndexedDB?
+- LocalStorage is limited (~5MB) and not suitable for large chat histories.
+- IndexedDB allows you to cache large numbers of messages per chat, improving performance and offline support.
+
+### How to Use (with idb-keyval)
+- On chat load, fetch messages from IndexedDB first (keyed by `messages-<chatId>`).
+- When fetching from the API, merge new messages into the cache, avoiding duplicates.
+- When loading older messages (pagination), prepend them to the cached array.
+- Always update the UI from the cache.
+- Example (Vue):
+```js
+import { set, get } from 'idb-keyval'
+
+const loadMessagesFromCache = async (chatId) => {
+  return (await get(`messages-${chatId}`)) || []
+}
+const saveMessagesToCache = async (chatId, messages) => {
+  await set(`messages-${chatId}`, messages)
+}
+```
 
 ---
 
 ## UI/UX Notes
+- The frontend should always scroll to the bottom when entering a chat.
+- Use a "Load older messages" button or infinite scroll to fetch previous pages.
+- Profile pictures are fetched on demand and cached.
+- All endpoints require authentication.
+- Only friends can DM each other.
+- Markdown is supported in message content.
+- File uploads are public by default for message attachments.
 
-- You can send messages with only text, only an image, or both.
-- Image attachments show a preview before sending.
-- Reply buttons appear on hover for each message.
-- Group chats and DMs are supported in the same interface.
-- In group chats, each message includes the sender's username, displayName (if available), and pfpUrl. The frontend displays both the sender's profile picture and name above each message in group chats for clarity.
-- All endpoints require authentication via a Bearer token.
-- Only friends can send DMs to each other.
-- File uploads are limited to 30MB and are public by default for message attachments. 
+---
+
+## Example Workflow
+1. User logs in and fetches friends/groups.
+2. User enters a chat:
+   - Messages are loaded from IndexedDB cache.
+   - Latest messages are fetched from the API and merged.
+   - UI scrolls to the bottom.
+3. User scrolls up and clicks "Load older messages":
+   - The next page is fetched and prepended to the cache/UI.
+4. User sends a message:
+   - The message is optimistically added to the cache/UI.
+   - The API is called to persist the message.
+5. Profile pictures are fetched as needed and cached.
+
+---
+
+## Security & Best Practices
+- Always use HTTPS in production.
+- Validate all user input on both frontend and backend.
+- Use JWT tokens for authentication.
+- Limit file upload size (30MB max).
+- Sanitize Markdown to prevent XSS.
+
+---
+
+For further details, see the codebase or ask for specific endpoint examples! 

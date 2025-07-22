@@ -32,14 +32,14 @@ import { ofetch } from 'ofetch'
 import { motion } from 'motion-v'
 
 interface Requester {
-  id: number;
+  id: string;
   username: string;
   displayName: string;
   pfpUrl: string | null;
 }
 
 interface FriendRequest {
-  id: number;
+  id: string;
   requester: Requester;
 }
 
@@ -56,7 +56,7 @@ const fetchRequests = async () => {
   }
 }
 
-const acceptRequest = async (id: number) => {
+const acceptRequest = async (id: string) => {
   try {
     await ofetch('/api/friends/accept', {
       method: 'POST',
@@ -69,7 +69,7 @@ const acceptRequest = async (id: number) => {
   }
 }
 
-const rejectRequest = async (id: number) => {
+const rejectRequest = async (id: string) => {
   try {
     await ofetch('/api/friends/reject', {
       method: 'POST',

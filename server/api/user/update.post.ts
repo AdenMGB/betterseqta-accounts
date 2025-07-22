@@ -13,7 +13,7 @@ export default defineEventHandler(async (event: H3Event) => {
   const token = auth.slice(7);
   let decoded;
   try {
-    decoded = jwt.verify(token, JWT_SECRET) as { id: number; email: string };
+    decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string };
   } catch (e) {
     return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid or expired token.' }));
   }

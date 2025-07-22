@@ -15,7 +15,7 @@ export default defineEventHandler(async (event: H3Event) => {
   
   let decoded;
   try {
-    decoded = jwt.verify(auth.slice(7), JWT_SECRET) as { id: number };
+    decoded = jwt.verify(auth.slice(7), JWT_SECRET) as { id: string };
   } catch (e) {
     return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid or expired token.' }));
   }

@@ -1,8 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// Prisma schema for BetterSeqta Accounts (fresh, UUID-based)
 
 generator client {
   provider = "prisma-client-js"
@@ -14,11 +10,11 @@ datasource db {
 }
 
 model User {
-  id              Int          @id @default(autoincrement())
-  email           String?      @unique // Optional for OAuth users
-  password        String?      // Optional for OAuth users
-  provider        String?      // 'discord' or 'credentials'
-  providerId      String?      @unique // Discord user ID or other provider ID
+  id              String       @id @default(uuid())
+  email           String?      @unique
+  password        String?
+  provider        String?
+  providerId      String?      @unique
   username        String       @unique
   displayName     String
   pfpUrl          String?
@@ -35,10 +31,10 @@ model User {
 }
 
 model Friendship {
-  id          Int      @id @default(autoincrement())
-  requesterId Int
-  addresseeId Int
-  status      String   @default("PENDING") // PENDING, ACCEPTED, BLOCKED
+  id          String   @id @default(uuid())
+  requesterId String
+  addresseeId String
+  status      String   @default("PENDING")
   createdAt   DateTime @default(now())
 
   requester   User @relation("sentRequests", fields: [requesterId], references: [id])
@@ -48,7 +44,7 @@ model Friendship {
 }
 
 model Group {
-  id        Int           @id @default(autoincrement())
+  id        String        @id @default(uuid())
   name      String
   iconUrl   String?
   createdAt DateTime      @default(now())
@@ -57,10 +53,10 @@ model Group {
 }
 
 model GroupMember {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  groupId   Int
-  role      String   @default("member") // member, admin, owner
+  id        String   @id @default(uuid())
+  userId    String
+  groupId   String
+  role      String   @default("member")
   joinedAt  DateTime @default(now())
 
   user      User     @relation(fields: [userId], references: [id])
@@ -70,15 +66,15 @@ model GroupMember {
 }
 
 model Message {
-  id           Int      @id @default(autoincrement())
-  senderId     Int
-  receiverId   Int?     // Nullable for group messages
-  groupId      Int?     // Nullable for DMs
+  id           String   @id @default(uuid())
+  senderId     String
+  receiverId   String?
+  groupId      String?
   content      String   @db.Text
   read         Boolean  @default(false)
   createdAt    DateTime @default(now())
-  replyToId    Int?     // For replies
-  attachmentId Int?     // For images/files
+  replyToId    String?
+  attachmentId String?
 
   sender       User     @relation("sentMessages", fields: [senderId], references: [id])
   receiver     User?    @relation("receivedMessages", fields: [receiverId], references: [id])
@@ -89,8 +85,8 @@ model Message {
 }
 
 model File {
-  id          Int      @id @default(autoincrement())
-  userId      Int
+  id          String   @id @default(uuid())
+  userId      String
   filename    String
   storedName  String
   mimeType    String
