@@ -55,13 +55,31 @@ export default defineEventHandler(async (event: H3Event) => {
   const fileSize = uploadedFile.size || 0;
   const mimeType = uploadedFile.mimetype || 'application/octet-stream';
 
+  // 30MB limit
+  const MAX_SIZE = 30 * 1024 * 1024;
+  if (fileSize > MAX_SIZE) {
+    return sendError(event, createError({ statusCode: 400, statusMessage: 'File size exceeds 30MB limit.' }));
+  }
+
   const userDataDir = path.join(process.cwd(), 'data', 'users', String(decoded.id), 'files');
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true });
   }
 
   const tempFilePath = uploadedFile.filepath;
-  const finalFilePath = path.join(userDataDir, newFileName);
+  let finalFilePath: string;
+  let dbPath: string;
+  if (true) { // isPublic: true
+    const publicDir = path.join(process.cwd(), 'public', 'uploads');
+    if (!fs.existsSync(publicDir)) {
+      fs.mkdirSync(publicDir, { recursive: true });
+    }
+    finalFilePath = path.join(publicDir, newFileName);
+    dbPath = `/public/uploads/${newFileName}`;
+  } else {
+    finalFilePath = path.join(userDataDir, newFileName);
+    dbPath = `/data/users/${decoded.id}/files/${newFileName}`;
+  }
   
   fs.copyFileSync(tempFilePath, finalFilePath);
   fs.unlinkSync(tempFilePath);
@@ -73,8 +91,8 @@ export default defineEventHandler(async (event: H3Event) => {
       storedName: newFileName,
       mimeType: mimeType,
       size: fileSize,
-      path: `/data/users/${decoded.id}/files/${newFileName}`,
-      isPublic: false
+      path: dbPath,
+      isPublic: true // Make all uploads public for message images
     },
     select: {
       id: true,

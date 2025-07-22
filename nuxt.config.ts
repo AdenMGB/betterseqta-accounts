@@ -19,7 +19,7 @@ export default defineNuxtConfig({
         { 
           hid: 'description', 
           name: 'description', 
-          content: 'BetterSEQTA+ is a social messaging and file management platform designed to enhance your school experience.' 
+          content: 'BetterSEQTA+ is a social messaging and cloud sync platform designed to enhance your school experience.' 
         }
       ],
       link: [

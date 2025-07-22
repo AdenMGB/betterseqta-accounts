@@ -19,32 +19,46 @@ export default defineEventHandler(async (event: H3Event) => {
     return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid token' }))
   }
 
-  const { receiverId, content } = await readBody(event)
-  if (!receiverId || !content) {
-    return sendError(event, createError({ statusCode: 400, statusMessage: 'Receiver ID and content are required' }))
+  const { receiverId, groupId, content, replyToId, attachmentId } = await readBody(event)
+  if (!content || (!receiverId && !groupId)) {
+    return sendError(event, createError({ statusCode: 400, statusMessage: 'Receiver ID or Group ID and content are required' }))
   }
 
-  // Verify that the users are friends
-  const friendship = await prisma.friendship.findFirst({
-    where: {
-      status: 'ACCEPTED',
-      OR: [
-        { requesterId: decoded.id, addresseeId: receiverId },
-        { requesterId: receiverId, addresseeId: decoded.id },
-      ],
-    },
-  })
+  let messageData: any = {
+    senderId: decoded.id,
+    content,
+    replyToId,
+    attachmentId,
+  }
 
-  if (!friendship) {
-    return sendError(event, createError({ statusCode: 403, statusMessage: 'You can only message friends' }))
+  if (groupId) {
+    // Validate group membership
+    const member = await prisma.groupMember.findFirst({
+      where: { groupId, userId: decoded.id },
+    })
+    if (!member) {
+      return sendError(event, createError({ statusCode: 403, statusMessage: 'You are not a member of this group' }))
+    }
+    messageData.groupId = groupId
+  } else if (receiverId) {
+    // Verify that the users are friends
+    const friendship = await prisma.friendship.findFirst({
+      where: {
+        status: 'ACCEPTED',
+        OR: [
+          { requesterId: decoded.id, addresseeId: receiverId },
+          { requesterId: receiverId, addresseeId: decoded.id },
+        ],
+      },
+    })
+    if (!friendship) {
+      return sendError(event, createError({ statusCode: 403, statusMessage: 'You can only message friends' }))
+    }
+    messageData.receiverId = receiverId
   }
 
   const message = await prisma.message.create({
-    data: {
-      senderId: decoded.id,
-      receiverId,
-      content,
-    },
+    data: messageData,
   })
 
   return message

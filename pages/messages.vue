@@ -2,7 +2,7 @@
   <div class="flex h-[calc(100vh-64px)] overflow-hidden">
     <!-- Conversation List -->
     <div class="w-1/3 border-r border-gray-200 dark:border-gray-700 overflow-hidden">
-      <ConversationList :friends="friends" @select-conversation="selectConversation" />
+      <ConversationList :friends="friends" :groups="groups" @select-conversation="selectConversation" />
     </div>
 
     <!-- Message View -->
@@ -25,23 +25,46 @@ interface ConversationUser {
   id: number;
   username: string;
   displayName: string;
-  pfpUrl: string | null;
+  pfpUrl?: string | null;
+  name: string;
+  iconUrl?: string | null;
+  members?: { id: number; displayName: string }[];
 }
 
 const route = useRoute()
 const friends = ref<ConversationUser[]>([])
+const groups = ref<ConversationUser[]>([])
 const selectedConversation = ref<ConversationUser | null>(null)
 
-const selectConversation = (user: ConversationUser) => {
-  selectedConversation.value = user
+const selectConversation = (conv: ConversationUser) => {
+  selectedConversation.value = conv
 }
 
 onMounted(async () => {
   try {
-    const response = await $fetch<ConversationUser[]>('/api/friends', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-    })
-    friends.value = response
+    const [friendsRes, groupsRes] = await Promise.all([
+      $fetch<any[]>('/api/friends', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      }),
+      $fetch<any[]>('/api/messages', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      })
+    ])
+    friends.value = friendsRes.map(f => ({
+      id: f.id,
+      username: f.username || '',
+      displayName: f.displayName || f.username || '',
+      pfpUrl: f.pfpUrl || null,
+      name: '', // Not a group, so name is empty
+    }))
+    groups.value = groupsRes.map(g => ({
+      id: g.id,
+      name: g.name || '',
+      iconUrl: g.iconUrl || null,
+      members: g.members || [],
+      username: '', // Not a DM, so username is empty
+      displayName: g.name || '',
+    }))
 
     const friendId = route.query.with
     if (friendId) {
@@ -51,7 +74,7 @@ onMounted(async () => {
       }
     }
   } catch (error) {
-    console.error('Failed to fetch friends for conversations:', error)
+    console.error('Failed to fetch friends or groups for conversations:', error)
   }
 })
 </script>

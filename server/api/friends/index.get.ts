@@ -5,6 +5,21 @@ import { H3Event, sendError, getHeader } from 'h3'
 const prisma = new PrismaClient()
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret'
 
+// Define the type for the friendship with included requester and addressee
+interface FriendUser {
+  id: number;
+  username: string;
+  displayName: string;
+  pfpUrl: string | null;
+}
+
+interface FriendshipWithUsers {
+  requesterId: number;
+  addresseeId: number;
+  requester: FriendUser;
+  addressee: FriendUser;
+}
+
 export default defineEventHandler(async (event: H3Event) => {
   const authHeader = getHeader(event, 'authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -34,7 +49,7 @@ export default defineEventHandler(async (event: H3Event) => {
   })
 
   // Format the output to return the friend's info, not the requester's
-  const friends = friendships.map(f => {
+  const friends = friendships.map((f: FriendshipWithUsers) => {
     return f.requesterId === decoded.id ? f.addressee : f.requester
   })
 
