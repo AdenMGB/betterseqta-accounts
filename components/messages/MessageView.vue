@@ -24,6 +24,10 @@
           :exit="{ opacity: 0, y: -20 }"
         >
           <div class="flex flex-col relative" :class="message.senderId === auth.user.value?.id ? 'items-end' : 'items-start'">
+            <div class="flex items-center gap-2 mb-1" v-if="isGroup && message.sender">
+              <img :src="message.sender.pfpUrl || `https://api.dicebear.com/7.x/thumbs/svg?seed=${message.sender.username}`" :alt="message.sender.displayName || message.sender.username" class="w-7 h-7 rounded-full object-cover border border-gray-300 dark:border-gray-700" />
+              <span class="text-xs font-semibold text-gray-900 dark:text-white">{{ message.sender.displayName || message.sender.username }}</span>
+            </div>
             <div
               :class="message.senderId === auth.user.value?.id
                 ? 'bg-primary-500 text-white'
@@ -92,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { motion, AnimatePresence } from 'motion-v'
 import MarkdownIt from 'markdown-it'
@@ -115,6 +119,7 @@ interface Message {
   createdAt: string;
   replyTo?: Message;
   attachment?: any;
+  sender?: ConversationUser; // Added sender property
 }
 
 const props = defineProps<{
@@ -255,6 +260,8 @@ function applyMarkdown(action: string) {
 function setSelection(input: HTMLInputElement, start: number, end: number) {
   input.setSelectionRange(start, end)
 }
+
+const isGroup = computed(() => !!props.conversation.members && !!props.conversation.name)
 
 watch(() => props.conversation, (newVal) => {
   if (newVal) {
