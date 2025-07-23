@@ -27,6 +27,10 @@ export default defineEventHandler(async (event: H3Event) => {
     return sendError(event, createError({ statusCode: 401, statusMessage: 'Invalid or expired token.' }));
   }
 
+  // Check if upload should be public (for chat attachments and profile pictures)
+  const query = getQuery(event);
+  const isPublic = query.public === 'true';
+
   const form = formidable({ 
     multiples: false,
     keepExtensions: true,
@@ -69,14 +73,17 @@ export default defineEventHandler(async (event: H3Event) => {
   const tempFilePath = uploadedFile.filepath;
   let finalFilePath: string;
   let dbPath: string;
-  if (true) { // isPublic: true
+  
+  if (isPublic) {
+    // Public uploads (for chat attachments and profile pictures)
     const publicDir = path.join(process.cwd(), 'public', 'uploads');
     if (!fs.existsSync(publicDir)) {
       fs.mkdirSync(publicDir, { recursive: true });
     }
     finalFilePath = path.join(publicDir, newFileName);
-    dbPath = `/public/uploads/${newFileName}`;
+    dbPath = `/uploads/${newFileName}`;
   } else {
+    // Private uploads (default - for user files, configs, etc.)
     finalFilePath = path.join(userDataDir, newFileName);
     dbPath = `/data/users/${decoded.id}/files/${newFileName}`;
   }
@@ -92,7 +99,7 @@ export default defineEventHandler(async (event: H3Event) => {
       mimeType: mimeType,
       size: fileSize,
       path: dbPath,
-      isPublic: true // Make all uploads public for message images
+      isPublic: isPublic
     },
     select: {
       id: true,

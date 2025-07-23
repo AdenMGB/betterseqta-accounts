@@ -229,10 +229,10 @@ const sendMessage = async () => {
   if (!newMessage.value.trim() && !selectedFile.value) return // Allow sending if there is text OR an image
   let attachmentId = null
   if (selectedFile.value) {
-    // Upload file first
+    // Upload file first - make it public for chat attachments
     const formData = new FormData()
     formData.append('file', selectedFile.value)
-    const uploadRes = await $fetch('/api/files/upload', {
+    const uploadRes = await $fetch('/api/files/upload?public=true', {
       method: 'POST',
       body: formData,
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },

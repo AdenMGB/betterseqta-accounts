@@ -169,24 +169,10 @@ const updateProfile = async () => {
       const formData = new FormData()
       formData.append('file', pfpFile.value)
       
-      const response = await $fetch('/api/files/upload', {
+      const response = await $fetch('/api/files/upload?public=true', {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         body: formData
-      })
-      
-      // The file upload API returns file metadata, we need to construct the URL
-      // For profile pictures, we'll make them public and use the public URL
-      const fileId = response.id
-      
-      // Make the file public so it can be accessed via URL
-      await $fetch(`/api/files/${fileId}`, {
-        method: 'PATCH',
-        headers: { 
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: { isPublic: true }
       })
       
       // Construct the public URL for the profile picture
