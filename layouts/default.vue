@@ -85,6 +85,7 @@
       </main>
     </div>
     <Toast />
+    <MobileNav />
   </div>
 </template>
 
@@ -96,6 +97,7 @@ import UserAvatar from '~/components/UserAvatar.vue'
 import Toast from '~/components/ui/Toast.vue'
 import { HomeIcon, Cog6ToothIcon, UserCircleIcon, UserGroupIcon, ChatBubbleLeftRightIcon, ArrowRightOnRectangleIcon, SunIcon, MoonIcon, KeyIcon } from '@heroicons/vue/24/outline'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
+import MobileNav from '~/components/ui/MobileNav.vue'
 
 const auth = useAuth()
 const route = useRoute()
