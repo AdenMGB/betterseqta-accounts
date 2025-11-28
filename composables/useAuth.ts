@@ -24,6 +24,8 @@ export function useAuth() {
     } catch (err: any) {
       user.value = null
       error.value = err?.data?.statusMessage || 'Failed to fetch user.'
+      // Clear invalid token
+      localStorage.removeItem('token')
     } finally {
       loading.value = false
     }
