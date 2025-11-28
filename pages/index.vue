@@ -33,10 +33,7 @@
             </div>
             <div class="form-group">
               <label class="form-label">Accent Color</label>
-              <div class="flex items-center gap-3">
-                <input type="color" v-model="settings.accent_color" class="w-10 h-10 rounded border border-gray-300 cursor-pointer p-1 bg-transparent" />
-                <input type="text" v-model="settings.accent_color" class="form-input flex-1" />
-              </div>
+              <ColorPicker v-model="settings.accent_color" />
             </div>
              <div class="form-group flex items-center gap-3 md:col-span-2">
                <Switch v-model="settings.enhanced_animations" />
@@ -132,6 +129,7 @@ import { useSettings } from '~/composables/useSettings'
 import { useAuth } from '~/composables/useAuth'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import Switch from '~/components/ui/Switch.vue'
+import ColorPicker from '~/components/ui/ColorPicker.vue'
 import { SwatchIcon, SparklesIcon, CpuChipIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/outline'
 
 const { getSettings, syncSettings } = useSettings()
