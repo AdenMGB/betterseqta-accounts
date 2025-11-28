@@ -15,14 +15,6 @@
           <Cog6ToothIcon class="w-5 h-5" />
           Settings
         </NuxtLink>
-        <NuxtLink to="/friends" :class="getLinkClass('/friends')">
-          <UserGroupIcon class="w-5 h-5" />
-          Friends
-        </NuxtLink>
-        <NuxtLink to="/messages" :class="getLinkClass('/messages')">
-          <ChatBubbleLeftRightIcon class="w-5 h-5" />
-          Messages
-        </NuxtLink>
         <NuxtLink to="/oauth" :class="getLinkClass('/oauth')">
           <KeyIcon class="w-5 h-5" />
           Authorize Apps

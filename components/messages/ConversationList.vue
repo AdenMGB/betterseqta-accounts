@@ -55,7 +55,7 @@ const getPfpUrl = (userId: string) => {
 const fetchPfpUrl = async (userId: string) => {
   if (pfpCache.value[userId]) return
   try {
-    const { pfpUrl } = await $fetch(`/api/user/pfp?id=${userId}`)
+    const { pfpUrl } = await $fetch<{ pfpUrl: string }>(`/api/user/pfp?id=${userId}`)
     pfpCache.value[userId] = pfpUrl
   } catch {
     pfpCache.value[userId] = `https://api.dicebear.com/7.x/thumbs/svg?seed=${userId}`

@@ -85,7 +85,7 @@ const onAuthorize = async () => {
   token.value = ''
   loading.value = true
   try {
-    const res = await $fetch('/api/oauth/token', {
+    const res = await $fetch<{ access_token: string }>('/api/oauth/token', {
       method: 'POST',
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
     })

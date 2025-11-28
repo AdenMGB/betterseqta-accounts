@@ -91,6 +91,30 @@
               </div>
             </div>
           </div>
+          
+           <!-- BetterSEQTA Settings -->
+          <div v-if="activeTab === 'bs-settings'">
+             <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-6">BetterSEQTA Settings</h2>
+             <div class="space-y-6">
+                 <div>
+                    <label for="json-editor" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300 mb-2">Settings JSON</label>
+                    <textarea 
+                        v-model="jsonSettings" 
+                        id="json-editor" 
+                        rows="15" 
+                        class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
+                    ></textarea>
+                 </div>
+                 <div class="flex justify-end items-center gap-4">
+                     <p v-if="bsSuccess" class="text-green-500 text-sm">{{ bsSuccess }}</p>
+                     <p v-if="bsError" class="text-red-500 dark:text-red-400 text-sm">{{ bsError }}</p>
+                     <button @click="saveBsSettings" :disabled="bsLoading" class="form-button-primary">
+                        <LoadingSpinner v-if="bsLoading" size="sm" />
+                        <span v-else>Save Settings</span>
+                     </button>
+                 </div>
+             </div>
+          </div>
         </div>
       </div>
     </div>
@@ -109,10 +133,13 @@
 <script setup lang="ts">
 import { ref, onMounted, shallowRef } from 'vue'
 import { useAuth } from '~/composables/useAuth'
+import { useSettings } from '~/composables/useSettings'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
-import { UserCircleIcon, ShieldCheckIcon } from '@heroicons/vue/24/outline'
+import { UserCircleIcon, ShieldCheckIcon, CogIcon } from '@heroicons/vue/24/outline'
 
 const auth = useAuth()
+const { getSettings, syncSettings } = useSettings()
+
 const displayName = ref('')
 const username = ref('')
 const loading = ref(false)
@@ -126,13 +153,20 @@ const activeTab = ref('profile')
 const tabs = [
   { name: 'profile', label: 'Profile', icon: shallowRef(UserCircleIcon) },
   { name: 'account', label: 'Account', icon: shallowRef(ShieldCheckIcon) },
+  { name: 'bs-settings', label: 'BetterSEQTA Settings', icon: shallowRef(CogIcon) },
 ]
+
+// BS Settings state
+const jsonSettings = ref('')
+const bsLoading = ref(false)
+const bsError = ref('')
+const bsSuccess = ref('')
 
 const triggerPfpInput = () => {
   pfpInput.value?.click()
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (auth.user.value) {
     displayName.value = auth.user.value.displayName || ''
     username.value = auth.user.value.username || ''
@@ -141,6 +175,14 @@ onMounted(() => {
       displayName.value = auth.user.value?.displayName || ''
       username.value = auth.user.value?.username || ''
     })
+  }
+  
+  // Load BS Settings
+  try {
+      const settings = await getSettings();
+      jsonSettings.value = JSON.stringify(settings, null, 2);
+  } catch (e) {
+      console.error("Failed to load BS Settings", e);
   }
 })
 
@@ -169,7 +211,7 @@ const updateProfile = async () => {
       const formData = new FormData()
       formData.append('file', pfpFile.value)
       
-      const response = await $fetch('/api/files/upload?public=true', {
+      const response = await $fetch<{ storedName: string }>('/api/files/upload?public=true', {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         body: formData
@@ -205,4 +247,21 @@ const updateProfile = async () => {
     pfpFile.value = null
   }
 }
-</script> 
+
+const saveBsSettings = async () => {
+    bsLoading.value = true;
+    bsError.value = '';
+    bsSuccess.value = '';
+    
+    try {
+        const parsedSettings = JSON.parse(jsonSettings.value);
+        await syncSettings(parsedSettings);
+        bsSuccess.value = 'Settings saved to cloud!';
+    } catch (e) {
+        bsError.value = 'Invalid JSON or save failed.';
+        console.error(e);
+    } finally {
+        bsLoading.value = false;
+    }
+}
+</script>

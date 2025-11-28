@@ -232,7 +232,7 @@ const sendMessage = async () => {
     // Upload file first - make it public for chat attachments
     const formData = new FormData()
     formData.append('file', selectedFile.value)
-    const uploadRes = await $fetch('/api/files/upload?public=true', {
+    const uploadRes = await $fetch<{ id: string }>('/api/files/upload?public=true', {
       method: 'POST',
       body: formData,
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
@@ -321,7 +321,7 @@ const getPfpUrl = (userId: string) => {
 const fetchPfpUrl = async (userId: string) => {
   if (pfpCache.value[userId]) return
   try {
-    const { pfpUrl } = await $fetch(`/api/user/pfp?id=${userId}`)
+    const { pfpUrl } = await $fetch<{ pfpUrl: string }>(`/api/user/pfp?id=${userId}`)
     pfpCache.value[userId] = pfpUrl
   } catch {
     pfpCache.value[userId] = `https://api.dicebear.com/7.x/thumbs/svg?seed=${userId}`

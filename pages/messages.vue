@@ -77,7 +77,7 @@ const selectConversation = (conv: ConversationUser) => {
 
 const createGroup = async () => {
   try {
-    const group = await $fetch('/api/groups', {
+    const group = await $fetch<GroupApi>('/api/groups', {
       method: 'POST',
       body: { name: newGroupName.value, memberIds: selectedFriendIds.value },
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }

@@ -1,0 +1,17 @@
+name = "betterseqta-account"
+main = "worker/index.js"        # Your backend code location
+compatibility_date = "2024-11-20"
+compatibility_flags = ["nodejs_compat"]
+
+# This handles your Vue frontend automatically
+[assets]
+directory = ".output/public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# Your Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "BS_SETTINGS"
+database_id = "713549d9-b2fb-4407-b12d-6b5e207c825c"
+
