@@ -87,7 +87,7 @@
             </div>
             <div class="form-group pt-2">
               <label class="form-label">Gemini API Key</label>
-              <input type="password" v-model="settings.gemini_api_key" class="form-input" placeholder="Enter API Key" />
+              <input type="password" name="gemini_api_key" autocomplete="new-password" v-model="settings.gemini_api_key" class="form-input" placeholder="Enter API Key" />
             </div>
           </div>
         </section>

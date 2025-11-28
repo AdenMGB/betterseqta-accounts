@@ -9,6 +9,8 @@
       ></button>
       <input
         type="text"
+        name="accent_color_picker"
+        autocomplete="off"
         v-model="hexInput"
         @blur="updateFromHex"
         class="w-28 px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200 font-mono text-sm uppercase"

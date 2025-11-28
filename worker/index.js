@@ -1,11 +1,10 @@
 import { SignJWT, jwtVerify } from 'jose';
 import bcrypt from 'bcryptjs';
 
-const JWT_SECRET = new TextEncoder().encode('your-secret-key-change-this-in-prod'); // Should be env var
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const jwtSecret = new TextEncoder().encode(env.JWT_SECRET);
     
     // CORS headers
     const corsHeaders = {
@@ -24,7 +23,7 @@ export default {
         if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
         const token = authHeader.split(" ")[1];
         try {
-            const { payload } = await jwtVerify(token, JWT_SECRET);
+            const { payload } = await jwtVerify(token, jwtSecret);
             return payload;
         } catch (e) {
             return null;
@@ -53,7 +52,7 @@ export default {
         const token = await new SignJWT({ id, email, username })
             .setProtectedHeader({ alg: 'HS256' })
             .setExpirationTime('7d')
-            .sign(JWT_SECRET);
+            .sign(jwtSecret);
 
         return new Response(JSON.stringify({ token, user: { id, email, username, displayName } }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -77,7 +76,7 @@ export default {
             const token = await new SignJWT({ id: user.id, email: user.email, username: user.username })
                 .setProtectedHeader({ alg: 'HS256' })
                 .setExpirationTime('7d')
-                .sign(JWT_SECRET);
+                .sign(jwtSecret);
 
             return new Response(JSON.stringify({ token, user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl } }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" }

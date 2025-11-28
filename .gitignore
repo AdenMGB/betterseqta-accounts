@@ -30,3 +30,5 @@ yarn.lock
 
 public/uploads
 .wrangler
+
+.dev.vars
