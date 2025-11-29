@@ -30,6 +30,16 @@ export default {
         }
     }
 
+    // --- Helper: Verify Admin ---
+    async function getAdminUser(req) {
+        const payload = await getUser(req);
+        if (!payload) return null;
+        // Check DB for latest admin status
+        const user = await env.DB.prepare("SELECT is_admin FROM users WHERE id = ?").bind(payload.id).first();
+        if (user && user.is_admin) return payload;
+        return null;
+    }
+
     // --- API: Register ---
     if (url.pathname === "/api/auth/register" && request.method === "POST") {
       try {
@@ -42,9 +52,10 @@ export default {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         try {
+            // Default is_admin is handled by DB default (0), but we can be explicit if needed.
             await env.DB.prepare(
-                "INSERT INTO users (id, email, password, username, displayName) VALUES (?, ?, ?, ?, ?)"
-            ).bind(id, email, hashedPassword, username, displayName || username).run();
+                "INSERT INTO users (id, email, password, username, displayName, is_admin) VALUES (?, ?, ?, ?, ?, ?)"
+            ).bind(id, email, hashedPassword, username, displayName || username, 0).run();
         } catch (e) {
             return new Response(JSON.stringify({ error: "User already exists" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -54,7 +65,7 @@ export default {
             .setExpirationTime('7d')
             .sign(jwtSecret);
 
-        return new Response(JSON.stringify({ token, user: { id, email, username, displayName } }), {
+        return new Response(JSON.stringify({ token, user: { id, email, username, displayName, is_admin: 0 } }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
 
@@ -78,7 +89,7 @@ export default {
                 .setExpirationTime('7d')
                 .sign(jwtSecret);
 
-            return new Response(JSON.stringify({ token, user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl } }), {
+            return new Response(JSON.stringify({ token, user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl, is_admin: user.is_admin } }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" }
             });
         } catch (err) {
@@ -91,8 +102,137 @@ export default {
         const payload = await getUser(request);
         if (!payload) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
-        const user = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl FROM users WHERE id = ?").bind(payload.id).first();
+        const user = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, is_admin FROM users WHERE id = ?").bind(payload.id).first();
         return new Response(JSON.stringify(user), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // --- API: OAuth Endpoints ---
+    
+    // Check Client (public)
+    if (url.pathname === "/api/oauth/client" && request.method === "GET") {
+        const clientId = url.searchParams.get("client_id");
+        if (!clientId) return new Response("Missing client_id", { status: 400, headers: corsHeaders });
+
+        const client = await env.DB.prepare("SELECT name, redirect_uri FROM oauth_clients WHERE id = ?").bind(clientId).first();
+        if (!client) return new Response("Invalid Client", { status: 404, headers: corsHeaders });
+
+        return new Response(JSON.stringify(client), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Approve & Generate Code (Authenticated)
+    if (url.pathname === "/api/oauth/approve" && request.method === "POST") {
+        const user = await getUser(request);
+        if (!user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+
+        const { client_id, redirect_uri } = await request.json();
+        const client = await env.DB.prepare("SELECT id FROM oauth_clients WHERE id = ? AND redirect_uri = ?").bind(client_id, redirect_uri).first();
+        
+        if (!client) return new Response("Invalid Client or Redirect URI", { status: 400, headers: corsHeaders });
+
+        const code = crypto.randomUUID();
+        const expiresAt = Math.floor(Date.now() / 1000) + 600; // 10 minutes
+
+        await env.DB.prepare("INSERT INTO oauth_codes (code, client_id, user_id, expires_at) VALUES (?, ?, ?, ?)")
+            .bind(code, client_id, user.id, expiresAt).run();
+
+        // Construct redirect URL
+        const redirectUrl = new URL(redirect_uri);
+        redirectUrl.searchParams.set("code", code);
+
+        return new Response(JSON.stringify({ redirectUrl: redirectUrl.toString() }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Exchange Token (Public/Server-to-Server)
+    if (url.pathname === "/api/oauth/token" && request.method === "POST") {
+        const { code, client_id, client_secret } = await request.json();
+
+        // Verify Client Secret
+        const client = await env.DB.prepare("SELECT id FROM oauth_clients WHERE id = ? AND secret = ?").bind(client_id, client_secret).first();
+        if (!client) return new Response(JSON.stringify({ error: "invalid_client" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+        // Verify Code
+        const oauthCode = await env.DB.prepare("SELECT user_id, expires_at FROM oauth_codes WHERE code = ? AND client_id = ?").bind(code, client_id).first();
+        if (!oauthCode) return new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+        if (oauthCode.expires_at < Math.floor(Date.now() / 1000)) {
+            return new Response(JSON.stringify({ error: "code_expired" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // Delete code (single use)
+        await env.DB.prepare("DELETE FROM oauth_codes WHERE code = ?").bind(code).run();
+
+        // Generate Access Token (JWT)
+        const user = await env.DB.prepare("SELECT id, email, username FROM users WHERE id = ?").bind(oauthCode.user_id).first();
+        
+        const access_token = await new SignJWT({ id: user.id, email: user.email, username: user.username })
+            .setProtectedHeader({ alg: 'HS256' })
+            .setExpirationTime('1h')
+            .sign(jwtSecret);
+
+        return new Response(JSON.stringify({ 
+            access_token, 
+            token_type: "Bearer", 
+            expires_in: 3600,
+            user: { id: user.id, username: user.username } // Optional but helpful
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // User Info (Authenticated with Access Token)
+    if (url.pathname === "/api/oauth/userinfo" && request.method === "GET") {
+        const user = await getUser(request);
+        if (!user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+
+        const userData = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, is_admin FROM users WHERE id = ?").bind(user.id).first();
+        return new Response(JSON.stringify(userData), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // --- API: Admin Endpoints ---
+
+    // Search Users
+    if (url.pathname === "/api/admin/users" && request.method === "GET") {
+        const admin = await getAdminUser(request);
+        if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+        const query = url.searchParams.get("q") || "";
+        const users = await env.DB.prepare("SELECT id, email, username, displayName, is_admin FROM users WHERE username LIKE ? OR email LIKE ? LIMIT 50")
+            .bind(`%${query}%`, `%${query}%`).all();
+        
+        return new Response(JSON.stringify(users.results), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Promote/Demote User
+    if (url.pathname === "/api/admin/promote" && request.method === "POST") {
+        const admin = await getAdminUser(request);
+        if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+        const { userId, isAdmin } = await request.json();
+        await env.DB.prepare("UPDATE users SET is_admin = ? WHERE id = ?").bind(isAdmin ? 1 : 0, userId).run();
+        
+        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // List Clients
+    if (url.pathname === "/api/admin/clients" && request.method === "GET") {
+        const admin = await getAdminUser(request);
+        if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+        const clients = await env.DB.prepare("SELECT * FROM oauth_clients ORDER BY created_at DESC").all();
+        return new Response(JSON.stringify(clients.results), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Create Client
+    if (url.pathname === "/api/admin/clients" && request.method === "POST") {
+        const admin = await getAdminUser(request);
+        if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+        const { name, redirect_uri } = await request.json();
+        const id = crypto.randomUUID(); // Client ID
+        const secret = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, ''); // Simple secret generation
+
+        await env.DB.prepare("INSERT INTO oauth_clients (id, name, secret, redirect_uri) VALUES (?, ?, ?, ?)")
+            .bind(id, name, secret, redirect_uri).run();
+
+        return new Response(JSON.stringify({ id, name, secret, redirect_uri }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // --- API Route: Handle Settings ---
