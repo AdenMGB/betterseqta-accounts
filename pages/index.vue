@@ -2,7 +2,7 @@
   <div class="max-w-4xl mx-auto space-y-8 pb-20">
     <div class="text-center animate-slide-down">
       <h1 class="text-3xl font-bold text-zinc-900 dark:text-white font-display mb-2">Dashboard</h1>
-      <p class="text-zinc-600 dark:text-zinc-400">Manage your BetterSEQTA+ cloud settings</p>
+      <p class="text-zinc-600 dark:text-zinc-400">Manage your DesQTA cloud settings</p>
     </div>
 
     <!-- Settings Editor -->

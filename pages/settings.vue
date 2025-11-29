@@ -94,7 +94,7 @@
           
            <!-- BetterSEQTA Settings -->
           <div v-if="activeTab === 'bs-settings'">
-             <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-6">BetterSEQTA Settings</h2>
+             <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-6">DesQTA Settings</h2>
              <div class="space-y-6">
                  <div>
                     <label for="json-editor" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300 mb-2">Settings JSON</label>
@@ -153,7 +153,7 @@ const activeTab = ref('profile')
 const tabs = [
   { name: 'profile', label: 'Profile', icon: shallowRef(UserCircleIcon) },
   { name: 'account', label: 'Account', icon: shallowRef(ShieldCheckIcon) },
-  { name: 'bs-settings', label: 'BetterSEQTA Settings', icon: shallowRef(CogIcon) },
+  { name: 'bs-settings', label: 'DesQTA Settings', icon: shallowRef(CogIcon) },
 ]
 
 // BS Settings state
