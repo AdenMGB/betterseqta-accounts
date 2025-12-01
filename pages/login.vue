@@ -8,13 +8,13 @@
         </div>
         <form @submit.prevent="handleLogin" class="space-y-6">
           <div>
-            <label for="email" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Email</label>
+            <label for="login" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Email or Username</label>
             <div class="mt-1">
               <input
-                v-model="email"
-                id="email"
-                name="email"
-                type="email"
+                v-model="login"
+                id="login"
+                name="login"
+                type="text"
                 required
                 class="w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
               >
@@ -81,7 +81,7 @@ import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 
 definePageMeta({ layout: false })
 
-const email = ref('')
+const login = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
@@ -94,7 +94,7 @@ const handleLogin = async () => {
   try {
     const res: any = await $fetch('/api/auth/login', {
       method: 'POST',
-      body: { email: email.value, password: password.value },
+      body: { login: login.value, password: password.value },
     })
     if (res.token) {
       localStorage.setItem('token', res.token)

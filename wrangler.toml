@@ -19,3 +19,7 @@ binding = "DB"
 database_name = "BS_SETTINGS"
 database_id = "713549d9-b2fb-4407-b12d-6b5e207c825c"
 
+[[r2_buckets]]
+binding = "PFP_BUCKET"
+bucket_name = "betterseqta-pfps"
+

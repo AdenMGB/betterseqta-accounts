@@ -77,8 +77,8 @@ export default {
     // --- API: Login ---
     if (url.pathname === "/api/auth/login" && request.method === "POST") {
         try {
-            const { email, password } = await request.json();
-            const user = await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
+            const { login, password } = await request.json();
+            const user = await env.DB.prepare("SELECT * FROM users WHERE email = ? OR username = ?").bind(login, login).first();
 
             if (!user || !(await bcrypt.compare(password, user.password))) {
                 return new Response(JSON.stringify({ error: "Invalid credentials" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -104,6 +104,40 @@ export default {
 
         const user = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, is_admin FROM users WHERE id = ?").bind(payload.id).first();
         return new Response(JSON.stringify(user), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // --- API: Change Password ---
+    if (url.pathname === "/api/auth/change-password" && request.method === "POST") {
+        const userPayload = await getUser(request);
+        if (!userPayload) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+
+        try {
+            const { currentPassword, newPassword } = await request.json();
+            if (!currentPassword || !newPassword) {
+                return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Get current user password hash
+            const user = await env.DB.prepare("SELECT password FROM users WHERE id = ?").bind(userPayload.id).first();
+            if (!user) return new Response("User not found", { status: 404, headers: corsHeaders });
+
+            // Verify current password
+            const valid = await bcrypt.compare(currentPassword, user.password);
+            if (!valid) {
+                 return new Response(JSON.stringify({ error: "Invalid current password" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Hash new password
+            const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+            // Update password
+            await env.DB.prepare("UPDATE users SET password = ? WHERE id = ?").bind(hashedPassword, userPayload.id).run();
+
+            return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+        } catch (e) {
+            return new Response(e.message, { status: 500, headers: corsHeaders });
+        }
     }
 
     // --- API: OAuth Endpoints ---
@@ -288,6 +322,101 @@ export default {
       } catch (err) {
         return new Response(err.message, { status: 500, headers: corsHeaders });
       }
+    }
+
+    // --- API: User Update (Profile) ---
+    if (url.pathname === "/api/user/update" && request.method === "POST") {
+        const user = await getUser(request);
+        if (!user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+
+        try {
+            const { displayName, username, pfpUrl } = await request.json();
+            
+            // Build query dynamically based on provided fields
+            const updates = [];
+            const values = [];
+
+            if (displayName !== undefined) {
+                updates.push("displayName = ?");
+                values.push(displayName);
+            }
+            if (username !== undefined) {
+                updates.push("username = ?");
+                values.push(username);
+            }
+            if (pfpUrl !== undefined) {
+                updates.push("pfpUrl = ?");
+                values.push(pfpUrl);
+            }
+
+            if (updates.length === 0) {
+                 return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            values.push(user.id);
+            await env.DB.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`)
+                .bind(...values).run();
+
+            return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e) {
+            return new Response(e.message, { status: 500, headers: corsHeaders });
+        }
+    }
+
+    // --- API: PFP Upload ---
+    if (url.pathname === "/api/user/pfp" && request.method === "POST") {
+        const user = await getUser(request);
+        if (!user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+
+        try {
+            const formData = await request.formData();
+            const file = formData.get('file');
+
+            if (!file || !(file instanceof File)) {
+                return new Response("No file uploaded", { status: 400, headers: corsHeaders });
+            }
+
+            // Simple validation
+            if (!file.type.startsWith("image/")) {
+                 return new Response("Invalid file type", { status: 400, headers: corsHeaders });
+            }
+            if (file.size > 2 * 1024 * 1024) { // 2MB limit
+                 return new Response("File too large (max 2MB)", { status: 400, headers: corsHeaders });
+            }
+
+            const extension = file.type.split('/')[1] || 'png';
+            const filename = `${user.id}-${Date.now()}.${extension}`;
+            const key = `pfps/${filename}`;
+
+            // Upload to R2
+            await env.PFP_BUCKET.put(key, file.stream(), {
+                httpMetadata: { contentType: file.type }
+            });
+
+            // Update DB
+            const pfpUrl = `/pfp/${filename}`; // Public URL handled by another route
+            await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, user.id).run();
+
+            return new Response(JSON.stringify({ pfpUrl }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+        } catch (e) {
+             return new Response(e.message, { status: 500, headers: corsHeaders });
+        }
+    }
+
+    // --- Public Route: Serve PFP ---
+    if (url.pathname.startsWith("/pfp/") && request.method === "GET") {
+        const filename = url.pathname.split("/pfp/")[1];
+        if (!filename) return new Response("Not Found", { status: 404 });
+
+        const object = await env.PFP_BUCKET.get(`pfps/${filename}`);
+        if (!object) return new Response("Not Found", { status: 404 });
+
+        const headers = new Headers();
+        object.writeHttpMetadata(headers);
+        headers.set("etag", object.httpEtag);
+
+        return new Response(object.body, { headers });
     }
 
     // --- Fallback: Serve Vue App ---

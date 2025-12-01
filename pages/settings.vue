@@ -72,22 +72,27 @@
             <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-6">Account Security</h2>
             <div class="space-y-6">
               <!-- Change Password -->
-              <fieldset disabled class="opacity-50 cursor-not-allowed">
-                 <legend class="text-base font-medium text-zinc-800 dark:text-zinc-300">Change Password <span class="text-xs text-primary-500">(Coming Soon)</span></legend>
+              <fieldset class="opacity-100">
+                 <legend class="text-base font-medium text-zinc-800 dark:text-zinc-300">Change Password</legend>
                 <div class="mt-4 space-y-4">
                   <div>
-                    <label for="current-password" class="block text-sm font-medium">Current Password</label>
-                    <input type="password" id="current-password" class="mt-1 w-full form-input">
+                    <label for="current-password" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Current Password</label>
+                    <input v-model="currentPassword" type="password" id="current-password" class="mt-1 w-full form-input">
                   </div>
                    <div>
-                    <label for="new-password" class="block text-sm font-medium">New Password</label>
-                    <input type="password" id="new-password" class="mt-1 w-full form-input">
+                    <label for="new-password" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">New Password</label>
+                    <input v-model="newPassword" type="password" id="new-password" class="mt-1 w-full form-input">
                   </div>
                 </div>
               </fieldset>
               
-              <div class="flex justify-end">
-                <button type="button" disabled class="form-button-primary opacity-50 cursor-not-allowed">Update Password</button>
+              <div class="flex justify-end items-center gap-4">
+                <p v-if="pwdSuccess" class="text-green-500 text-sm">{{ pwdSuccess }}</p>
+                <p v-if="pwdError" class="text-red-500 dark:text-red-400 text-sm">{{ pwdError }}</p>
+                <button @click="changePassword" :disabled="pwdLoading || !currentPassword || !newPassword" class="form-button-primary">
+                    <LoadingSpinner v-if="pwdLoading" size="sm" />
+                    <span v-else>Update Password</span>
+                </button>
               </div>
             </div>
           </div>
@@ -162,6 +167,13 @@ const bsLoading = ref(false)
 const bsError = ref('')
 const bsSuccess = ref('')
 
+// Password Change State
+const currentPassword = ref('')
+const newPassword = ref('')
+const pwdLoading = ref(false)
+const pwdError = ref('')
+const pwdSuccess = ref('')
+
 const triggerPfpInput = () => {
   pfpInput.value?.click()
 }
@@ -204,33 +216,38 @@ const updateProfile = async () => {
   loading.value = true
   
   try {
-    let pfpUrl: string | undefined = undefined;
+    let newPfpUrl: string | undefined = undefined;
     
     // 1. Upload PFP if a new one is selected
     if (pfpFile.value) {
       const formData = new FormData()
       formData.append('file', pfpFile.value)
       
-      const response = await $fetch<{ storedName: string }>('/api/files/upload?public=true', {
+      const response = await $fetch<{ pfpUrl: string }>('/api/user/pfp', {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         body: formData
       })
       
-      // Construct the public URL for the profile picture
-      pfpUrl = `/api/files/public/${response.storedName}`
+      newPfpUrl = response.pfpUrl
     }
     
-    // 2. Update user profile data
+    // 2. Update user profile data (text fields)
+    // Only send if they differ from current or just send them anyway.
+    // The backend now supports partial updates.
     const dataToUpdate: { displayName: string, username: string, pfpUrl?: string } = {
       displayName: displayName.value,
       username: username.value,
     }
 
-    if (pfpUrl) {
-      dataToUpdate.pfpUrl = pfpUrl
-    }
-
+    // Note: The /api/user/pfp endpoint already updates the DB with the new PFP URL.
+    // However, if we want to be consistent or update other fields, we call /api/user/update.
+    // If we just uploaded a PFP, the DB is already updated for that field, but the frontend might want to sync.
+    // Actually, sending it again to /api/user/update is redundant for the PFP but fine for other fields.
+    // BUT, since /api/user/pfp updates the DB, we don't strictly NEED to send pfpUrl to /api/user/update
+    // unless we want to manually set it to something else (which we don't here).
+    // So we can just update the text fields.
+    
     await $fetch('/api/user/update', {
       method: 'POST',
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
@@ -241,7 +258,8 @@ const updateProfile = async () => {
     await auth.fetchUser() // Refresh user data globally
 
   } catch (err: any) {
-    error.value = err?.data?.statusMessage || 'Update failed.'
+    error.value = err?.data?.statusMessage || err?.message || 'Update failed.'
+    console.error(err)
   } finally {
     loading.value = false
     pfpFile.value = null
@@ -262,6 +280,31 @@ const saveBsSettings = async () => {
         console.error(e);
     } finally {
         bsLoading.value = false;
+    }
+}
+
+const changePassword = async () => {
+    pwdLoading.value = true;
+    pwdError.value = '';
+    pwdSuccess.value = '';
+
+    try {
+        await $fetch('/api/auth/change-password', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            body: {
+                currentPassword: currentPassword.value,
+                newPassword: newPassword.value
+            }
+        });
+        
+        pwdSuccess.value = 'Password changed successfully.';
+        currentPassword.value = '';
+        newPassword.value = '';
+    } catch (e: any) {
+        pwdError.value = e?.data?.error || 'Failed to change password.';
+    } finally {
+        pwdLoading.value = false;
     }
 }
 </script>
