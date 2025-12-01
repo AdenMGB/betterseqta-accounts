@@ -40,7 +40,7 @@
                   <button type="button" @click="triggerPfpInput" class="px-4 py-2 text-sm font-medium border border-zinc-300 dark:border-zinc-600 rounded-lg hover:bg-zinc-200/70 dark:hover:bg-zinc-700/50 transition-all duration-200">
                     Change Picture
                   </button>
-                  <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-2">PNG, JPG, GIF up to 2MB.</p>
+                  <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-2">PNG, JPG, GIF up to 5MB.</p>
                 </div>
               </div>
 

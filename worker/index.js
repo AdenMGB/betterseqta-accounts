@@ -380,8 +380,8 @@ export default {
             if (!file.type.startsWith("image/")) {
                  return new Response("Invalid file type", { status: 400, headers: corsHeaders });
             }
-            if (file.size > 2 * 1024 * 1024) { // 2MB limit
-                 return new Response("File too large (max 2MB)", { status: 400, headers: corsHeaders });
+            if (file.size > 5 * 1024 * 1024) { // 5MB limit
+                 return new Response("File too large (max 5MB)", { status: 400, headers: corsHeaders });
             }
 
             const extension = file.type.split('/')[1] || 'png';
