@@ -384,17 +384,26 @@ export default {
                  return new Response("File too large (max 5MB)", { status: 400, headers: corsHeaders });
             }
 
-            const extension = file.type.split('/')[1] || 'png';
-            const filename = `${user.id}-${Date.now()}.${extension}`;
-            const key = `pfps/${filename}`;
+            // Upload to ImgBB
+            const imgbbForm = new FormData();
+            imgbbForm.append('image', file);
+            imgbbForm.append('key', env.IMGBB_API_KEY);
 
-            // Upload to R2
-            await env.PFP_BUCKET.put(key, file.stream(), {
-                httpMetadata: { contentType: file.type }
+            const imgbbRes = await fetch('https://api.imgbb.com/1/upload', {
+                method: 'POST',
+                body: imgbbForm
             });
 
+            const imgbbData = await imgbbRes.json();
+
+            if (!imgbbData.success) {
+                console.error("ImgBB Error:", imgbbData);
+                return new Response("Failed to upload image to provider", { status: 502, headers: corsHeaders });
+            }
+
+            const pfpUrl = imgbbData.data.url;
+
             // Update DB
-            const pfpUrl = `/pfp/${filename}`; // Public URL handled by another route
             await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, user.id).run();
 
             return new Response(JSON.stringify({ pfpUrl }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -402,21 +411,6 @@ export default {
         } catch (e) {
              return new Response(e.message, { status: 500, headers: corsHeaders });
         }
-    }
-
-    // --- Public Route: Serve PFP ---
-    if (url.pathname.startsWith("/pfp/") && request.method === "GET") {
-        const filename = url.pathname.split("/pfp/")[1];
-        if (!filename) return new Response("Not Found", { status: 404 });
-
-        const object = await env.PFP_BUCKET.get(`pfps/${filename}`);
-        if (!object) return new Response("Not Found", { status: 404 });
-
-        const headers = new Headers();
-        object.writeHttpMetadata(headers);
-        headers.set("etag", object.httpEtag);
-
-        return new Response(object.body, { headers });
     }
 
     // --- Fallback: Serve Vue App ---
