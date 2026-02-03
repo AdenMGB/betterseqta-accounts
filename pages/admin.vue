@@ -62,32 +62,85 @@
                     </thead>
                     <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                         <tr v-for="user in users" :key="user.id" class="group hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors duration-200">
-                            <td class="py-4 px-4 text-zinc-900 dark:text-white font-medium">{{ user.username }}</td>
-                            <td class="py-4 px-4 text-zinc-600 dark:text-zinc-400">{{ user.email }}</td>
+                            <td class="py-4 px-4 text-zinc-900 dark:text-white font-medium">
+                                <span v-if="editingUser?.id !== user.id">
+                                    {{ user.displayName || user.username }}
+                                    <span v-if="user.displayName && user.displayName !== user.username" class="text-xs text-zinc-500 dark:text-zinc-400 ml-1">({{ user.username }})</span>
+                                </span>
+                                <input 
+                                    v-else
+                                    v-model="editingUser.username"
+                                    type="text"
+                                    class="w-full px-2 py-1 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+                                />
+                            </td>
+                            <td class="py-4 px-4 text-zinc-600 dark:text-zinc-400">
+                                <span v-if="editingUser?.id !== user.id">{{ user.email }}</span>
+                                <input 
+                                    v-else
+                                    v-model="editingUser.email"
+                                    type="email"
+                                    class="w-full px-2 py-1 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+                                />
+                            </td>
                             <td class="py-4 px-4">
-                                <span :class="getRoleBadgeClass(user.admin_level || 0)">
+                                <span v-if="editingUser?.id !== user.id" :class="getRoleBadgeClass(user.admin_level || 0)">
                                     {{ getRoleLabel(user.admin_level || 0) }}
                                 </span>
+                                <div v-else class="flex items-center gap-2">
+                                    <input 
+                                        v-model="editingUser.displayName"
+                                        type="text"
+                                        placeholder="Display Name"
+                                        class="flex-1 px-2 py-1 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+                                    />
+                                    <span :class="getRoleBadgeClass(user.admin_level || 0)">
+                                        {{ getRoleLabel(user.admin_level || 0) }}
+                                    </span>
+                                </div>
                             </td>
                             <td class="py-4 px-4 text-right">
                                 <div class="flex items-center gap-2 justify-end">
-                                    <button 
-                                        v-if="canPromoteUser(user.admin_level || 0)"
-                                        @click="promoteUser(user)"
-                                        class="text-sm px-3 py-1 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200"
-                                    >
-                                        Promote
-                                    </button>
-                                    <button 
-                                        v-if="canDemoteUser(user.admin_level || 0)"
-                                        @click="demoteUser(user)"
-                                        class="text-sm px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200"
-                                    >
-                                        Demote
-                                    </button>
-                                    <span v-if="!canModifyUser(user.admin_level || 0)" class="text-xs text-zinc-400 dark:text-zinc-500">
-                                        Cannot modify
-                                    </span>
+                                    <template v-if="editingUser?.id === user.id">
+                                        <button 
+                                            @click="saveUserEdit(user)"
+                                            class="text-sm px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors duration-200"
+                                        >
+                                            Save
+                                        </button>
+                                        <button 
+                                            @click="cancelUserEdit()"
+                                            class="text-sm px-3 py-1 bg-zinc-500 text-white rounded-lg hover:bg-zinc-600 transition-colors duration-200"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </template>
+                                    <template v-else>
+                                        <button 
+                                            v-if="canModerateUsers()"
+                                            @click="startUserEdit(user)"
+                                            class="text-sm px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200"
+                                        >
+                                            Edit
+                                        </button>
+                                        <button 
+                                            v-if="canPromoteUser(user.admin_level || 0)"
+                                            @click="promoteUser(user)"
+                                            class="text-sm px-3 py-1 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200"
+                                        >
+                                            Promote
+                                        </button>
+                                        <button 
+                                            v-if="canDemoteUser(user.admin_level || 0)"
+                                            @click="demoteUser(user)"
+                                            class="text-sm px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200"
+                                        >
+                                            Demote
+                                        </button>
+                                        <span v-if="!canModifyUser(user.admin_level || 0) && !canModerateUsers()" class="text-xs text-zinc-400 dark:text-zinc-500">
+                                            Cannot modify
+                                        </span>
+                                    </template>
                                 </div>
                             </td>
                         </tr>
@@ -203,6 +256,7 @@ const totalUsers = ref(0)
 const currentPage = ref(1)
 const totalPages = ref(1)
 const maxAdminLevel = ref(3) // Default to 3, will be updated from API
+const editingUser = ref<any>(null) // User currently being edited
 
 // Clients State
 const clients = ref<any[]>([])
@@ -213,7 +267,7 @@ const lastCreatedClient = ref<any>(null)
 // Actions
 const searchUsers = async (page: number = 1) => {
     try {
-        const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number }>('/api/admin/users', {
+        const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number, maxAdminLevel: number }>('/api/admin/users', {
             params: { q: searchQuery.value, page },
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
@@ -288,6 +342,61 @@ const canDemoteUser = (targetUserLevel: number): boolean => {
     const currentLevel = getCurrentAdminLevel()
     // Can only demote users at your level or below (but not yourself)
     return targetUserLevel > 0 && targetUserLevel < currentLevel
+}
+
+const canModerateUsers = (): boolean => {
+    const currentLevel = getCurrentAdminLevel()
+    // Require Middle Admin (level 2) or higher for moderator controls
+    return currentLevel >= 2
+}
+
+const startUserEdit = (user: any) => {
+    editingUser.value = {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        displayName: user.displayName || ''
+    }
+}
+
+const cancelUserEdit = () => {
+    editingUser.value = null
+}
+
+const saveUserEdit = async (user: any) => {
+    if (!editingUser.value) return
+    
+    const originalUser = { ...user }
+    const userIndex = users.value.findIndex(u => u.id === user.id)
+    
+    try {
+        await $fetch('/api/admin/update-user', {
+            method: 'POST',
+            body: {
+                userId: editingUser.value.id,
+                username: editingUser.value.username,
+                email: editingUser.value.email,
+                displayName: editingUser.value.displayName
+            },
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+        
+        // Update local state
+        if (userIndex !== -1) {
+            users.value[userIndex].username = editingUser.value.username
+            users.value[userIndex].email = editingUser.value.email
+            users.value[userIndex].displayName = editingUser.value.displayName
+        }
+        
+        editingUser.value = null
+    } catch (e: any) {
+        const errorMsg = e?.data?.error || e?.message || 'Failed to update user'
+        alert(errorMsg)
+        // Restore original values on error
+        if (userIndex !== -1) {
+            users.value[userIndex] = originalUser
+        }
+    }
 }
 
 const promoteUser = async (user: any) => {

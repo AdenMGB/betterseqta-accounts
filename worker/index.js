@@ -410,6 +410,80 @@ export default {
         return new Response(JSON.stringify({ id, name, secret, redirect_uri }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Update User Profile (Moderator Control - Level 2+ Admins Only)
+    if (url.pathname === "/api/admin/update-user" && request.method === "POST") {
+        const admin = await getAdminUserWithLevel(request);
+        if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+        // Require admin level 2 or higher (Middle Admin and above)
+        if ((admin.adminLevel || 0) < 2) {
+            return new Response(JSON.stringify({ error: "Moderator controls require Middle Admin level (2) or higher" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        const { userId, email, username, displayName } = await request.json();
+        
+        if (!userId) {
+            return new Response(JSON.stringify({ error: "User ID is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // Verify target user exists
+        const targetUser = await env.DB.prepare("SELECT id, email, username FROM users WHERE id = ?").bind(userId).first();
+        if (!targetUser) {
+            return new Response(JSON.stringify({ error: "User not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // Build update query dynamically
+        const updates = [];
+        const values = [];
+
+        if (email !== undefined && email !== null) {
+            // Basic email validation
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                return new Response(JSON.stringify({ error: "Invalid email format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            // Check if email is different from current
+            if (email !== targetUser.email) {
+                // Check if new email already exists
+                const existingUser = await env.DB.prepare("SELECT id FROM users WHERE email = ? AND id != ?").bind(email, userId).first();
+                if (existingUser) {
+                    return new Response(JSON.stringify({ error: "Email already in use" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+                }
+                updates.push("email = ?");
+                values.push(email);
+            }
+        }
+
+        if (username !== undefined && username !== null) {
+            // Check if username is different from current
+            if (username !== targetUser.username) {
+                // Check if new username already exists
+                const existingUser = await env.DB.prepare("SELECT id FROM users WHERE username = ? AND id != ?").bind(username, userId).first();
+                if (existingUser) {
+                    return new Response(JSON.stringify({ error: "Username already in use" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+                }
+                updates.push("username = ?");
+                values.push(username);
+            }
+        }
+
+        if (displayName !== undefined && displayName !== null) {
+            updates.push("displayName = ?");
+            values.push(displayName);
+        }
+
+        if (updates.length === 0) {
+            return new Response(JSON.stringify({ error: "No fields to update" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // Execute update
+        values.push(userId);
+        await env.DB.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`)
+            .bind(...values).run();
+
+        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // --- API Route: Handle Settings ---
     if (url.pathname === "/api/settings") {
       // SECURITY: Always require JWT token - never trust client-provided user IDs
