@@ -8,7 +8,9 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "cf:deploy": "pnpm build && wrangler deploy",
+    "cf:dev": "pnpm build && wrangler dev"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.23",

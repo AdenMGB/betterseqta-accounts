@@ -228,10 +228,26 @@ export default {
         if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
         const query = url.searchParams.get("q") || "";
-        const users = await env.DB.prepare("SELECT id, email, username, displayName, is_admin FROM users WHERE username LIKE ? OR email LIKE ? LIMIT 50")
-            .bind(`%${query}%`, `%${query}%`).all();
+        const page = parseInt(url.searchParams.get("page") || "1", 10);
+        const pageSize = 50;
+        const offset = (page - 1) * pageSize;
+
+        // Get total count
+        const countResult = await env.DB.prepare("SELECT COUNT(*) as total FROM users WHERE username LIKE ? OR email LIKE ?")
+            .bind(`%${query}%`, `%${query}%`).first();
+        const total = countResult.total || 0;
+
+        // Get paginated users
+        const users = await env.DB.prepare("SELECT id, email, username, displayName, is_admin FROM users WHERE username LIKE ? OR email LIKE ? ORDER BY username LIMIT ? OFFSET ?")
+            .bind(`%${query}%`, `%${query}%`, pageSize, offset).all();
         
-        return new Response(JSON.stringify(users.results), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({
+            users: users.results,
+            total,
+            page,
+            pageSize,
+            totalPages: Math.ceil(total / pageSize)
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Promote/Demote User

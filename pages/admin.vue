@@ -34,49 +34,78 @@
 
       <!-- Users Tab -->
       <div v-if="activeTab === 'users'" class="space-y-6">
-        <div class="flex gap-4">
+        <div class="flex gap-4 items-center">
             <input 
                 v-model="searchQuery" 
-                @keyup.enter="searchUsers" 
+                @keyup.enter="handleSearch" 
                 type="text" 
                 placeholder="Search by username or email..." 
                 class="flex-1 px-4 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
             >
-            <button @click="searchUsers" class="px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors">Search</button>
+            <button @click="handleSearch" class="px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200">Search</button>
         </div>
 
-        <div class="overflow-x-auto">
-            <table class="w-full text-left">
-                <thead>
-                    <tr class="border-b border-zinc-200 dark:border-zinc-700">
-                        <th class="pb-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400">User</th>
-                        <th class="pb-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Email</th>
-                        <th class="pb-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Role</th>
-                        <th class="pb-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400 text-right">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
-                    <tr v-for="user in users" :key="user.id" class="group">
-                        <td class="py-4 text-zinc-900 dark:text-white font-medium">{{ user.username }}</td>
-                        <td class="py-4 text-zinc-600 dark:text-zinc-400">{{ user.email }}</td>
-                        <td class="py-4">
-                            <span :class="['px-2 py-1 text-xs rounded-full', user.is_admin ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-700/50 dark:text-zinc-300']">
-                                {{ user.is_admin ? 'Admin' : 'User' }}
-                            </span>
-                        </td>
-                        <td class="py-4 text-right">
-                            <button 
-                                @click="toggleAdmin(user)" 
-                                :class="['text-sm font-medium transition-colors', user.is_admin ? 'text-red-500 hover:text-red-600' : 'text-primary-500 hover:text-primary-600']"
-                            >
-                                {{ user.is_admin ? 'Revoke Admin' : 'Make Admin' }}
-                            </button>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            <div v-if="users.length === 0 && searched" class="text-center py-8 text-zinc-500 dark:text-zinc-400">
-                No users found.
+        <div v-if="searched" class="text-sm text-zinc-600 dark:text-zinc-400">
+            Total users: <span class="font-semibold text-zinc-900 dark:text-white">{{ totalUsers }}</span>
+        </div>
+
+        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+            <div class="max-h-[600px] overflow-y-auto">
+                <table class="w-full text-left">
+                    <thead class="sticky top-0 bg-zinc-50 dark:bg-zinc-800/95 backdrop-blur-sm z-10">
+                        <tr class="border-b border-zinc-200 dark:border-zinc-700">
+                            <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">User</th>
+                            <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Email</th>
+                            <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Role</th>
+                            <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
+                        <tr v-for="user in users" :key="user.id" class="group hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors duration-200">
+                            <td class="py-4 px-4 text-zinc-900 dark:text-white font-medium">{{ user.username }}</td>
+                            <td class="py-4 px-4 text-zinc-600 dark:text-zinc-400">{{ user.email }}</td>
+                            <td class="py-4 px-4">
+                                <span :class="['px-2 py-1 text-xs rounded-full', user.is_admin ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-700/50 dark:text-zinc-300']">
+                                    {{ user.is_admin ? 'Admin' : 'User' }}
+                                </span>
+                            </td>
+                            <td class="py-4 px-4 text-right">
+                                <button 
+                                    @click="toggleAdmin(user)" 
+                                    :class="['text-sm font-medium transition-colors duration-200', user.is_admin ? 'text-red-500 hover:text-red-600' : 'text-primary-500 hover:text-primary-600']"
+                                >
+                                    {{ user.is_admin ? 'Revoke Admin' : 'Make Admin' }}
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div v-if="users.length === 0 && searched" class="text-center py-8 text-zinc-500 dark:text-zinc-400">
+                    No users found.
+                </div>
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        <div v-if="totalPages > 1" class="flex items-center justify-between">
+            <div class="text-sm text-zinc-600 dark:text-zinc-400">
+                Page {{ currentPage }} of {{ totalPages }}
+            </div>
+            <div class="flex gap-2">
+                <button 
+                    @click="goToPage(currentPage - 1)"
+                    :disabled="currentPage === 1"
+                    :class="['px-4 py-2 rounded-lg transition-all duration-200', currentPage === 1 ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed' : 'bg-primary-500 text-white hover:bg-primary-600 hover:scale-105 active:scale-95']"
+                >
+                    Previous
+                </button>
+                <button 
+                    @click="goToPage(currentPage + 1)"
+                    :disabled="currentPage === totalPages"
+                    :class="['px-4 py-2 rounded-lg transition-all duration-200', currentPage === totalPages ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed' : 'bg-primary-500 text-white hover:bg-primary-600 hover:scale-105 active:scale-95']"
+                >
+                    Next
+                </button>
             </div>
         </div>
       </div>
@@ -157,6 +186,9 @@ const activeTab = ref('users')
 const searchQuery = ref('')
 const users = ref<any[]>([])
 const searched = ref(false)
+const totalUsers = ref(0)
+const currentPage = ref(1)
+const totalPages = ref(1)
 
 // Clients State
 const clients = ref<any[]>([])
@@ -165,16 +197,29 @@ const creatingClient = ref(false)
 const lastCreatedClient = ref<any>(null)
 
 // Actions
-const searchUsers = async () => {
+const searchUsers = async (page: number = 1) => {
     try {
-        const res = await $fetch<any[]>('/api/admin/users', {
-            params: { q: searchQuery.value },
+        const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number }>('/api/admin/users', {
+            params: { q: searchQuery.value, page },
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
-        users.value = res
+        users.value = res.users
+        totalUsers.value = res.total
+        currentPage.value = res.page
+        totalPages.value = res.totalPages
         searched.value = true
     } catch (e) {
         console.error('Failed to search users', e)
+    }
+}
+
+const handleSearch = () => {
+    searchUsers(1)
+}
+
+const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages.value) {
+        searchUsers(page)
     }
 }
 
@@ -227,7 +272,7 @@ const createClient = async () => {
 onMounted(() => {
     if (auth.user.value?.is_admin) {
         loadClients()
-        searchUsers() // Load initial users
+        searchUsers(1) // Load initial users
     }
 })
 </script>
