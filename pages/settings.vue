@@ -71,8 +71,36 @@
           <div v-if="activeTab === 'account'">
             <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-6">Account Security</h2>
             <div class="space-y-6">
-              <!-- Change Password -->
+              <!-- Change Email -->
               <fieldset class="opacity-100">
+                 <legend class="text-base font-medium text-zinc-800 dark:text-zinc-300">Change Email</legend>
+                <div class="mt-4 space-y-4">
+                  <div>
+                    <label for="current-email" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Current Email</label>
+                    <input :value="auth.user.value?.email || ''" type="email" id="current-email" disabled class="mt-1 w-full form-input opacity-60 cursor-not-allowed">
+                  </div>
+                  <div>
+                    <label for="new-email" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">New Email</label>
+                    <input v-model="newEmail" type="email" id="new-email" class="mt-1 w-full form-input" placeholder="Enter new email address">
+                  </div>
+                  <div>
+                    <label for="email-password" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Current Password</label>
+                    <input v-model="emailPassword" type="password" id="email-password" class="mt-1 w-full form-input" placeholder="Enter your password to confirm">
+                  </div>
+                </div>
+              </fieldset>
+              
+              <div class="flex justify-end items-center gap-4">
+                <p v-if="emailSuccess" class="text-green-500 text-sm">{{ emailSuccess }}</p>
+                <p v-if="emailError" class="text-red-500 dark:text-red-400 text-sm">{{ emailError }}</p>
+                <button @click="changeEmail" :disabled="emailLoading || !newEmail || !emailPassword" class="form-button-primary">
+                    <LoadingSpinner v-if="emailLoading" size="sm" />
+                    <span v-else>Update Email</span>
+                </button>
+              </div>
+
+              <!-- Change Password -->
+              <fieldset class="opacity-100 border-t border-zinc-200 dark:border-zinc-700 pt-6 mt-6">
                  <legend class="text-base font-medium text-zinc-800 dark:text-zinc-300">Change Password</legend>
                 <div class="mt-4 space-y-4">
                   <div>
@@ -173,6 +201,13 @@ const newPassword = ref('')
 const pwdLoading = ref(false)
 const pwdError = ref('')
 const pwdSuccess = ref('')
+
+// Email Change State
+const newEmail = ref('')
+const emailPassword = ref('')
+const emailLoading = ref(false)
+const emailError = ref('')
+const emailSuccess = ref('')
 
 const triggerPfpInput = () => {
   pfpInput.value?.click()
@@ -305,6 +340,34 @@ const changePassword = async () => {
         pwdError.value = e?.data?.error || 'Failed to change password.';
     } finally {
         pwdLoading.value = false;
+    }
+}
+
+const changeEmail = async () => {
+    emailLoading.value = true;
+    emailError.value = '';
+    emailSuccess.value = '';
+
+    try {
+        const response = await $fetch<{ success: boolean; email: string }>('/api/auth/change-email', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            body: {
+                newEmail: newEmail.value,
+                password: emailPassword.value
+            }
+        });
+        
+        emailSuccess.value = 'Email changed successfully.';
+        newEmail.value = '';
+        emailPassword.value = '';
+        
+        // Refresh user data to get updated email
+        await auth.fetchUser();
+    } catch (e: any) {
+        emailError.value = e?.data?.error || 'Failed to change email.';
+    } finally {
+        emailLoading.value = false;
     }
 }
 </script>
