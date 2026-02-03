@@ -1,15 +1,16 @@
 export default defineNuxtRouteMiddleware(async (to, from) => {
-  const { user, fetchUser } = useAuth()
-  
   // Public pages - these don't require authentication
+  // Check BEFORE calling useAuth() to avoid any side effects
   const publicPages = ['/login', '/register', '/reset-password']
   
-  // Allow oauth page but it handles its own logic inside
-  // Check exact path match (without query params) for public pages
-  const pathWithoutQuery = to.path.split('?')[0]
-  if (publicPages.includes(pathWithoutQuery) || to.path.startsWith('/oauth')) {
+  // In Nuxt/Vue Router, to.path doesn't include query params
+  // So we can check directly
+  if (publicPages.includes(to.path) || to.path.startsWith('/oauth')) {
     return // Early return for public pages - no auth check needed
   }
+
+  // Only call useAuth() for protected pages
+  const { user, fetchUser } = useAuth()
 
   // If user is not loaded, try to fetch
   if (!user.value) {
