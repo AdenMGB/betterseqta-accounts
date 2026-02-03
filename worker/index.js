@@ -140,6 +140,58 @@ export default {
         }
     }
 
+    // --- API: Change Email ---
+    if (url.pathname === "/api/auth/change-email" && request.method === "POST") {
+        const userPayload = await getUser(request);
+        if (!userPayload) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+
+        try {
+            const { newEmail, password } = await request.json();
+            if (!newEmail || !password) {
+                return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Basic email validation
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(newEmail)) {
+                return new Response(JSON.stringify({ error: "Invalid email format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Get current user password hash
+            const user = await env.DB.prepare("SELECT password, email FROM users WHERE id = ?").bind(userPayload.id).first();
+            if (!user) return new Response("User not found", { status: 404, headers: corsHeaders });
+
+            // Verify password
+            const valid = await bcrypt.compare(password, user.password);
+            if (!valid) {
+                return new Response(JSON.stringify({ error: "Invalid password" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Check if new email is different from current
+            if (user.email === newEmail) {
+                return new Response(JSON.stringify({ error: "New email must be different from current email" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Check if new email already exists
+            const existingUser = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(newEmail).first();
+            if (existingUser) {
+                return new Response(JSON.stringify({ error: "Email already in use" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Update email
+            await env.DB.prepare("UPDATE users SET email = ? WHERE id = ?").bind(newEmail, userPayload.id).run();
+
+            return new Response(JSON.stringify({ success: true, email: newEmail }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+        } catch (e) {
+            // Handle unique constraint violation
+            if (e.message && e.message.includes("UNIQUE constraint")) {
+                return new Response(JSON.stringify({ error: "Email already in use" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            return new Response(e.message, { status: 500, headers: corsHeaders });
+        }
+    }
+
     // --- API: OAuth Endpoints ---
     
     // Check Client (public)
