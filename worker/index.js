@@ -219,9 +219,10 @@ export default {
         }
     }
 
-    // --- Helper: Send Password Reset Email via Mailgun ---
-    async function sendPasswordResetEmail(email, token, env) {
+    // --- Helper: Send Password Reset Email via SMTP2GO ---
+    async function sendPasswordResetEmail(email, token, env, displayName = null) {
         const resetUrl = `${env.APP_URL || 'https://accounts.betterseqta.org'}/reset-password?token=${token}`;
+        const greeting = displayName ? `Hello ${displayName},` : 'Hello,';
         
         const emailHtml = `
 <!DOCTYPE html>
@@ -231,25 +232,35 @@ export default {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reset Your Password</title>
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 28px;">Password Reset Request</h1>
-    </div>
-    <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e0e0e0;">
-        <p style="font-size: 16px; margin-bottom: 20px;">Hello,</p>
-        <p style="font-size: 16px; margin-bottom: 20px;">We received a request to reset your password for your BetterSEQTA+ Account. Click the button below to reset your password:</p>
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetUrl}" style="display: inline-block; background: #667eea; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">Reset Password</a>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; margin: 0; padding: 0; background-color: #18181b;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #27272a; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #FF6B00 0%, #E66000 100%); padding: 32px; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">Password Reset Request</h1>
         </div>
-        <p style="font-size: 14px; color: #666; margin-top: 30px;">Or copy and paste this link into your browser:</p>
-        <p style="font-size: 12px; color: #999; word-break: break-all; background: #fff; padding: 10px; border-radius: 4px; border: 1px solid #e0e0e0;">${resetUrl}</p>
-        <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
-            <p style="margin: 0; font-size: 14px; color: #856404;"><strong>Important:</strong> This link will expire in 1 hour. If you didn't request this password reset, you may safely ignore this email.</p>
+        
+        <!-- Content -->
+        <div style="padding: 32px; background-color: #27272a;">
+            <p style="font-size: 16px; margin-bottom: 20px; color: #e4e4e7;">${greeting}</p>
+            <p style="font-size: 16px; margin-bottom: 24px; color: #e4e4e7;">We received a request to reset your password for your BetterSEQTA+ Account. Click the button below to reset your password:</p>
+            
+            <!-- Reset Button -->
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${resetUrl}" style="display: inline-block; background: #FF6B00; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; transition: background-color 0.2s;">Reset Password</a>
+            </div>
+            
+            <!-- Link Fallback -->
+            <p style="font-size: 14px; color: #a1a1aa; margin-top: 24px;">Or copy and paste this link into your browser:</p>
+            <p style="font-size: 12px; color: #71717a; word-break: break-all; background: #18181b; padding: 12px; border-radius: 6px; border: 1px solid #3f3f46; margin: 8px 0 24px 0;">${resetUrl}</p>
+            
+            <!-- Warning Box -->
+            <div style="background: #3f3f46; border-left: 4px solid #FF6B00; padding: 16px; margin: 24px 0; border-radius: 6px;">
+                <p style="margin: 0; font-size: 14px; color: #e4e4e7;"><strong style="color: #FF6B00;">Important:</strong> This link will expire in 1 hour. If you didn't request this password reset, you may safely ignore this email.</p>
+            </div>
+            
+            <!-- Footer -->
+            <p style="font-size: 14px; color: #a1a1aa; margin-top: 32px; padding-top: 24px; border-top: 1px solid #3f3f46;">Best regards,<br><span style="color: #FF6B00; font-weight: 600;">The BetterSEQTA+ Team</span></p>
         </div>
-        <div style="background: #e7f3ff; border-left: 4px solid #2196F3; padding: 15px; margin: 20px 0; border-radius: 4px;">
-            <p style="margin: 0; font-size: 14px; color: #0c5460;"><strong>Can't find the email?</strong> Please check your spam, junk, promotions, and other email folders. Sometimes emails can end up there.</p>
-        </div>
-        <p style="font-size: 14px; color: #666; margin-top: 30px;">Best regards,<br>The BetterSEQTA+ Team</p>
     </div>
 </body>
 </html>
@@ -258,44 +269,47 @@ export default {
         const emailText = `
 Password Reset Request
 
-Hello,
+${greeting}
 
 We received a request to reset your password for your BetterSEQTA+ Account. Click the link below to reset your password:
 
 ${resetUrl}
 
-This link will expire in 1 hour. If you didn't request this password reset, you may safely ignore this email.
-
-Can't find the email? Please check your spam, junk, promotions, and other email folders.
+Important: This link will expire in 1 hour. If you didn't request this password reset, you may safely ignore this email.
 
 Best regards,
 The BetterSEQTA+ Team
         `;
 
-        const formData = new FormData();
-        formData.append('from', env.MAILGUN_FROM_EMAIL || 'noreply@betterseqta.org');
-        formData.append('to', email);
-        formData.append('subject', 'Reset Your Password - BetterSEQTA+');
-        formData.append('html', emailHtml);
-        formData.append('text', emailText);
+        const smtp2goUrl = 'https://api.smtp2go.com/v3/email/send';
+        const requestBody = {
+            sender: env.SMTP2GO_FROM_EMAIL || 'noreply@betterseqta.org',
+            to: [email],
+            subject: 'Reset Your Password - BetterSEQTA+',
+            html_body: emailHtml,
+            text_body: emailText
+        };
 
-        const mailgunUrl = `https://api.mailgun.net/v3/${env.MAILGUN_DOMAIN}/messages`;
-        const auth = btoa(`api:${env.MAILGUN_API_KEY}`);
-
-        const response = await fetch(mailgunUrl, {
+        const response = await fetch(smtp2goUrl, {
             method: 'POST',
             headers: {
-                'Authorization': `Basic ${auth}`
+                'Content-Type': 'application/json',
+                'X-Smtp2go-Api-Key': env.SMTP2GO_API_KEY
             },
-            body: formData
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`Mailgun API error: ${response.status} - ${errorText}`);
+            throw new Error(`SMTP2GO API error: ${response.status} - ${errorText}`);
         }
 
-        return await response.json();
+        const result = await response.json();
+        if (result.data && result.data.error) {
+            throw new Error(`SMTP2GO API error: ${result.data.error}`);
+        }
+
+        return result;
     }
 
     // --- API: Forgot Password (Request Reset) ---
@@ -307,7 +321,7 @@ The BetterSEQTA+ Team
             }
 
             // Look up user by email or username
-            const user = await env.DB.prepare("SELECT id, email FROM users WHERE email = ? OR username = ?").bind(login, login).first();
+            const user = await env.DB.prepare("SELECT id, email, displayName FROM users WHERE email = ? OR username = ?").bind(login, login).first();
 
             // Check for rate limiting: 5-minute cooldown
             if (user) {
@@ -345,9 +359,9 @@ The BetterSEQTA+ Team
                     "INSERT INTO password_reset_tokens (token, user_id, expires_at, used) VALUES (?, ?, ?, 0)"
                 ).bind(hashedToken, user.id, expiresAt).run();
 
-                // Send email via Mailgun
+                // Send email via SMTP2GO
                 try {
-                    await sendPasswordResetEmail(user.email, token, env);
+                    await sendPasswordResetEmail(user.email, token, env, user.displayName || null);
                 } catch (emailError) {
                     console.error("Failed to send reset email:", emailError);
                     // Don't expose email sending errors to client for security

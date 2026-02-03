@@ -9,8 +9,10 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "typecheck": "nuxt typecheck",
-    "cf:deploy": "pnpm build && wrangler deploy",
-    "cf:dev": "pnpm build && wrangler dev"
+    "cf:deploy": "pnpm generate && wrangler deploy",
+    "cf:dev": "pnpm generate && wrangler dev",
+    "db:migrate:local": "wrangler d1 migrations apply BS_SETTINGS --local",
+    "db:migrate:remote": "wrangler d1 migrations apply BS_SETTINGS"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.23",
