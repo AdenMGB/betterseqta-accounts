@@ -167,6 +167,337 @@ export default {
         }
     }
 
+    // --- API: Change Email ---
+    if (url.pathname === "/api/auth/change-email" && request.method === "POST") {
+        const userPayload = await getUser(request);
+        if (!userPayload) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+
+        try {
+            const { newEmail, password } = await request.json();
+            if (!newEmail || !password) {
+                return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Basic email validation
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(newEmail)) {
+                return new Response(JSON.stringify({ error: "Invalid email format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Get current user password hash
+            const user = await env.DB.prepare("SELECT password, email FROM users WHERE id = ?").bind(userPayload.id).first();
+            if (!user) return new Response("User not found", { status: 404, headers: corsHeaders });
+
+            // Verify password
+            const valid = await bcrypt.compare(password, user.password);
+            if (!valid) {
+                return new Response(JSON.stringify({ error: "Invalid password" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Check if new email is different from current
+            if (user.email === newEmail) {
+                return new Response(JSON.stringify({ error: "New email must be different from current email" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Check if new email already exists
+            const existingUser = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(newEmail).first();
+            if (existingUser) {
+                return new Response(JSON.stringify({ error: "Email already in use" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Update email
+            await env.DB.prepare("UPDATE users SET email = ? WHERE id = ?").bind(newEmail, userPayload.id).run();
+
+            return new Response(JSON.stringify({ success: true, email: newEmail }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+        } catch (e) {
+            // Handle unique constraint violation
+            if (e.message && e.message.includes("UNIQUE constraint")) {
+                return new Response(JSON.stringify({ error: "Email already in use" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            return new Response(e.message, { status: 500, headers: corsHeaders });
+        }
+    }
+
+    // --- Helper: Send Password Reset Email via Mailgun ---
+    async function sendPasswordResetEmail(email, token, env) {
+        const resetUrl = `${env.APP_URL || 'https://accounts.betterseqta.org'}/reset-password?token=${token}`;
+        
+        const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Your Password</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 28px;">Password Reset Request</h1>
+    </div>
+    <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e0e0e0;">
+        <p style="font-size: 16px; margin-bottom: 20px;">Hello,</p>
+        <p style="font-size: 16px; margin-bottom: 20px;">We received a request to reset your password for your BetterSEQTA+ Account. Click the button below to reset your password:</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetUrl}" style="display: inline-block; background: #667eea; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">Reset Password</a>
+        </div>
+        <p style="font-size: 14px; color: #666; margin-top: 30px;">Or copy and paste this link into your browser:</p>
+        <p style="font-size: 12px; color: #999; word-break: break-all; background: #fff; padding: 10px; border-radius: 4px; border: 1px solid #e0e0e0;">${resetUrl}</p>
+        <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
+            <p style="margin: 0; font-size: 14px; color: #856404;"><strong>Important:</strong> This link will expire in 1 hour. If you didn't request this password reset, you may safely ignore this email.</p>
+        </div>
+        <div style="background: #e7f3ff; border-left: 4px solid #2196F3; padding: 15px; margin: 20px 0; border-radius: 4px;">
+            <p style="margin: 0; font-size: 14px; color: #0c5460;"><strong>Can't find the email?</strong> Please check your spam, junk, promotions, and other email folders. Sometimes emails can end up there.</p>
+        </div>
+        <p style="font-size: 14px; color: #666; margin-top: 30px;">Best regards,<br>The BetterSEQTA+ Team</p>
+    </div>
+</body>
+</html>
+        `;
+
+        const emailText = `
+Password Reset Request
+
+Hello,
+
+We received a request to reset your password for your BetterSEQTA+ Account. Click the link below to reset your password:
+
+${resetUrl}
+
+This link will expire in 1 hour. If you didn't request this password reset, you may safely ignore this email.
+
+Can't find the email? Please check your spam, junk, promotions, and other email folders.
+
+Best regards,
+The BetterSEQTA+ Team
+        `;
+
+        const formData = new FormData();
+        formData.append('from', env.MAILGUN_FROM_EMAIL || 'noreply@betterseqta.org');
+        formData.append('to', email);
+        formData.append('subject', 'Reset Your Password - BetterSEQTA+');
+        formData.append('html', emailHtml);
+        formData.append('text', emailText);
+
+        const mailgunUrl = `https://api.mailgun.net/v3/${env.MAILGUN_DOMAIN}/messages`;
+        const auth = btoa(`api:${env.MAILGUN_API_KEY}`);
+
+        const response = await fetch(mailgunUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Basic ${auth}`
+            },
+            body: formData
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Mailgun API error: ${response.status} - ${errorText}`);
+        }
+
+        return await response.json();
+    }
+
+    // --- API: Forgot Password (Request Reset) ---
+    if (url.pathname === "/api/auth/forgot-password" && request.method === "POST") {
+        try {
+            const { login } = await request.json();
+            if (!login) {
+                return new Response(JSON.stringify({ error: "Missing email or username" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
+            // Look up user by email or username
+            const user = await env.DB.prepare("SELECT id, email FROM users WHERE email = ? OR username = ?").bind(login, login).first();
+
+            // Check for rate limiting: 5-minute cooldown
+            if (user) {
+                const recentToken = await env.DB.prepare(
+                    "SELECT created_at FROM password_reset_tokens WHERE user_id = ? AND used = 0 ORDER BY created_at DESC LIMIT 1"
+                ).bind(user.id).first();
+
+                if (recentToken) {
+                    const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300; // 5 minutes in seconds
+                    if (recentToken.created_at > fiveMinutesAgo) {
+                        const secondsRemaining = recentToken.created_at - fiveMinutesAgo;
+                        return new Response(JSON.stringify({ 
+                            error: "Please wait before requesting another reset email", 
+                            retryAfter: secondsRemaining 
+                        }), { 
+                            status: 429, 
+                            headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                        });
+                    }
+                }
+            }
+
+            // If user exists, generate reset token and send email
+            if (user) {
+                // Invalidate any existing unused tokens for this user
+                await env.DB.prepare("UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND used = 0").bind(user.id).run();
+
+                // Generate secure token
+                const token = crypto.randomUUID();
+                const hashedToken = await bcrypt.hash(token, 10);
+                const expiresAt = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+
+                // Store token in database
+                await env.DB.prepare(
+                    "INSERT INTO password_reset_tokens (token, user_id, expires_at, used) VALUES (?, ?, ?, 0)"
+                ).bind(hashedToken, user.id, expiresAt).run();
+
+                // Send email via Mailgun
+                try {
+                    await sendPasswordResetEmail(user.email, token, env);
+                } catch (emailError) {
+                    console.error("Failed to send reset email:", emailError);
+                    // Don't expose email sending errors to client for security
+                }
+            }
+
+            // Always return success to prevent email enumeration
+            return new Response(JSON.stringify({ 
+                success: true, 
+                message: "If an account exists, a reset email has been sent. Please check your inbox, spam, and other folders." 
+            }), { 
+                headers: { ...corsHeaders, "Content-Type": "application/json" } 
+            });
+
+        } catch (err) {
+            console.error("Forgot password error:", err);
+            return new Response(JSON.stringify({ error: "An error occurred" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+    }
+
+    // --- API: Verify Reset Token ---
+    if (url.pathname === "/api/auth/verify-reset-token" && request.method === "GET") {
+        try {
+            const token = url.searchParams.get("token");
+            if (!token) {
+                return new Response(JSON.stringify({ valid: false, reason: "missing" }), { 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            // Get all tokens for this user (we need to check against hashed tokens)
+            const tokens = await env.DB.prepare(
+                "SELECT token, expires_at, used FROM password_reset_tokens WHERE expires_at > ? AND used = 0"
+            ).bind(Math.floor(Date.now() / 1000)).all();
+
+            let validToken = null;
+            for (const dbToken of tokens.results) {
+                if (await bcrypt.compare(token, dbToken.token)) {
+                    validToken = dbToken;
+                    break;
+                }
+            }
+
+            if (!validToken) {
+                return new Response(JSON.stringify({ valid: false, reason: "invalid" }), { 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            if (validToken.expires_at < Math.floor(Date.now() / 1000)) {
+                return new Response(JSON.stringify({ valid: false, reason: "expired" }), { 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            if (validToken.used) {
+                return new Response(JSON.stringify({ valid: false, reason: "used" }), { 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            return new Response(JSON.stringify({ valid: true }), { 
+                headers: { ...corsHeaders, "Content-Type": "application/json" } 
+            });
+
+        } catch (err) {
+            return new Response(JSON.stringify({ valid: false, reason: "error" }), { 
+                status: 500, 
+                headers: { ...corsHeaders, "Content-Type": "application/json" } 
+            });
+        }
+    }
+
+    // --- API: Reset Password ---
+    if (url.pathname === "/api/auth/reset-password" && request.method === "POST") {
+        try {
+            const { token, newPassword } = await request.json();
+            if (!token || !newPassword) {
+                return new Response(JSON.stringify({ error: "Missing token or password" }), { 
+                    status: 400, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            // Validate password strength
+            if (newPassword.length < 8) {
+                return new Response(JSON.stringify({ error: "Password must be at least 8 characters long" }), { 
+                    status: 400, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            // Get all unused, non-expired tokens
+            const tokens = await env.DB.prepare(
+                "SELECT token, user_id, expires_at, used FROM password_reset_tokens WHERE expires_at > ? AND used = 0"
+            ).bind(Math.floor(Date.now() / 1000)).all();
+
+            let validToken = null;
+            let userId = null;
+            for (const dbToken of tokens.results) {
+                if (await bcrypt.compare(token, dbToken.token)) {
+                    validToken = dbToken;
+                    userId = dbToken.user_id;
+                    break;
+                }
+            }
+
+            if (!validToken) {
+                return new Response(JSON.stringify({ error: "Invalid or expired reset token" }), { 
+                    status: 400, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            if (validToken.expires_at < Math.floor(Date.now() / 1000)) {
+                return new Response(JSON.stringify({ error: "Reset token has expired" }), { 
+                    status: 400, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            if (validToken.used) {
+                return new Response(JSON.stringify({ error: "This reset token has already been used" }), { 
+                    status: 400, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            // Hash new password
+            const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+            // Update user password
+            await env.DB.prepare("UPDATE users SET password = ? WHERE id = ?").bind(hashedPassword, userId).run();
+
+            // Mark token as used
+            await env.DB.prepare("UPDATE password_reset_tokens SET used = 1 WHERE token = ?").bind(validToken.token).run();
+
+            return new Response(JSON.stringify({ success: true }), { 
+                headers: { ...corsHeaders, "Content-Type": "application/json" } 
+            });
+
+        } catch (err) {
+            console.error("Reset password error:", err);
+            return new Response(JSON.stringify({ error: "An error occurred" }), { 
+                status: 500, 
+                headers: { ...corsHeaders, "Content-Type": "application/json" } 
+            });
+        }
+    }
+
     // --- API: OAuth Endpoints ---
     
     // Check Client (public)

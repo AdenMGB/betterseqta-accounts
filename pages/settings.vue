@@ -71,8 +71,36 @@
           <div v-if="activeTab === 'account'">
             <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-6">Account Security</h2>
             <div class="space-y-6">
-              <!-- Change Password -->
+              <!-- Change Email -->
               <fieldset class="opacity-100">
+                 <legend class="text-base font-medium text-zinc-800 dark:text-zinc-300">Change Email</legend>
+                <div class="mt-4 space-y-4">
+                  <div>
+                    <label for="current-email" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Current Email</label>
+                    <input :value="auth.user.value?.email || ''" type="email" id="current-email" disabled class="mt-1 w-full form-input opacity-60 cursor-not-allowed">
+                  </div>
+                  <div>
+                    <label for="new-email" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">New Email</label>
+                    <input v-model="newEmail" type="email" id="new-email" class="mt-1 w-full form-input" placeholder="Enter new email address">
+                  </div>
+                  <div>
+                    <label for="email-password" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Current Password</label>
+                    <input v-model="emailPassword" type="password" id="email-password" class="mt-1 w-full form-input" placeholder="Enter your password to confirm">
+                  </div>
+                </div>
+              </fieldset>
+              
+              <div class="flex justify-end items-center gap-4">
+                <p v-if="emailSuccess" class="text-green-500 text-sm">{{ emailSuccess }}</p>
+                <p v-if="emailError" class="text-red-500 dark:text-red-400 text-sm">{{ emailError }}</p>
+                <button @click="changeEmail" :disabled="emailLoading || !newEmail || !emailPassword" class="form-button-primary">
+                    <LoadingSpinner v-if="emailLoading" size="sm" />
+                    <span v-else>Update Email</span>
+                </button>
+              </div>
+
+              <!-- Change Password -->
+              <fieldset class="opacity-100 border-t border-zinc-200 dark:border-zinc-700 pt-6 mt-6">
                  <legend class="text-base font-medium text-zinc-800 dark:text-zinc-300">Change Password</legend>
                 <div class="mt-4 space-y-4">
                   <div>
@@ -100,24 +128,154 @@
            <!-- BetterSEQTA Settings -->
           <div v-if="activeTab === 'bs-settings'">
              <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-6">DesQTA Settings</h2>
-             <div class="space-y-6">
-                 <div>
-                    <label for="json-editor" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300 mb-2">Settings JSON</label>
-                    <textarea 
-                        v-model="jsonSettings" 
-                        id="json-editor" 
-                        rows="15" 
-                        class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
-                    ></textarea>
+             
+             <div v-if="bsLoading && Object.keys(bsSettings).length === 0" class="flex justify-center py-12">
+               <LoadingSpinner size="lg" />
+             </div>
+             
+             <div v-else-if="bsError && Object.keys(bsSettings).length === 0" class="text-center py-12">
+               <p class="text-red-500 mb-4">{{ bsError }}</p>
+               <button @click="loadBsSettings" class="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">Retry</button>
+             </div>
+             
+             <div v-else class="space-y-8">
+               <!-- Appearance -->
+               <section v-if="hasSection('appearance')">
+                 <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
+                   <SwatchIcon class="w-5 h-5 text-primary-500" /> Appearance
+                 </h2>
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   <template v-for="key in getSectionKeys('appearance')" :key="key">
+                     <div v-if="key === 'theme'" class="form-group">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <select v-model="bsSettings[key]" class="form-select">
+                         <option value="light">Light</option>
+                         <option value="dark">Dark</option>
+                         <option value="system">System</option>
+                       </select>
+                     </div>
+                     <div v-else-if="key === 'accent_color'" class="form-group">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <ColorPicker v-model="bsSettings[key]" />
+                     </div>
+                     <div v-else-if="key === 'enhanced_animations'" class="form-group flex items-center gap-3 md:col-span-2">
+                       <Switch v-model="bsSettings[key]" />
+                       <span class="text-zinc-700 dark:text-zinc-300">{{ formatLabel(key) }}</span>
+                     </div>
+                   </template>
                  </div>
-                 <div class="flex justify-end items-center gap-4">
-                     <p v-if="bsSuccess" class="text-green-500 text-sm">{{ bsSuccess }}</p>
-                     <p v-if="bsError" class="text-red-500 dark:text-red-400 text-sm">{{ bsError }}</p>
-                     <button @click="saveBsSettings" :disabled="bsLoading" class="form-button-primary">
-                        <LoadingSpinner v-if="bsLoading" size="sm" />
-                        <span v-else>Save Settings</span>
-                     </button>
+               </section>
+
+               <!-- Features -->
+               <section v-if="hasSection('features')">
+                 <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
+                   <SparklesIcon class="w-5 h-5 text-primary-500" /> Features
+                 </h2>
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div v-for="key in getSectionKeys('features')" :key="key" class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
+                     <span class="text-zinc-700 dark:text-zinc-300 font-medium">{{ formatLabel(key) }}</span>
+                     <Switch v-model="bsSettings[key]" :invert="key === 'disable_school_picture'" />
+                   </div>
                  </div>
+               </section>
+
+               <!-- AI & Analytics -->
+               <section v-if="hasSection('ai')">
+                 <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
+                   <CpuChipIcon class="w-5 h-5 text-primary-500" /> AI & Analytics
+                 </h2>
+                 <div class="space-y-4">
+                   <div v-for="key in getSectionKeys('ai')" :key="key">
+                     <div v-if="typeof bsSettings[key] === 'boolean'" class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
+                       <span class="text-zinc-700 dark:text-zinc-300 font-medium">{{ formatLabel(key) }}</span>
+                       <Switch v-model="bsSettings[key]" />
+                     </div>
+                     <div v-else class="form-group pt-2">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <input 
+                         type="password" 
+                         :name="key" 
+                         autocomplete="new-password" 
+                         v-model="bsSettings[key]" 
+                         class="form-input" 
+                         :placeholder="`Enter ${formatLabel(key)}`" 
+                       />
+                     </div>
+                   </div>
+                 </div>
+               </section>
+
+               <!-- Developer -->
+               <section v-if="hasSection('developer')" class="border-t border-zinc-200 dark:border-zinc-700 pt-6">
+                 <button @click="showDevOptions = !showDevOptions" class="w-full flex items-center justify-between text-lg font-semibold text-zinc-900 dark:text-white mb-4 hover:text-primary-500 transition-colors duration-200 focus:outline-none">
+                   <span>Developer Options</span>
+                   <component :is="showDevOptions ? ChevronUpIcon : ChevronDownIcon" class="w-5 h-5" />
+                 </button>
+                 <div v-if="showDevOptions" class="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
+                   <div v-for="key in getSectionKeys('developer')" :key="key" class="flex items-center justify-between p-3 rounded-lg">
+                     <span class="text-sm text-zinc-600 dark:text-zinc-400">{{ formatLabel(key) }}</span>
+                     <Switch v-model="bsSettings[key]" />
+                   </div>
+                 </div>
+               </section>
+
+               <!-- Other Settings -->
+               <section v-if="getOtherSettings.length > 0">
+                 <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
+                   <CogIcon class="w-5 h-5 text-primary-500" /> Other Settings
+                 </h2>
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   <template v-for="key in getOtherSettings" :key="key">
+                     <div v-if="typeof bsSettings[key] === 'boolean'" class="form-group flex items-center gap-3">
+                       <Switch v-model="bsSettings[key]" />
+                       <span class="text-zinc-700 dark:text-zinc-300">{{ formatLabel(key) }}</span>
+                     </div>
+                     <div v-else-if="getFieldType(key, bsSettings[key]) === 'color'" class="form-group">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <ColorPicker v-model="bsSettings[key]" />
+                     </div>
+                     <div v-else-if="getFieldType(key, bsSettings[key]) === 'password'" class="form-group">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <input 
+                         type="password" 
+                         :name="key" 
+                         autocomplete="new-password" 
+                         v-model="bsSettings[key]" 
+                         class="form-input" 
+                         :placeholder="`Enter ${formatLabel(key)}`" 
+                       />
+                     </div>
+                     <div v-else-if="typeof bsSettings[key] === 'number'" class="form-group">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <input 
+                         type="number" 
+                         v-model.number="bsSettings[key]" 
+                         class="form-input" 
+                         :placeholder="`Enter ${formatLabel(key)}`" 
+                       />
+                     </div>
+                     <div v-else class="form-group">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <input 
+                         type="text" 
+                         v-model="bsSettings[key]" 
+                         class="form-input" 
+                         :placeholder="`Enter ${formatLabel(key)}`" 
+                       />
+                     </div>
+                   </template>
+                 </div>
+               </section>
+
+               <!-- Save Button -->
+               <div class="flex justify-end pt-4 border-t border-zinc-200 dark:border-zinc-700 sticky bottom-0 bg-white/80 dark:bg-zinc-800/80 backdrop-blur p-4 -mx-8 -mb-8 rounded-b-2xl z-10">
+                 <p v-if="bsSuccess" class="mr-4 text-green-500 font-medium self-center animate-fade-in">Settings saved!</p>
+                 <p v-if="bsError" class="mr-4 text-red-500 dark:text-red-400 font-medium self-center animate-fade-in">{{ bsError }}</p>
+                 <button @click="saveBsSettings" :disabled="bsLoading" class="bg-primary-500 hover:bg-primary-600 text-white font-bold py-2 px-6 rounded-lg transition-all duration-200 shadow-lg shadow-primary-500/30 flex items-center gap-2 transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed">
+                   <LoadingSpinner v-if="bsLoading" size="sm" class="text-white" />
+                   <span v-else>Save Changes</span>
+                 </button>
+               </div>
              </div>
           </div>
         </div>
@@ -127,20 +285,54 @@
 </template>
 
 <style scoped>
+.form-group {
+  @apply flex flex-col gap-1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.form-label {
+  @apply text-sm font-medium text-zinc-700 dark:text-zinc-300;
+  display: block;
+  line-height: 1.5;
+  margin-bottom: 0.375rem;
+}
+
 .form-input {
   @apply w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200;
 }
+
+.form-select {
+  @apply w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200;
+  /* Fix alignment issues in Firefox and ensure consistent rendering */
+  min-height: 2.5rem;
+  height: 2.5rem;
+  line-height: 1.5;
+  display: block;
+  /* Ensure consistent padding across browsers - Firefox needs explicit values */
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  padding-left: 0.75rem;
+  padding-right: 2.5rem;
+  /* Align text properly */
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
 .form-button-primary {
   @apply flex justify-center py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-zinc-100 dark:focus:ring-offset-zinc-900 focus:ring-primary-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
 }
 </style>
 
 <script setup lang="ts">
-import { ref, onMounted, shallowRef } from 'vue'
+import { ref, onMounted, shallowRef, computed } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useSettings } from '~/composables/useSettings'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
-import { UserCircleIcon, ShieldCheckIcon, CogIcon } from '@heroicons/vue/24/outline'
+import Switch from '~/components/ui/Switch.vue'
+import ColorPicker from '~/components/ui/ColorPicker.vue'
+import { UserCircleIcon, ShieldCheckIcon, CogIcon, SwatchIcon, SparklesIcon, CpuChipIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/outline'
 
 const auth = useAuth()
 const { getSettings, syncSettings } = useSettings()
@@ -162,10 +354,51 @@ const tabs = [
 ]
 
 // BS Settings state
-const jsonSettings = ref('')
+const bsSettings = ref<any>({})
 const bsLoading = ref(false)
 const bsError = ref('')
 const bsSuccess = ref('')
+const showDevOptions = ref(false)
+
+// Known settings organization
+const settingsSections = {
+  appearance: ['theme', 'accent_color', 'enhanced_animations'],
+  features: ['weather_enabled', 'reminders_enabled', 'disable_school_picture', 'global_search_enabled'],
+  ai: ['ai_integrations_enabled', 'grade_analyser_enabled', 'lesson_summary_analyser_enabled', 'gemini_api_key'],
+  developer: ['dev_sensitive_info_hider', 'dev_force_offline_mode']
+}
+
+// Helper functions
+const hasSection = (section: string) => {
+  return getSectionKeys(section).length > 0
+}
+
+const getSectionKeys = (section: string) => {
+  const knownKeys = settingsSections[section as keyof typeof settingsSections] || []
+  return knownKeys.filter(key => key in bsSettings.value)
+}
+
+const formatLabel = (key: string) => {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, l => l.toUpperCase())
+}
+
+const getFieldType = (key: string, value: any): 'switch' | 'color' | 'password' | 'select' | 'number' | 'text' => {
+  if (typeof value === 'boolean') return 'switch'
+  if (typeof value === 'number') return 'number'
+  if (key.toLowerCase().includes('color')) return 'color'
+  if (key.toLowerCase().match(/(key|password|secret|token)/)) return 'password'
+  if (key === 'theme') return 'select'
+  return 'text'
+}
+
+
+// Get other settings (not in known sections)
+const getOtherSettings = computed(() => {
+  const allKnownKeys = Object.values(settingsSections).flat()
+  return Object.keys(bsSettings.value).filter(key => !allKnownKeys.includes(key))
+})
 
 // Password Change State
 const currentPassword = ref('')
@@ -174,11 +407,26 @@ const pwdLoading = ref(false)
 const pwdError = ref('')
 const pwdSuccess = ref('')
 
+// Email Change State
+const newEmail = ref('')
+const emailPassword = ref('')
+const emailLoading = ref(false)
+const emailError = ref('')
+const emailSuccess = ref('')
+
 const triggerPfpInput = () => {
   pfpInput.value?.click()
 }
 
 onMounted(async () => {
+  // Check for hash-based navigation
+  if (window.location.hash) {
+    const hash = window.location.hash.substring(1)
+    if (tabs.some(tab => tab.name === hash)) {
+      activeTab.value = hash
+    }
+  }
+  
   if (auth.user.value) {
     displayName.value = auth.user.value.displayName || ''
     username.value = auth.user.value.username || ''
@@ -190,13 +438,22 @@ onMounted(async () => {
   }
   
   // Load BS Settings
-  try {
-      const settings = await getSettings();
-      jsonSettings.value = JSON.stringify(settings, null, 2);
-  } catch (e) {
-      console.error("Failed to load BS Settings", e);
-  }
+  await loadBsSettings()
 })
+
+const loadBsSettings = async () => {
+  bsLoading.value = true
+  bsError.value = ''
+  try {
+    const settings = await getSettings()
+    bsSettings.value = settings || {}
+  } catch (e) {
+    bsError.value = 'Failed to load settings.'
+    console.error("Failed to load BS Settings", e)
+  } finally {
+    bsLoading.value = false
+  }
+}
 
 const handlePfpChange = (event: Event) => {
   const target = event.target as HTMLInputElement
@@ -267,19 +524,19 @@ const updateProfile = async () => {
 }
 
 const saveBsSettings = async () => {
-    bsLoading.value = true;
-    bsError.value = '';
-    bsSuccess.value = '';
+    bsLoading.value = true
+    bsError.value = ''
+    bsSuccess.value = ''
     
     try {
-        const parsedSettings = JSON.parse(jsonSettings.value);
-        await syncSettings(parsedSettings);
-        bsSuccess.value = 'Settings saved to cloud!';
+        await syncSettings(bsSettings.value)
+        bsSuccess.value = 'Settings saved to cloud!'
+        setTimeout(() => bsSuccess.value = '', 3000)
     } catch (e) {
-        bsError.value = 'Invalid JSON or save failed.';
-        console.error(e);
+        bsError.value = 'Failed to save settings.'
+        console.error(e)
     } finally {
-        bsLoading.value = false;
+        bsLoading.value = false
     }
 }
 
@@ -305,6 +562,34 @@ const changePassword = async () => {
         pwdError.value = e?.data?.error || 'Failed to change password.';
     } finally {
         pwdLoading.value = false;
+    }
+}
+
+const changeEmail = async () => {
+    emailLoading.value = true;
+    emailError.value = '';
+    emailSuccess.value = '';
+
+    try {
+        const response = await $fetch<{ success: boolean; email: string }>('/api/auth/change-email', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            body: {
+                newEmail: newEmail.value,
+                password: emailPassword.value
+            }
+        });
+        
+        emailSuccess.value = 'Email changed successfully.';
+        newEmail.value = '';
+        emailPassword.value = '';
+        
+        // Refresh user data to get updated email
+        await auth.fetchUser();
+    } catch (e: any) {
+        emailError.value = e?.data?.error || 'Failed to change email.';
+    } finally {
+        emailLoading.value = false;
     }
 }
 </script>
