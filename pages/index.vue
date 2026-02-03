@@ -5,6 +5,54 @@
       <p class="text-zinc-600 dark:text-zinc-400">Manage your DesQTA cloud settings</p>
     </div>
 
+    <!-- Quick Links -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in delay-100">
+      <!-- Account Settings -->
+      <NuxtLink to="/settings#profile" class="group">
+        <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-6 hover:shadow-2xl hover:scale-[1.02] transition-all duration-200 cursor-pointer h-full">
+          <div class="flex items-start gap-4">
+            <div class="p-3 bg-primary-500/10 rounded-xl group-hover:bg-primary-500/20 transition-colors duration-200">
+              <UserCircleIcon class="w-8 h-8 text-primary-500" />
+            </div>
+            <div class="flex-1">
+              <h3 class="text-xl font-semibold text-zinc-900 dark:text-white mb-2 group-hover:text-primary-500 transition-colors duration-200">Account Settings</h3>
+              <p class="text-sm text-zinc-600 dark:text-zinc-400">Update your profile picture, display name, and username</p>
+            </div>
+          </div>
+        </div>
+      </NuxtLink>
+
+      <!-- DesQTA Settings -->
+      <NuxtLink to="/settings#bs-settings" class="group">
+        <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-6 hover:shadow-2xl hover:scale-[1.02] transition-all duration-200 cursor-pointer h-full">
+          <div class="flex items-start gap-4">
+            <div class="p-3 bg-primary-500/10 rounded-xl group-hover:bg-primary-500/20 transition-colors duration-200">
+              <CogIcon class="w-8 h-8 text-primary-500" />
+            </div>
+            <div class="flex-1">
+              <h3 class="text-xl font-semibold text-zinc-900 dark:text-white mb-2 group-hover:text-primary-500 transition-colors duration-200">DesQTA Settings</h3>
+              <p class="text-sm text-zinc-600 dark:text-zinc-400">Configure your DesQTA cloud settings and preferences</p>
+            </div>
+          </div>
+        </div>
+      </NuxtLink>
+
+      <!-- Admin Panel (conditional) -->
+      <NuxtLink v-if="auth.user.value?.is_admin" to="/admin" class="group">
+        <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-6 hover:shadow-2xl hover:scale-[1.02] transition-all duration-200 cursor-pointer h-full">
+          <div class="flex items-start gap-4">
+            <div class="p-3 bg-primary-500/10 rounded-xl group-hover:bg-primary-500/20 transition-colors duration-200">
+              <ShieldCheckIcon class="w-8 h-8 text-primary-500" />
+            </div>
+            <div class="flex-1">
+              <h3 class="text-xl font-semibold text-zinc-900 dark:text-white mb-2 group-hover:text-primary-500 transition-colors duration-200">Admin Panel</h3>
+              <p class="text-sm text-zinc-600 dark:text-zinc-400">Manage users and system settings</p>
+            </div>
+          </div>
+        </div>
+      </NuxtLink>
+    </div>
+
     <!-- Settings Editor -->
     <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-8 animate-fade-in">
       <div v-if="loading" class="flex justify-center py-12">
@@ -130,7 +178,7 @@ import { useAuth } from '~/composables/useAuth'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import Switch from '~/components/ui/Switch.vue'
 import ColorPicker from '~/components/ui/ColorPicker.vue'
-import { SwatchIcon, SparklesIcon, CpuChipIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/outline'
+import { SwatchIcon, SparklesIcon, CpuChipIcon, ChevronDownIcon, ChevronUpIcon, UserCircleIcon, CogIcon, ShieldCheckIcon } from '@heroicons/vue/24/outline'
 
 const { getSettings, syncSettings } = useSettings()
 const auth = useAuth()
