@@ -15,7 +15,7 @@
           <Cog6ToothIcon class="w-5 h-5" />
           Settings
         </NuxtLink>
-        <NuxtLink v-if="auth.user.value?.is_admin" to="/admin" :class="getLinkClass('/admin')">
+        <NuxtLink v-if="isAdmin" to="/admin" :class="getLinkClass('/admin')">
           <ShieldCheckIcon class="w-5 h-5" />
           Admin
         </NuxtLink>
