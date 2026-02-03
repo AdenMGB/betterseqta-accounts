@@ -19,9 +19,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '~/composables/useAuth'
-import { HomeIcon, Cog6ToothIcon, KeyIcon } from '@heroicons/vue/24/outline'
-
-const auth = useAuth()
+import { HomeIcon, Cog6ToothIcon, ShieldCheckIcon } from '@heroicons/vue/24/outline'
 
 // Computed property to check if user is admin
 const isAdmin = computed(() => {
@@ -29,6 +27,7 @@ const isAdmin = computed(() => {
 })
 
 const route = useRoute()
+const auth = useAuth()
 const isActive = (path: string) => {
   // Exact match for home, startsWith for others to handle sub-routes if any
   if (path === '/') return route.path === '/' ? 'text-primary-500' : 'text-zinc-500 dark:text-zinc-400'

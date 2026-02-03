@@ -15,8 +15,8 @@
           <Cog6ToothIcon class="w-5 h-5" />
           Settings
         </NuxtLink>
-        <NuxtLink v-if="isAdmin" to="/admin" :class="getLinkClass('/admin')">
-          <KeyIcon class="w-5 h-5" />
+        <NuxtLink v-if="auth.user.value?.is_admin" to="/admin" :class="getLinkClass('/admin')">
+          <ShieldCheckIcon class="w-5 h-5" />
           Admin
         </NuxtLink>
       </nav>
@@ -87,7 +87,7 @@ import { useRoute } from 'vue-router'
 import { useAuth } from '~/composables/useAuth'
 import UserAvatar from '~/components/UserAvatar.vue'
 import Toast from '~/components/ui/Toast.vue'
-import { HomeIcon, Cog6ToothIcon, UserCircleIcon, ArrowRightOnRectangleIcon, SunIcon, MoonIcon, KeyIcon } from '@heroicons/vue/24/outline'
+import { HomeIcon, Cog6ToothIcon, UserCircleIcon, ArrowRightOnRectangleIcon, SunIcon, MoonIcon, ShieldCheckIcon } from '@heroicons/vue/24/outline'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
 import MobileNav from '~/components/ui/MobileNav.vue'
 

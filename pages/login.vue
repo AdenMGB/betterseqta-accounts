@@ -22,7 +22,12 @@
           </div>
 
           <div>
-            <label for="password" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Password</label>
+            <div class="flex items-center justify-between">
+              <label for="password" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300">Password</label>
+              <NuxtLink to="/reset-password" class="text-sm font-medium text-primary-600 dark:text-primary-500 hover:text-primary-500 dark:hover:text-primary-400">
+                Forgot password?
+              </NuxtLink>
+            </div>
             <div class="mt-1">
               <input
                 v-model="password"
