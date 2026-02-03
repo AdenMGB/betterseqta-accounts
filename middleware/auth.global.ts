@@ -2,7 +2,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   const { user, fetchUser } = useAuth()
   
   // Public pages
-  const publicPages = ['/login', '/register']
+  const publicPages = ['/login', '/register', '/reset-password']
   
   // Allow oauth page but it handles its own logic inside
   if (publicPages.includes(to.path) || to.path.startsWith('/oauth')) return
