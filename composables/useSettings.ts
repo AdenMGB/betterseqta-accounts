@@ -1,20 +1,22 @@
 export const useSettings = () => {
-  const { user } = useAuth();
-
-  const getUserId = () => {
-      if (user.value && user.value.id) {
-          return user.value.id;
-      }
-      return 'user123'; 
+  const getAuthToken = () => {
+    if (process.client) {
+      return localStorage.getItem('token');
+    }
+    return null;
   }
 
   const syncSettings = async (mySettings: any) => {
-    const userId = getUserId();
+    const token = getAuthToken();
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
     const response = await fetch('/api/settings', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-User-ID': userId
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify(mySettings)
     });
@@ -29,11 +31,15 @@ export const useSettings = () => {
   };
 
   const getSettings = async () => {
-      const userId = getUserId();
+      const token = getAuthToken();
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+
       const response = await fetch('/api/settings', {
           method: 'GET',
           headers: {
-              'X-User-ID': userId
+              'Authorization': `Bearer ${token}`
           }
       });
       if (!response.ok) {
