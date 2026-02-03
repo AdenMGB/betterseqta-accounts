@@ -8,14 +8,20 @@
       <Cog6ToothIcon class="w-6 h-6" />
       <span class="text-xs mt-1">Settings</span>
     </NuxtLink>
+    <NuxtLink v-if="auth.user.value?.is_admin" to="/admin" class="flex flex-col items-center justify-center flex-1" :class="isActive('/admin')">
+      <ShieldCheckIcon class="w-6 h-6" />
+      <span class="text-xs mt-1">Admin</span>
+    </NuxtLink>
   </nav>
 </template>
 
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
-import { HomeIcon, Cog6ToothIcon } from '@heroicons/vue/24/outline'
+import { useAuth } from '~/composables/useAuth'
+import { HomeIcon, Cog6ToothIcon, ShieldCheckIcon } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
+const auth = useAuth()
 const isActive = (path: string) => {
   // Exact match for home, startsWith for others to handle sub-routes if any
   if (path === '/') return route.path === '/' ? 'text-primary-500' : 'text-zinc-500 dark:text-zinc-400'
