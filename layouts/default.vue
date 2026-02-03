@@ -6,7 +6,7 @@
         <UserCircleIcon class="w-8 h-8 text-primary-500" />
         <span class="text-xl font-bold text-zinc-900 dark:text-white font-display">BetterSEQTA+</span>
       </div>
-      <nav class="flex flex-col gap-2 flex-1 animate-fade-in delay-100 overflow-y-auto min-h-0">
+      <nav class="flex flex-col gap-2 flex-1 animate-fade-in delay-100">
         <NuxtLink to="/" :class="getLinkClass('/')">
           <HomeIcon class="w-5 h-5" />
           Dashboard
@@ -20,10 +20,10 @@
           Admin
         </NuxtLink>
       </nav>
-      <div class="animate-fade-in delay-200 flex-shrink-0 pt-4">
-        <button @click="auth.logout" class="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 hover:text-zinc-900 dark:hover:text-white w-full transition-all duration-200 cursor-pointer">
-          <ArrowRightOnRectangleIcon class="w-5 h-5 flex-shrink-0" />
-          <span>Logout</span>
+      <div class="animate-fade-in delay-200">
+        <button @click="auth.logout" class="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 hover:text-zinc-900 dark:hover:text-white w-full transition-all duration-200">
+          <ArrowRightOnRectangleIcon class="w-5 h-5" />
+          Logout
         </button>
       </div>
     </div>
