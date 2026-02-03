@@ -124,6 +124,30 @@
               </div>
             </div>
           </div>
+          
+           <!-- BetterSEQTA Settings -->
+          <div v-if="activeTab === 'bs-settings'">
+             <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-6">DesQTA Settings</h2>
+             <div class="space-y-6">
+                 <div>
+                    <label for="json-editor" class="block text-sm font-medium text-zinc-800 dark:text-zinc-300 mb-2">Settings JSON</label>
+                    <textarea 
+                        v-model="jsonSettings" 
+                        id="json-editor" 
+                        rows="15" 
+                        class="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200"
+                    ></textarea>
+                 </div>
+                 <div class="flex justify-end items-center gap-4">
+                     <p v-if="bsSuccess" class="text-green-500 text-sm">{{ bsSuccess }}</p>
+                     <p v-if="bsError" class="text-red-500 dark:text-red-400 text-sm">{{ bsError }}</p>
+                     <button @click="saveBsSettings" :disabled="bsLoading" class="form-button-primary">
+                        <LoadingSpinner v-if="bsLoading" size="sm" />
+                        <span v-else>Save Settings</span>
+                     </button>
+                 </div>
+             </div>
+          </div>
         </div>
       </div>
     </div>
