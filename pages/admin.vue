@@ -5,7 +5,7 @@
       <p class="text-zinc-600 dark:text-zinc-400">Manage users and OAuth clients</p>
     </div>
 
-    <div v-if="!auth.user.value?.is_admin" class="text-center py-12 animate-fade-in">
+    <div v-if="!auth.user.value || (auth.user.value?.admin_level || 0) === 0" class="text-center py-12 animate-fade-in">
         <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
             <ShieldExclamationIcon class="w-8 h-8 text-red-500" />
         </div>
@@ -62,20 +62,86 @@
                     </thead>
                     <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                         <tr v-for="user in users" :key="user.id" class="group hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors duration-200">
-                            <td class="py-4 px-4 text-zinc-900 dark:text-white font-medium">{{ user.username }}</td>
-                            <td class="py-4 px-4 text-zinc-600 dark:text-zinc-400">{{ user.email }}</td>
-                            <td class="py-4 px-4">
-                                <span :class="['px-2 py-1 text-xs rounded-full', user.is_admin ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-700/50 dark:text-zinc-300']">
-                                    {{ user.is_admin ? 'Admin' : 'User' }}
+                            <td class="py-4 px-4 text-zinc-900 dark:text-white font-medium">
+                                <span v-if="editingUser?.id !== user.id">
+                                    {{ user.displayName || user.username }}
+                                    <span v-if="user.displayName && user.displayName !== user.username" class="text-xs text-zinc-500 dark:text-zinc-400 ml-1">({{ user.username }})</span>
                                 </span>
+                                <input 
+                                    v-else
+                                    v-model="editingUser.username"
+                                    type="text"
+                                    class="w-full px-2 py-1 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+                                />
+                            </td>
+                            <td class="py-4 px-4 text-zinc-600 dark:text-zinc-400">
+                                <span v-if="editingUser?.id !== user.id">{{ user.email }}</span>
+                                <input 
+                                    v-else
+                                    v-model="editingUser.email"
+                                    type="email"
+                                    class="w-full px-2 py-1 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+                                />
+                            </td>
+                            <td class="py-4 px-4">
+                                <span v-if="editingUser?.id !== user.id" :class="getRoleBadgeClass(user.admin_level || 0)">
+                                    {{ getRoleLabel(user.admin_level || 0) }}
+                                </span>
+                                <div v-else class="flex items-center gap-2">
+                                    <input 
+                                        v-model="editingUser.displayName"
+                                        type="text"
+                                        placeholder="Display Name"
+                                        class="flex-1 px-2 py-1 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+                                    />
+                                    <span :class="getRoleBadgeClass(user.admin_level || 0)">
+                                        {{ getRoleLabel(user.admin_level || 0) }}
+                                    </span>
+                                </div>
                             </td>
                             <td class="py-4 px-4 text-right">
-                                <button 
-                                    @click="toggleAdmin(user)" 
-                                    :class="['text-sm font-medium transition-colors duration-200', user.is_admin ? 'text-red-500 hover:text-red-600' : 'text-primary-500 hover:text-primary-600']"
-                                >
-                                    {{ user.is_admin ? 'Revoke Admin' : 'Make Admin' }}
-                                </button>
+                                <div class="flex items-center gap-2 justify-end">
+                                    <template v-if="editingUser?.id === user.id">
+                                        <button 
+                                            @click="saveUserEdit(user)"
+                                            class="text-sm px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors duration-200"
+                                        >
+                                            Save
+                                        </button>
+                                        <button 
+                                            @click="cancelUserEdit()"
+                                            class="text-sm px-3 py-1 bg-zinc-500 text-white rounded-lg hover:bg-zinc-600 transition-colors duration-200"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </template>
+                                    <template v-else>
+                                        <button 
+                                            v-if="canModerateUsers()"
+                                            @click="startUserEdit(user)"
+                                            class="text-sm px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200"
+                                        >
+                                            Edit
+                                        </button>
+                                        <button 
+                                            v-if="canPromoteUser(user.admin_level || 0)"
+                                            @click="promoteUser(user)"
+                                            class="text-sm px-3 py-1 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200"
+                                        >
+                                            Promote
+                                        </button>
+                                        <button 
+                                            v-if="canDemoteUser(user.admin_level || 0)"
+                                            @click="demoteUser(user)"
+                                            class="text-sm px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200"
+                                        >
+                                            Demote
+                                        </button>
+                                        <span v-if="!canModifyUser(user.admin_level || 0) && !canModerateUsers()" class="text-xs text-zinc-400 dark:text-zinc-500">
+                                            Cannot modify
+                                        </span>
+                                    </template>
+                                </div>
                             </td>
                         </tr>
                     </tbody>
@@ -189,6 +255,8 @@ const searched = ref(false)
 const totalUsers = ref(0)
 const currentPage = ref(1)
 const totalPages = ref(1)
+const maxAdminLevel = ref(3) // Default to 3, will be updated from API
+const editingUser = ref<any>(null) // User currently being edited
 
 // Clients State
 const clients = ref<any[]>([])
@@ -199,14 +267,19 @@ const lastCreatedClient = ref<any>(null)
 // Actions
 const searchUsers = async (page: number = 1) => {
     try {
-        const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number }>('/api/admin/users', {
+        const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number, maxAdminLevel: number }>('/api/admin/users', {
             params: { q: searchQuery.value, page },
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
-        users.value = res.users
+        // Initialize previous admin level for each user (for rollback on error)
+        users.value = res.users.map((user: any) => ({
+            ...user,
+            _previousAdminLevel: user.admin_level || 0
+        }))
         totalUsers.value = res.total
         currentPage.value = res.page
         totalPages.value = res.totalPages
+        maxAdminLevel.value = res.maxAdminLevel || 3
         searched.value = true
     } catch (e) {
         console.error('Failed to search users', e)
@@ -223,19 +296,175 @@ const goToPage = (page: number) => {
     }
 }
 
-const toggleAdmin = async (user: any) => {
-    if (!confirm(`Are you sure you want to ${user.is_admin ? 'revoke admin from' : 'make admin'} ${user.username}?`)) return
+const getRoleLabel = (level: number): string => {
+    if (level === 0) return 'User'
+    if (level === maxAdminLevel.value) return 'Senior Admin'
+    if (level === 1) return 'Junior Admin'
+    if (level === 2) return 'Middle Admin'
+    // For levels above 2 but below max, use generic naming
+    return `Level ${level} Admin`
+}
+
+const getRoleBadgeClass = (level: number): string => {
+    const baseClasses = 'px-2 py-1 text-xs rounded-full'
+    if (level === 0) return `${baseClasses} bg-zinc-100 text-zinc-700 dark:bg-zinc-700/50 dark:text-zinc-300`
+    if (level === maxAdminLevel.value) return `${baseClasses} bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300`
+    if (level === 1) return `${baseClasses} bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300`
+    if (level === 2) return `${baseClasses} bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300`
+    // For other levels, use a gradient of colors
+    return `${baseClasses} bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300`
+}
+
+const getCurrentAdminLevel = (): number => {
+    return auth.user.value?.admin_level || 0
+}
+
+const canModifyUser = (targetUserLevel: number): boolean => {
+    const currentLevel = getCurrentAdminLevel()
+    // Can only modify users below your level
+    return targetUserLevel < currentLevel
+}
+
+const canPromoteUser = (targetUserLevel: number): boolean => {
+    const currentLevel = getCurrentAdminLevel()
+    // Can only modify users below your level
+    if (targetUserLevel >= currentLevel) return false
+    
+    // Only Senior Admins (highest level) can promote regular users (level 0) to admin
+    if (targetUserLevel === 0 && currentLevel < maxAdminLevel.value) return false
+    
+    // Can promote existing admins up to currentLevel
+    // But we'll let the backend handle the exact level validation
+    return true
+}
+
+const canDemoteUser = (targetUserLevel: number): boolean => {
+    const currentLevel = getCurrentAdminLevel()
+    // Can only demote users at your level or below (but not yourself)
+    return targetUserLevel > 0 && targetUserLevel < currentLevel
+}
+
+const canModerateUsers = (): boolean => {
+    const currentLevel = getCurrentAdminLevel()
+    // Require Middle Admin (level 2) or higher for moderator controls
+    return currentLevel >= 2
+}
+
+const startUserEdit = (user: any) => {
+    editingUser.value = {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        displayName: user.displayName || ''
+    }
+}
+
+const cancelUserEdit = () => {
+    editingUser.value = null
+}
+
+const saveUserEdit = async (user: any) => {
+    if (!editingUser.value) return
+    
+    const originalUser = { ...user }
+    const userIndex = users.value.findIndex(u => u.id === user.id)
+    
+    try {
+        await $fetch('/api/admin/update-user', {
+            method: 'POST',
+            body: {
+                userId: editingUser.value.id,
+                username: editingUser.value.username,
+                email: editingUser.value.email,
+                displayName: editingUser.value.displayName
+            },
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+        
+        // Update local state
+        if (userIndex !== -1) {
+            users.value[userIndex].username = editingUser.value.username
+            users.value[userIndex].email = editingUser.value.email
+            users.value[userIndex].displayName = editingUser.value.displayName
+        }
+        
+        editingUser.value = null
+    } catch (e: any) {
+        const errorMsg = e?.data?.error || e?.message || 'Failed to update user'
+        alert(errorMsg)
+        // Restore original values on error
+        if (userIndex !== -1) {
+            users.value[userIndex] = originalUser
+        }
+    }
+}
+
+const promoteUser = async (user: any) => {
+    const currentLevel = user.admin_level || 0
+    const adminLevel = getCurrentAdminLevel()
+    
+    // Determine next level: promote to adminLevel (up to admin's own level)
+    // But if user is level 0 and admin is Senior Admin, promote to level 1
+    let newLevel: number
+    if (currentLevel === 0) {
+        // Only Senior Admins can do this, and they promote to Junior Admin (level 1)
+        newLevel = 1
+    } else {
+        // Promote existing admin up to admin's own level
+        newLevel = Math.min(currentLevel + 1, adminLevel)
+    }
+    
+    if (!confirm(`Are you sure you want to promote ${user.username} to ${getRoleLabel(newLevel)}?`)) {
+        return
+    }
+    
+    const oldLevel = user.admin_level || 0
+    
+    // Update UI optimistically
+    user.admin_level = newLevel
     
     try {
         await $fetch('/api/admin/promote', {
             method: 'POST',
-            body: { userId: user.id, isAdmin: !user.is_admin },
+            body: { userId: user.id, adminLevel: newLevel },
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
-        // Refresh local state
-        user.is_admin = !user.is_admin
-    } catch (e) {
-        alert('Failed to update user role')
+        // Update previous level for next change
+        user._previousAdminLevel = newLevel
+    } catch (e: any) {
+        // Rollback on error
+        user.admin_level = oldLevel
+        const errorMsg = e?.data?.error || e?.message || 'Failed to promote user'
+        alert(errorMsg)
+    }
+}
+
+const demoteUser = async (user: any) => {
+    const currentLevel = user.admin_level || 0
+    const newLevel = Math.max(0, currentLevel - 1)
+    
+    if (!confirm(`Are you sure you want to demote ${user.username} to ${getRoleLabel(newLevel)}?`)) {
+        return
+    }
+    
+    const oldLevel = user.admin_level || 0
+    
+    // Update UI optimistically
+    user.admin_level = newLevel
+    
+    try {
+        await $fetch('/api/admin/promote', {
+            method: 'POST',
+            body: { userId: user.id, adminLevel: newLevel },
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+        // Update previous level for next change
+        user._previousAdminLevel = newLevel
+    } catch (e: any) {
+        // Rollback on error
+        user.admin_level = oldLevel
+        const errorMsg = e?.data?.error || e?.message || 'Failed to demote user'
+        alert(errorMsg)
     }
 }
 
@@ -270,7 +499,7 @@ const createClient = async () => {
 }
 
 onMounted(() => {
-    if (auth.user.value?.is_admin) {
+    if (auth.user.value && (auth.user.value?.admin_level || 0) > 0) {
         loadClients()
         searchUsers(1) // Load initial users
     }

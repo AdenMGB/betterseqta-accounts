@@ -10,7 +10,7 @@ export default {
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-ID',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     };
 
     if (request.method === "OPTIONS") {
@@ -30,14 +30,41 @@ export default {
         }
     }
 
-    // --- Helper: Verify Admin ---
+    // --- Helper: Get User Admin Level ---
+    async function getUserAdminLevel(userId) {
+        const user = await env.DB.prepare("SELECT admin_level FROM users WHERE id = ?").bind(userId).first();
+        return user ? (user.admin_level || 0) : 0;
+    }
+
+    // --- Helper: Verify Admin (any level) ---
     async function getAdminUser(req) {
         const payload = await getUser(req);
         if (!payload) return null;
         // Check DB for latest admin status
-        const user = await env.DB.prepare("SELECT is_admin FROM users WHERE id = ?").bind(payload.id).first();
-        if (user && user.is_admin) return payload;
+        const user = await env.DB.prepare("SELECT admin_level FROM users WHERE id = ?").bind(payload.id).first();
+        if (user && (user.admin_level || 0) > 0) return payload;
         return null;
+    }
+
+    // --- Helper: Get Admin User with Level ---
+    async function getAdminUserWithLevel(req) {
+        const payload = await getUser(req);
+        if (!payload) return null;
+        const user = await env.DB.prepare("SELECT admin_level FROM users WHERE id = ?").bind(payload.id).first();
+        if (user && (user.admin_level || 0) > 0) {
+            return { ...payload, adminLevel: user.admin_level || 0 };
+        }
+        return null;
+    }
+
+    // --- Helper: Get Maximum Admin Level ---
+    async function getMaxAdminLevel() {
+        const result = await env.DB.prepare("SELECT MAX(admin_level) as max_level FROM users WHERE admin_level > 0").first();
+        // Use the highest admin level that exists in the database
+        // Default to 3 if no admins exist yet (for backward compatibility with existing systems)
+        const maxLevel = result?.max_level || 3;
+        // Ensure we return at least 3 as the minimum maximum (for systems that haven't migrated yet)
+        return Math.max(maxLevel, 3);
     }
 
     // --- API: Register ---
@@ -52,9 +79,9 @@ export default {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         try {
-            // Default is_admin is handled by DB default (0), but we can be explicit if needed.
+            // Default admin_level is handled by DB default (0), but we can be explicit if needed.
             await env.DB.prepare(
-                "INSERT INTO users (id, email, password, username, displayName, is_admin) VALUES (?, ?, ?, ?, ?, ?)"
+                "INSERT INTO users (id, email, password, username, displayName, admin_level) VALUES (?, ?, ?, ?, ?, ?)"
             ).bind(id, email, hashedPassword, username, displayName || username, 0).run();
         } catch (e) {
             return new Response(JSON.stringify({ error: "User already exists" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -65,7 +92,7 @@ export default {
             .setExpirationTime('7d')
             .sign(jwtSecret);
 
-        return new Response(JSON.stringify({ token, user: { id, email, username, displayName, is_admin: 0 } }), {
+        return new Response(JSON.stringify({ token, user: { id, email, username, displayName, admin_level: 0 } }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
 
@@ -89,7 +116,7 @@ export default {
                 .setExpirationTime('7d')
                 .sign(jwtSecret);
 
-            return new Response(JSON.stringify({ token, user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl, is_admin: user.is_admin } }), {
+            return new Response(JSON.stringify({ token, user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl, admin_level: user.admin_level || 0 } }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" }
             });
         } catch (err) {
@@ -102,7 +129,7 @@ export default {
         const payload = await getUser(request);
         if (!payload) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
-        const user = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, is_admin FROM users WHERE id = ?").bind(payload.id).first();
+        const user = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, admin_level FROM users WHERE id = ?").bind(payload.id).first();
         return new Response(JSON.stringify(user), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -547,7 +574,7 @@ The BetterSEQTA+ Team
         const user = await getUser(request);
         if (!user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
-        const userData = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, is_admin FROM users WHERE id = ?").bind(user.id).first();
+        const userData = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, admin_level FROM users WHERE id = ?").bind(user.id).first();
         return new Response(JSON.stringify(userData), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -569,25 +596,71 @@ The BetterSEQTA+ Team
         const total = countResult.total || 0;
 
         // Get paginated users
-        const users = await env.DB.prepare("SELECT id, email, username, displayName, is_admin FROM users WHERE username LIKE ? OR email LIKE ? ORDER BY username LIMIT ? OFFSET ?")
+        const users = await env.DB.prepare("SELECT id, email, username, displayName, admin_level FROM users WHERE username LIKE ? OR email LIKE ? ORDER BY username LIMIT ? OFFSET ?")
             .bind(`%${query}%`, `%${query}%`, pageSize, offset).all();
+        
+        // Get maximum admin level
+        const maxAdminLevel = await getMaxAdminLevel();
         
         return new Response(JSON.stringify({
             users: users.results,
             total,
             page,
             pageSize,
-            totalPages: Math.ceil(total / pageSize)
+            totalPages: Math.ceil(total / pageSize),
+            maxAdminLevel
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Promote/Demote User
+    // Promote/Demote User (with hierarchy enforcement)
     if (url.pathname === "/api/admin/promote" && request.method === "POST") {
-        const admin = await getAdminUser(request);
+        const admin = await getAdminUserWithLevel(request);
         if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
-        const { userId, isAdmin } = await request.json();
-        await env.DB.prepare("UPDATE users SET is_admin = ? WHERE id = ?").bind(isAdmin ? 1 : 0, userId).run();
+        const { userId, adminLevel } = await request.json();
+        
+        // Get maximum admin level from database
+        const maxAdminLevel = await getMaxAdminLevel();
+        
+        // Validate adminLevel (0 to maxAdminLevel)
+        if (adminLevel < 0 || adminLevel > maxAdminLevel) {
+            return new Response(JSON.stringify({ error: `Invalid admin level. Must be between 0 and ${maxAdminLevel}` }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // Get target user's current level
+        const targetUser = await env.DB.prepare("SELECT admin_level FROM users WHERE id = ?").bind(userId).first();
+        if (!targetUser) {
+            return new Response(JSON.stringify({ error: "User not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        const currentTargetLevel = targetUser.admin_level || 0;
+        const adminLevelNum = admin.adminLevel || 0;
+
+        // Hierarchy rules:
+        // 1. Only Senior Admins (highest level) can promote regular users (level 0) to admin
+        // 2. Other admins can only promote existing admins (level 1+) up to their own level
+        // 3. Can only demote users at your level or below
+        // 4. Cannot change users at or above your level
+
+        if (adminLevel > currentTargetLevel) {
+            // Promotion
+            // Rule: Only Senior Admins (highest level) can promote regular users (level 0) to admin
+            if (currentTargetLevel === 0 && adminLevelNum < maxAdminLevel) {
+                return new Response(JSON.stringify({ error: "Only Senior Admins can promote regular users to admin" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            // Rule: Can only promote to level at or below admin's level (but not higher)
+            if (adminLevel > adminLevelNum) {
+                return new Response(JSON.stringify({ error: "Cannot promote user to a level higher than your own" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+        } else if (adminLevel < currentTargetLevel) {
+            // Demotion: Can only demote users at your level or below
+            if (currentTargetLevel >= adminLevelNum) {
+                return new Response(JSON.stringify({ error: "Cannot demote users at your level or higher" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+        }
+
+        // Update the user's admin level
+        await env.DB.prepare("UPDATE users SET admin_level = ? WHERE id = ?").bind(adminLevel, userId).run();
         
         return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -616,17 +689,87 @@ The BetterSEQTA+ Team
         return new Response(JSON.stringify({ id, name, secret, redirect_uri }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Update User Profile (Moderator Control - Level 2+ Admins Only)
+    if (url.pathname === "/api/admin/update-user" && request.method === "POST") {
+        const admin = await getAdminUserWithLevel(request);
+        if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+        // Require admin level 2 or higher (Middle Admin and above)
+        if ((admin.adminLevel || 0) < 2) {
+            return new Response(JSON.stringify({ error: "Moderator controls require Middle Admin level (2) or higher" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        const { userId, email, username, displayName } = await request.json();
+        
+        if (!userId) {
+            return new Response(JSON.stringify({ error: "User ID is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // Verify target user exists
+        const targetUser = await env.DB.prepare("SELECT id, email, username FROM users WHERE id = ?").bind(userId).first();
+        if (!targetUser) {
+            return new Response(JSON.stringify({ error: "User not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // Build update query dynamically
+        const updates = [];
+        const values = [];
+
+        if (email !== undefined && email !== null) {
+            // Basic email validation
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                return new Response(JSON.stringify({ error: "Invalid email format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            // Check if email is different from current
+            if (email !== targetUser.email) {
+                // Check if new email already exists
+                const existingUser = await env.DB.prepare("SELECT id FROM users WHERE email = ? AND id != ?").bind(email, userId).first();
+                if (existingUser) {
+                    return new Response(JSON.stringify({ error: "Email already in use" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+                }
+                updates.push("email = ?");
+                values.push(email);
+            }
+        }
+
+        if (username !== undefined && username !== null) {
+            // Check if username is different from current
+            if (username !== targetUser.username) {
+                // Check if new username already exists
+                const existingUser = await env.DB.prepare("SELECT id FROM users WHERE username = ? AND id != ?").bind(username, userId).first();
+                if (existingUser) {
+                    return new Response(JSON.stringify({ error: "Username already in use" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+                }
+                updates.push("username = ?");
+                values.push(username);
+            }
+        }
+
+        if (displayName !== undefined && displayName !== null) {
+            updates.push("displayName = ?");
+            values.push(displayName);
+        }
+
+        if (updates.length === 0) {
+            return new Response(JSON.stringify({ error: "No fields to update" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // Execute update
+        values.push(userId);
+        await env.DB.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`)
+            .bind(...values).run();
+
+        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // --- API Route: Handle Settings ---
     if (url.pathname === "/api/settings") {
-      // Try to get user from token first, fallback to header if needed (but prefer token)
-      let userId = request.headers.get("X-User-ID");
-      
+      // SECURITY: Always require JWT token - never trust client-provided user IDs
       const payload = await getUser(request);
-      if (payload) {
-          userId = payload.id;
-      }
-
-      if (!userId) return new Response("Missing User ID or Token", { status: 401, headers: corsHeaders });
+      if (!payload) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+      
+      const userId = payload.id;
 
       try {
         // GET: Retrieve Settings
