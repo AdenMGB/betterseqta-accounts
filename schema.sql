@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE NOT NULL,
     displayName TEXT,
     pfpUrl TEXT,
-    admin_level INTEGER DEFAULT 0, -- 0 = user, 1 = junior admin, 2 = middle admin, 3 = senior admin
+    is_admin BOOLEAN DEFAULT 0,
     created_at INTEGER DEFAULT (unixepoch())
 );
 

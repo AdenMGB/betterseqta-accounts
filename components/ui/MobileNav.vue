@@ -8,8 +8,8 @@
       <Cog6ToothIcon class="w-6 h-6" />
       <span class="text-xs mt-1">Settings</span>
     </NuxtLink>
-    <NuxtLink v-if="auth.user.value && (auth.user.value?.admin_level || 0) > 0" to="/admin" class="flex flex-col items-center justify-center flex-1" :class="isActive('/admin')">
-      <KeyIcon class="w-6 h-6" />
+    <NuxtLink v-if="auth.user.value?.is_admin" to="/admin" class="flex flex-col items-center justify-center flex-1" :class="isActive('/admin')">
+      <ShieldCheckIcon class="w-6 h-6" />
       <span class="text-xs mt-1">Admin</span>
     </NuxtLink>
   </nav>
