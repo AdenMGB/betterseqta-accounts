@@ -285,9 +285,41 @@
 </template>
 
 <style scoped>
+.form-group {
+  @apply flex flex-col gap-1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.form-label {
+  @apply text-sm font-medium text-zinc-700 dark:text-zinc-300;
+  display: block;
+  line-height: 1.5;
+  margin-bottom: 0.375rem;
+}
+
 .form-input {
   @apply w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200;
 }
+
+.form-select {
+  @apply w-full px-3 py-2 bg-white/50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200;
+  /* Fix alignment issues in Firefox and ensure consistent rendering */
+  min-height: 2.5rem;
+  height: 2.5rem;
+  line-height: 1.5;
+  display: block;
+  /* Ensure consistent padding across browsers - Firefox needs explicit values */
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  padding-left: 0.75rem;
+  padding-right: 2.5rem;
+  /* Align text properly */
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
 .form-button-primary {
   @apply flex justify-center py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-zinc-100 dark:focus:ring-offset-zinc-900 focus:ring-primary-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
 }
