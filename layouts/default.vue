@@ -15,6 +15,10 @@
           <Cog6ToothIcon class="w-5 h-5" />
           Settings
         </NuxtLink>
+        <NuxtLink v-if="auth.user.value?.is_admin" to="/admin" :class="getLinkClass('/admin')">
+          <ShieldCheckIcon class="w-5 h-5" />
+          Admin
+        </NuxtLink>
       </nav>
       <div class="animate-fade-in delay-200">
         <button @click="auth.logout" class="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 hover:text-zinc-900 dark:hover:text-white w-full transition-all duration-200">
@@ -83,7 +87,7 @@ import { useRoute } from 'vue-router'
 import { useAuth } from '~/composables/useAuth'
 import UserAvatar from '~/components/UserAvatar.vue'
 import Toast from '~/components/ui/Toast.vue'
-import { HomeIcon, Cog6ToothIcon, UserCircleIcon, ArrowRightOnRectangleIcon, SunIcon, MoonIcon, KeyIcon } from '@heroicons/vue/24/outline'
+import { HomeIcon, Cog6ToothIcon, UserCircleIcon, ArrowRightOnRectangleIcon, SunIcon, MoonIcon, ShieldCheckIcon } from '@heroicons/vue/24/outline'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
 import MobileNav from '~/components/ui/MobileNav.vue'
 
