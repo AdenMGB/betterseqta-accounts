@@ -95,6 +95,11 @@ const auth = useAuth()
 const route = useRoute()
 const isDark = ref(true)
 
+// Computed property to check if user is admin
+const isAdmin = computed(() => {
+  return auth.user.value && (auth.user.value?.admin_level ?? 0) > 0
+})
+
 const getLinkClass = (path: string) => {
   const isActive = route.path === path
   return [
@@ -116,7 +121,12 @@ const toggleDarkMode = () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // Ensure user is loaded
+  if (process.client && localStorage.getItem('token') && !auth.user.value) {
+    await auth.fetchUser()
+  }
+  
   const theme = localStorage.getItem('theme')
   if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
     isDark.value = true
