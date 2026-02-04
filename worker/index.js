@@ -75,6 +75,9 @@ export default {
              return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
+        // Normalize email to lowercase for case-insensitive handling
+        const normalizedEmail = email.toLowerCase().trim();
+
         const id = crypto.randomUUID();
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -82,17 +85,17 @@ export default {
             // Default admin_level is handled by DB default (0), but we can be explicit if needed.
             await env.DB.prepare(
                 "INSERT INTO users (id, email, password, username, displayName, admin_level) VALUES (?, ?, ?, ?, ?, ?)"
-            ).bind(id, email, hashedPassword, username, displayName || username, 0).run();
+            ).bind(id, normalizedEmail, hashedPassword, username, displayName || username, 0).run();
         } catch (e) {
             return new Response(JSON.stringify({ error: "User already exists" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
-        const token = await new SignJWT({ id, email, username })
+        const token = await new SignJWT({ id, email: normalizedEmail, username })
             .setProtectedHeader({ alg: 'HS256' })
             .setExpirationTime('7d')
             .sign(jwtSecret);
 
-        return new Response(JSON.stringify({ token, user: { id, email, username, displayName, admin_level: 0 } }), {
+        return new Response(JSON.stringify({ token, user: { id, email: normalizedEmail, username, displayName, admin_level: 0 } }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
 
@@ -105,7 +108,9 @@ export default {
     if (url.pathname === "/api/auth/login" && request.method === "POST") {
         try {
             const { login, password } = await request.json();
-            const user = await env.DB.prepare("SELECT * FROM users WHERE email = ? OR username = ?").bind(login, login).first();
+            // Normalize login to lowercase if it's an email (contains @), otherwise keep as-is for username
+            const normalizedLogin = login.includes('@') ? login.toLowerCase().trim() : login;
+            const user = await env.DB.prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(?) OR username = ?").bind(normalizedLogin, login).first();
 
             if (!user || !(await bcrypt.compare(password, user.password))) {
                 return new Response(JSON.stringify({ error: "Invalid credentials" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -184,6 +189,9 @@ export default {
                 return new Response(JSON.stringify({ error: "Invalid email format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
             }
 
+            // Normalize email to lowercase for case-insensitive handling
+            const normalizedNewEmail = newEmail.toLowerCase().trim();
+
             // Get current user password hash
             const user = await env.DB.prepare("SELECT password, email FROM users WHERE id = ?").bind(userPayload.id).first();
             if (!user) return new Response("User not found", { status: 404, headers: corsHeaders });
@@ -194,21 +202,21 @@ export default {
                 return new Response(JSON.stringify({ error: "Invalid password" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
             }
 
-            // Check if new email is different from current
-            if (user.email === newEmail) {
+            // Check if new email is different from current (case-insensitive comparison)
+            if (user.email.toLowerCase() === normalizedNewEmail) {
                 return new Response(JSON.stringify({ error: "New email must be different from current email" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
             }
 
-            // Check if new email already exists
-            const existingUser = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(newEmail).first();
+            // Check if new email already exists (case-insensitive)
+            const existingUser = await env.DB.prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?)").bind(normalizedNewEmail).first();
             if (existingUser) {
                 return new Response(JSON.stringify({ error: "Email already in use" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
             }
 
             // Update email
-            await env.DB.prepare("UPDATE users SET email = ? WHERE id = ?").bind(newEmail, userPayload.id).run();
+            await env.DB.prepare("UPDATE users SET email = ? WHERE id = ?").bind(normalizedNewEmail, userPayload.id).run();
 
-            return new Response(JSON.stringify({ success: true, email: newEmail }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            return new Response(JSON.stringify({ success: true, email: normalizedNewEmail }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
         } catch (e) {
             // Handle unique constraint violation
@@ -320,8 +328,10 @@ The BetterSEQTA+ Team
                 return new Response(JSON.stringify({ error: "Missing email or username" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
             }
 
-            // Look up user by email or username
-            const user = await env.DB.prepare("SELECT id, email, displayName FROM users WHERE email = ? OR username = ?").bind(login, login).first();
+            // Normalize login to lowercase if it's an email (contains @), otherwise keep as-is for username
+            const normalizedLogin = login.includes('@') ? login.toLowerCase().trim() : login;
+            // Look up user by email or username (case-insensitive for email)
+            const user = await env.DB.prepare("SELECT id, email, displayName FROM users WHERE LOWER(email) = LOWER(?) OR username = ?").bind(normalizedLogin, login).first();
 
             // Check for rate limiting: 5-minute cooldown
             if (user) {
@@ -735,15 +745,17 @@ The BetterSEQTA+ Team
             if (!emailRegex.test(email)) {
                 return new Response(JSON.stringify({ error: "Invalid email format" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
             }
-            // Check if email is different from current
-            if (email !== targetUser.email) {
-                // Check if new email already exists
-                const existingUser = await env.DB.prepare("SELECT id FROM users WHERE email = ? AND id != ?").bind(email, userId).first();
+            // Normalize email to lowercase for case-insensitive handling
+            const normalizedEmail = email.toLowerCase().trim();
+            // Check if email is different from current (case-insensitive comparison)
+            if (normalizedEmail !== targetUser.email.toLowerCase()) {
+                // Check if new email already exists (case-insensitive)
+                const existingUser = await env.DB.prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ?").bind(normalizedEmail, userId).first();
                 if (existingUser) {
                     return new Response(JSON.stringify({ error: "Email already in use" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
                 }
                 updates.push("email = ?");
-                values.push(email);
+                values.push(normalizedEmail);
             }
         }
 
