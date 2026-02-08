@@ -606,8 +606,11 @@ The BetterSEQTA+ Team
     
     // Initiate Discord OAuth
     if (url.pathname === "/api/oauth/discord" && request.method === "GET") {
-        const discordClientId = env.DISCORD_CLIENT_ID;
-        const discordRedirectUri = env.DISCORD_REDIRECT_URI || `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/discord/callback`;
+        // Clean environment variables (strip quotes and trim)
+        const discordClientId = env.DISCORD_CLIENT_ID ? String(env.DISCORD_CLIENT_ID).replace(/^["']|["']$/g, '').trim() : null;
+        const discordRedirectUri = env.DISCORD_REDIRECT_URI 
+            ? String(env.DISCORD_REDIRECT_URI).replace(/^["']|["']$/g, '').trim()
+            : `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/discord/callback`;
         
         if (!discordClientId) {
             return new Response("Discord OAuth not configured", { status: 500, headers: corsHeaders });
@@ -637,9 +640,12 @@ The BetterSEQTA+ Team
                 return Response.redirect(`${env.APP_URL || 'https://accounts.betterseqta.org'}/login?error=no_code`, 302);
             }
 
-            const discordClientId = env.DISCORD_CLIENT_ID;
-            const discordClientSecret = env.DISCORD_CLIENT_SECRET;
-            const discordRedirectUri = env.DISCORD_REDIRECT_URI || `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/discord/callback`;
+            // Clean environment variables (strip quotes and trim)
+            const discordClientId = env.DISCORD_CLIENT_ID ? String(env.DISCORD_CLIENT_ID).replace(/^["']|["']$/g, '').trim() : null;
+            const discordClientSecret = env.DISCORD_CLIENT_SECRET ? String(env.DISCORD_CLIENT_SECRET).replace(/^["']|["']$/g, '').trim() : null;
+            const discordRedirectUri = env.DISCORD_REDIRECT_URI 
+                ? String(env.DISCORD_REDIRECT_URI).replace(/^["']|["']$/g, '').trim()
+                : `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/discord/callback`;
 
             if (!discordClientId || !discordClientSecret) {
                 return Response.redirect(`${env.APP_URL || 'https://accounts.betterseqta.org'}/login?error=not_configured`, 302);
