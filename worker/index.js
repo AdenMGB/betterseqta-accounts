@@ -602,15 +602,34 @@ The BetterSEQTA+ Team
         return new Response(JSON.stringify(userData), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // --- Helper: Clean Environment Variable ---
+    function cleanEnvVar(value) {
+        if (!value) return null;
+        let cleaned = String(value).trim();
+        
+        // Remove variable name prefix if present (e.g., "DISCORD_CLIENT_ID=")
+        cleaned = cleaned.replace(/^[A-Z_]+=/, '');
+        
+        // Remove quotes from start and end
+        cleaned = cleaned.replace(/^["']|["']$/g, '');
+        
+        // If still contains quotes, try to extract value between quotes
+        const quotedMatch = cleaned.match(/["']([^"']+)["']/);
+        if (quotedMatch) {
+            cleaned = quotedMatch[1];
+        }
+        
+        return cleaned.trim() || null;
+    }
+
     // --- Discord OAuth Endpoints ---
     
     // Initiate Discord OAuth
     if (url.pathname === "/api/oauth/discord" && request.method === "GET") {
-        // Clean environment variables (strip quotes and trim)
-        const discordClientId = env.DISCORD_CLIENT_ID ? String(env.DISCORD_CLIENT_ID).replace(/^["']|["']$/g, '').trim() : null;
-        const discordRedirectUri = env.DISCORD_REDIRECT_URI 
-            ? String(env.DISCORD_REDIRECT_URI).replace(/^["']|["']$/g, '').trim()
-            : `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/discord/callback`;
+        // Clean environment variables with robust parsing
+        const discordClientId = cleanEnvVar(env.DISCORD_CLIENT_ID);
+        const discordRedirectUri = cleanEnvVar(env.DISCORD_REDIRECT_URI) 
+            || `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/discord/callback`;
         
         if (!discordClientId) {
             return new Response("Discord OAuth not configured", { status: 500, headers: corsHeaders });
@@ -640,12 +659,11 @@ The BetterSEQTA+ Team
                 return Response.redirect(`${env.APP_URL || 'https://accounts.betterseqta.org'}/login?error=no_code`, 302);
             }
 
-            // Clean environment variables (strip quotes and trim)
-            const discordClientId = env.DISCORD_CLIENT_ID ? String(env.DISCORD_CLIENT_ID).replace(/^["']|["']$/g, '').trim() : null;
-            const discordClientSecret = env.DISCORD_CLIENT_SECRET ? String(env.DISCORD_CLIENT_SECRET).replace(/^["']|["']$/g, '').trim() : null;
-            const discordRedirectUri = env.DISCORD_REDIRECT_URI 
-                ? String(env.DISCORD_REDIRECT_URI).replace(/^["']|["']$/g, '').trim()
-                : `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/discord/callback`;
+            // Clean environment variables with robust parsing
+            const discordClientId = cleanEnvVar(env.DISCORD_CLIENT_ID);
+            const discordClientSecret = cleanEnvVar(env.DISCORD_CLIENT_SECRET);
+            const discordRedirectUri = cleanEnvVar(env.DISCORD_REDIRECT_URI) 
+                || `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/discord/callback`;
 
             if (!discordClientId || !discordClientSecret) {
                 return Response.redirect(`${env.APP_URL || 'https://accounts.betterseqta.org'}/login?error=not_configured`, 302);
