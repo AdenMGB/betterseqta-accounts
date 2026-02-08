@@ -799,8 +799,8 @@ The BetterSEQTA+ Team
 
             // Clean Discord environment variables
             const discordClientId = cleanEnvVar(env.DISCORD_CLIENT_ID);
-            const discordRedirectUri = cleanEnvVar(env.DISCORD_REDIRECT_URI) 
-                || `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/desqta/discord/callback`;
+            // Always use the DesQTA callback URL for DesQTA Discord OAuth flow
+            const discordRedirectUri = `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/desqta/discord/callback`;
 
             if (!discordClientId) {
                 return new Response(JSON.stringify({ error: "Discord OAuth not configured" }), { 
@@ -884,8 +884,8 @@ The BetterSEQTA+ Team
             // Clean Discord environment variables
             const discordClientId = cleanEnvVar(env.DISCORD_CLIENT_ID);
             const discordClientSecret = cleanEnvVar(env.DISCORD_CLIENT_SECRET);
-            const discordRedirectUri = cleanEnvVar(env.DISCORD_REDIRECT_URI) 
-                || `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/desqta/discord/callback`;
+            // Always use the DesQTA callback URL for DesQTA Discord OAuth flow
+            const discordRedirectUri = `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/desqta/discord/callback`;
 
             if (!discordClientId || !discordClientSecret) {
                 return new Response(JSON.stringify({ error: "Discord OAuth not configured" }), { 

@@ -20,7 +20,8 @@ The Discord OAuth flow allows DesQTA users to sign in using their Discord accoun
    - Create a new client with:
      - **Name**: `DesQTA`
      - **Redirect URI**: Your DesQTA callback URL (e.g., `desqta://auth/callback` or `http://localhost:3000/auth/callback`)
-   - Save the **Client ID** (you'll need this in your code)
+   - **Save the Client ID** - This is what DesQTA will use (e.g., `afa43ee2-397d-4f56-ae0f-ae3f7520bc0d`)
+   - **Note**: You do NOT need the Client Secret for Discord OAuth flow, and you do NOT use the Discord Client ID/Secret (those are server-side only)
 
 2. **Configure DesQTA Protocol Handler** (for custom URL schemes)
    - If using `desqta://` protocol, configure it in your `tauri.conf.json`
@@ -66,8 +67,9 @@ Add Discord OAuth methods to your `src/services/auth.ts`:
 // src/services/auth.ts
 
 const API_URL = 'https://accounts.betterseqta.org';
-const DESQTA_CLIENT_ID = 'your-oauth-client-id-from-admin-dashboard';
-const DESQTA_REDIRECT_URI = 'desqta://auth/callback'; // Must match registered URI
+// Use the OAuth Client ID from the admin dashboard (NOT the Discord Client ID)
+const DESQTA_CLIENT_ID = 'afa43ee2-397d-4f56-ae0f-ae3f7520bc0d'; // Replace with your actual Client ID
+const DESQTA_REDIRECT_URI = 'desqta://auth/callback'; // Must match registered URI exactly
 
 export const authService = {
   /**
