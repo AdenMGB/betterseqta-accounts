@@ -2,7 +2,125 @@
 
 This guide explains how to integrate authentication and settings synchronization into the DesQTA (Tauri + Svelte + TypeScript) application using the Cloudflare Worker backend.
 
-## 1. Authentication Service
+## 1. Discord OAuth Setup
+
+Before using Discord OAuth, you need to register DesQTA as an OAuth client:
+
+1. Go to the Admin Dashboard at `https://accounts.betterseqta.org/admin`
+2. Navigate to the "OAuth Clients" tab
+3. Create a new client with:
+   - **Name**: `DesQTA`
+   - **Redirect URI**: Your DesQTA callback URL (e.g., `desqta://auth/callback` or `http://localhost:3000/auth/callback`)
+
+You'll receive:
+- **Client ID**: Use this in your Discord OAuth requests
+- **Client Secret**: Keep this secure (not needed for Discord OAuth flow)
+
+## 2. Discord OAuth Authentication
+
+DesQTA can authenticate users via Discord OAuth. This provides a seamless login experience without requiring users to create a separate account.
+
+### Implementation
+
+Add Discord OAuth support to your `auth.ts` service:
+
+```typescript
+// src/services/auth.ts
+
+const API_URL = 'https://accounts.betterseqta.org';
+const DESQTA_CLIENT_ID = 'your-oauth-client-id-from-admin-dashboard';
+const DESQTA_REDIRECT_URI = 'desqta://auth/callback'; // Your app's callback URL
+
+export const authService = {
+  /**
+   * Initiates Discord OAuth flow for DesQTA.
+   * Opens the user's browser to authenticate with Discord.
+   */
+  async loginWithDiscord() {
+    // Construct the Discord OAuth URL
+    const authUrl = new URL(`${API_URL}/api/oauth/desqta/discord`);
+    authUrl.searchParams.set('client_id', DESQTA_CLIENT_ID);
+    authUrl.searchParams.set('redirect_uri', DESQTA_REDIRECT_URI);
+
+    // For Tauri, use the shell API to open the browser
+    // @ts-ignore
+    const { open } = await import('@tauri-apps/api/shell');
+    await open(authUrl.toString());
+    
+    // The user will be redirected back to your app's callback URL
+    // Handle the callback in your app (see below)
+  },
+
+  /**
+   * Handles the Discord OAuth callback.
+   * Call this when your app receives the callback with token and user_id.
+   */
+  async handleDiscordCallback(token: string, userId: string) {
+    // Save token securely
+    localStorage.setItem('bs_token', token);
+    
+    // Fetch user profile
+    const user = await this.getProfile();
+    localStorage.setItem('bs_user', JSON.stringify(user));
+    
+    return user;
+  },
+
+  // ... rest of auth service methods
+};
+```
+
+### Handling the Callback
+
+In your Tauri app, you need to handle the callback URL. Here's an example for handling the `desqta://auth/callback` URL:
+
+```typescript
+// src/main.ts or wherever you handle deep links
+
+import { getCurrentWindow } from '@tauri-apps/api/window';
+
+// Listen for the callback URL
+// This depends on how you've configured your Tauri app's protocol handler
+async function handleAuthCallback() {
+  // Extract token and user_id from URL query parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const token = urlParams.get('token');
+  const userId = urlParams.get('user_id');
+
+  if (token && userId) {
+    await authService.handleDiscordCallback(token, userId);
+    // Navigate to your main app or close the auth window
+    getCurrentWindow().close();
+  }
+}
+
+// Call this when your app loads or when the callback URL is detected
+handleAuthCallback();
+```
+
+### Usage in Svelte Component
+
+```svelte
+<script lang="ts">
+  import { authService } from '../services/auth';
+
+  async function handleDiscordLogin() {
+    try {
+      await authService.loginWithDiscord();
+      // The browser will open, user authenticates with Discord
+      // Then they'll be redirected back to your app
+    } catch (error) {
+      console.error('Discord login failed:', error);
+    }
+  }
+</script>
+
+<button on:click={handleDiscordLogin}>
+  Sign in with Discord
+</button>
+```
+
+## 3. Authentication Service
 
 Create a file `src/services/auth.ts` to handle login and token management.
 
@@ -98,7 +216,7 @@ export const authService = {
 };
 ```
 
-## 2. Settings Synchronization Service
+## 4. Settings Synchronization Service
 
 Create a file `src/services/settings.ts` to manage fetching and saving settings.
 
@@ -171,7 +289,7 @@ export const settingsService = {
 };
 ```
 
-## 3. Usage Example (Svelte)
+## 5. Usage Example (Svelte)
 
 Here is how you can use these services in a Svelte component (e.g., `src/routes/+page.svelte` or a dedicated Login component).
 

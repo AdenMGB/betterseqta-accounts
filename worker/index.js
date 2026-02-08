@@ -765,6 +765,241 @@ The BetterSEQTA+ Team
         }
     }
 
+    // --- DesQTA Discord OAuth Endpoints ---
+    
+    // Initiate Discord OAuth for DesQTA (requires OAuth client_id)
+    if (url.pathname === "/api/oauth/desqta/discord" && request.method === "GET") {
+        try {
+            const clientId = url.searchParams.get("client_id");
+            const redirectUri = url.searchParams.get("redirect_uri");
+
+            if (!clientId || !redirectUri) {
+                return new Response(JSON.stringify({ error: "Missing client_id or redirect_uri" }), { 
+                    status: 400, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            // Verify OAuth client exists and redirect_uri matches
+            const client = await env.DB.prepare("SELECT id, redirect_uri FROM oauth_clients WHERE id = ?").bind(clientId).first();
+            if (!client) {
+                return new Response(JSON.stringify({ error: "Invalid client_id" }), { 
+                    status: 401, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            // Verify redirect_uri matches registered one
+            if (client.redirect_uri !== redirectUri) {
+                return new Response(JSON.stringify({ error: "redirect_uri does not match registered URI" }), { 
+                    status: 400, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            // Clean Discord environment variables
+            const discordClientId = cleanEnvVar(env.DISCORD_CLIENT_ID);
+            const discordRedirectUri = cleanEnvVar(env.DISCORD_REDIRECT_URI) 
+                || `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/desqta/discord/callback`;
+
+            if (!discordClientId) {
+                return new Response(JSON.stringify({ error: "Discord OAuth not configured" }), { 
+                    status: 500, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            // Create state parameter with client_id and redirect_uri (base64 encoded JSON)
+            const state = btoa(JSON.stringify({ client_id: clientId, redirect_uri: redirectUri }));
+
+            // Build Discord OAuth URL
+            const discordAuthUrl = new URL("https://discord.com/api/oauth2/authorize");
+            discordAuthUrl.searchParams.set("client_id", discordClientId);
+            discordAuthUrl.searchParams.set("redirect_uri", discordRedirectUri);
+            discordAuthUrl.searchParams.set("response_type", "code");
+            discordAuthUrl.searchParams.set("scope", "identify email");
+            discordAuthUrl.searchParams.set("state", state);
+
+            return Response.redirect(discordAuthUrl.toString(), 302);
+        } catch (err) {
+            console.error("DesQTA Discord OAuth initiation error:", err);
+            return new Response(JSON.stringify({ error: "Internal server error" }), { 
+                status: 500, 
+                headers: { ...corsHeaders, "Content-Type": "application/json" } 
+            });
+        }
+    }
+
+    // DesQTA Discord OAuth Callback
+    if (url.pathname === "/api/oauth/desqta/discord/callback" && request.method === "GET") {
+        try {
+            const code = url.searchParams.get("code");
+            const error = url.searchParams.get("error");
+            const state = url.searchParams.get("state");
+
+            if (error) {
+                // Redirect to DesQTA with error, or return JSON error
+                return new Response(JSON.stringify({ error: `Discord OAuth error: ${error}` }), { 
+                    status: 400, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            if (!code || !state) {
+                return new Response(JSON.stringify({ error: "Missing code or state parameter" }), { 
+                    status: 400, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            // Decode state to get client_id and redirect_uri
+            let stateData;
+            try {
+                stateData = JSON.parse(atob(state));
+            } catch (e) {
+                return new Response(JSON.stringify({ error: "Invalid state parameter" }), { 
+                    status: 400, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            const { client_id, redirect_uri } = stateData;
+
+            if (!client_id || !redirect_uri) {
+                return new Response(JSON.stringify({ error: "Invalid state data" }), { 
+                    status: 400, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            // Verify OAuth client exists
+            const client = await env.DB.prepare("SELECT id, redirect_uri FROM oauth_clients WHERE id = ?").bind(client_id).first();
+            if (!client || client.redirect_uri !== redirect_uri) {
+                return new Response(JSON.stringify({ error: "Invalid client or redirect URI mismatch" }), { 
+                    status: 401, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            // Clean Discord environment variables
+            const discordClientId = cleanEnvVar(env.DISCORD_CLIENT_ID);
+            const discordClientSecret = cleanEnvVar(env.DISCORD_CLIENT_SECRET);
+            const discordRedirectUri = cleanEnvVar(env.DISCORD_REDIRECT_URI) 
+                || `${env.APP_URL || 'https://accounts.betterseqta.org'}/api/oauth/desqta/discord/callback`;
+
+            if (!discordClientId || !discordClientSecret) {
+                return new Response(JSON.stringify({ error: "Discord OAuth not configured" }), { 
+                    status: 500, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            // Exchange code for access token
+            const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: new URLSearchParams({
+                    client_id: discordClientId,
+                    client_secret: discordClientSecret,
+                    grant_type: "authorization_code",
+                    code: code,
+                    redirect_uri: discordRedirectUri,
+                }),
+            });
+
+            if (!tokenResponse.ok) {
+                const errorText = await tokenResponse.text();
+                console.error("Discord token exchange failed:", errorText);
+                return new Response(JSON.stringify({ error: "Failed to exchange Discord code for token" }), { 
+                    status: 500, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            const tokenData = await tokenResponse.json();
+            const accessToken = tokenData.access_token;
+
+            // Get user info from Discord
+            const userResponse = await fetch("https://discord.com/api/users/@me", {
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                },
+            });
+
+            if (!userResponse.ok) {
+                return new Response(JSON.stringify({ error: "Failed to fetch Discord user info" }), { 
+                    status: 500, 
+                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
+                });
+            }
+
+            const discordUser = await userResponse.json();
+            
+            // Normalize email to lowercase, or use Discord ID as fallback
+            let normalizedEmail = discordUser.email ? discordUser.email.toLowerCase().trim() : null;
+            
+            // If no email, create a placeholder using Discord ID
+            if (!normalizedEmail) {
+                normalizedEmail = `discord_${discordUser.id}@discord.local`;
+            }
+
+            // Check if user exists by email (case-insensitive)
+            let user = await env.DB.prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(?)").bind(normalizedEmail).first();
+
+            if (!user) {
+                // Create new user
+                const userId = crypto.randomUUID();
+                const username = discordUser.username || `discord_${discordUser.id}`;
+                const displayName = discordUser.global_name || discordUser.username || username;
+                const pfpUrl = discordUser.avatar 
+                    ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
+                    : null;
+
+                // Generate a random password (users can reset it later if needed)
+                const randomPassword = crypto.randomUUID();
+                const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+                await env.DB.prepare(
+                    "INSERT INTO users (id, email, password, username, displayName, pfpUrl, admin_level) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                ).bind(userId, normalizedEmail, hashedPassword, username, displayName, pfpUrl, 0).run();
+
+                user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
+            } else {
+                // Update existing user's Discord info if needed
+                const pfpUrl = discordUser.avatar 
+                    ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
+                    : user.pfpUrl;
+                const displayName = discordUser.global_name || discordUser.username || user.displayName || user.username;
+
+                await env.DB.prepare(
+                    "UPDATE users SET displayName = ?, pfpUrl = ? WHERE id = ?"
+                ).bind(displayName, pfpUrl, user.id).run();
+            }
+
+            // Generate JWT token for API access (longer expiration for desktop app)
+            const apiToken = await new SignJWT({ id: user.id, email: user.email, username: user.username })
+                .setProtectedHeader({ alg: 'HS256' })
+                .setExpirationTime('30d') // 30 days for desktop app
+                .sign(jwtSecret);
+
+            // Redirect to DesQTA's redirect_uri with token
+            const desqtaCallbackUrl = new URL(redirect_uri);
+            desqtaCallbackUrl.searchParams.set("token", apiToken);
+            desqtaCallbackUrl.searchParams.set("user_id", user.id);
+
+            return Response.redirect(desqtaCallbackUrl.toString(), 302);
+
+        } catch (err) {
+            console.error("DesQTA Discord OAuth callback error:", err);
+            return new Response(JSON.stringify({ error: "OAuth callback error" }), { 
+                status: 500, 
+                headers: { ...corsHeaders, "Content-Type": "application/json" } 
+            });
+        }
+    }
+
     // --- API: Admin Endpoints ---
 
     // Search Users
