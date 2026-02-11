@@ -33,7 +33,7 @@ onMounted(async () => {
     document.documentElement.classList.remove('dark')
   }
 
-  try {
+    try {
     // Fetch user data
     await auth.fetchUser()
 
@@ -48,9 +48,6 @@ onMounted(async () => {
             console.error("Failed to initialize settings", e);
         }
     }
-    
-    // Add a small delay to show the loading screen
-    await new Promise(resolve => setTimeout(resolve, 1500))
   } catch (error) {
     console.error('Error during initial load:', error)
   } finally {
