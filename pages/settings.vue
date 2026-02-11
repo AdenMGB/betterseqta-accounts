@@ -34,7 +34,7 @@
             <form @submit.prevent="updateProfile" class="space-y-6">
               <!-- PFP Uploader -->
               <div class="flex items-center gap-4">
-                <img :src="pfpPreview || auth.user.value?.pfpUrl || `https://api.dicebear.com/7.x/thumbs/svg?seed=${auth.user.value?.username}`" alt="Profile Picture" class="w-20 h-20 rounded-full object-cover border-2 border-primary-500">
+                <img :src="pfpPreview || auth.user.value?.pfpUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${auth.user.value?.id ?? auth.user.value?.username ?? 'default'}`" alt="Profile Picture" class="w-20 h-20 rounded-full object-cover border-2 border-primary-500">
                 <div>
                   <input type="file" ref="pfpInput" @change="handlePfpChange" accept="image/*" class="hidden">
                   <button type="button" @click="triggerPfpInput" class="px-4 py-2 text-sm font-medium border border-zinc-300 dark:border-zinc-600 rounded-lg hover:bg-zinc-200/70 dark:hover:bg-zinc-700/50 transition-all duration-200">
