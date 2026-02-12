@@ -1339,6 +1339,15 @@ The BetterSEQTA+ Team
         return new Response(JSON.stringify(clients.results), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // DesQTA Reserved Clients Count
+    if (url.pathname === "/api/admin/desqta-clients-count" && request.method === "GET") {
+        const admin = await getAdminUser(request);
+        if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+        const result = await env.DB.prepare("SELECT COUNT(*) as count FROM desqta_reserved_clients").first();
+        return new Response(JSON.stringify({ count: result?.count ?? 0 }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // Create Client
     if (url.pathname === "/api/admin/clients" && request.method === "POST") {
         const admin = await getAdminUser(request);

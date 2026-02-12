@@ -178,6 +178,14 @@
 
       <!-- OAuth Clients Tab -->
       <div v-if="activeTab === 'clients'" class="space-y-8">
+        <!-- DesQTA Clients -->
+        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">DesQTA Clients</h3>
+          <p class="text-zinc-600 dark:text-zinc-400">
+            Reserved client instances: <span class="font-semibold text-zinc-900 dark:text-white">{{ desqtaClientsCount }}</span>
+          </p>
+        </div>
+
         <!-- Create Client -->
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
             <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-4">Create New Client</h3>
@@ -260,6 +268,7 @@ const editingUser = ref<any>(null) // User currently being edited
 
 // Clients State
 const clients = ref<any[]>([])
+const desqtaClientsCount = ref(0)
 const newClient = ref({ name: '', redirect_uri: '' })
 const creatingClient = ref(false)
 const lastCreatedClient = ref<any>(null)
@@ -479,6 +488,17 @@ const loadClients = async () => {
     }
 }
 
+const loadDesqtaClientsCount = async () => {
+    try {
+        const res = await $fetch<{ count: number }>('/api/admin/desqta-clients-count', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+        desqtaClientsCount.value = res.count
+    } catch (e) {
+        console.error('Failed to load DesQTA clients count', e)
+    }
+}
+
 const createClient = async () => {
     creatingClient.value = true
     lastCreatedClient.value = null
@@ -501,6 +521,7 @@ const createClient = async () => {
 onMounted(() => {
     if (auth.user.value && (auth.user.value?.admin_level || 0) > 0) {
         loadClients()
+        loadDesqtaClientsCount()
         searchUsers(1) // Load initial users
     }
 })
