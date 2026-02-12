@@ -604,12 +604,20 @@ The BetterSEQTA+ Team
 
     // --- Desqta API Endpoints ---
 
+    const DESQTA_CLIENT_TTL_DAYS = 7;
+
     // Helper: Validate Desqta client_id (checks oauth_clients OR desqta_reserved_clients)
     async function getDesqtaClient(clientId, redirectUri) {
         const oauth = await env.DB.prepare("SELECT id, redirect_uri FROM oauth_clients WHERE id = ?").bind(clientId).first();
-        if (oauth) return { valid: true, redirect_uri: oauth.redirect_uri };
-        const reserved = await env.DB.prepare("SELECT id, redirect_uri FROM desqta_reserved_clients WHERE id = ?").bind(clientId).first();
-        if (reserved) return { valid: true, redirect_uri: reserved.redirect_uri };
+        if (oauth) return { valid: true, redirect_uri: oauth.redirect_uri, isReserved: false };
+        const reserved = await env.DB.prepare("SELECT id, redirect_uri, expires_at FROM desqta_reserved_clients WHERE id = ?").bind(clientId).first();
+        if (reserved) {
+            const now = Math.floor(Date.now() / 1000);
+            if (reserved.expires_at != null && reserved.expires_at < now) {
+                return { valid: false };
+            }
+            return { valid: true, redirect_uri: reserved.redirect_uri, isReserved: true };
+        }
         return { valid: false };
     }
 
@@ -617,6 +625,12 @@ The BetterSEQTA+ Team
         const client = await getDesqtaClient(clientId, redirectUri);
         if (!client.valid) return false;
         return redirectUri ? client.redirect_uri === redirectUri : true;
+    }
+
+    async function touchDesqtaReservedClient(clientId) {
+        const now = Math.floor(Date.now() / 1000);
+        const expiresAt = now + (DESQTA_CLIENT_TTL_DAYS * 24 * 60 * 60);
+        await env.DB.prepare("UPDATE desqta_reserved_clients SET expires_at = ? WHERE id = ?").bind(expiresAt, clientId).run();
     }
 
     // POST /api/desqta/client/reserve - Reserve a client_id (public, no auth required)
@@ -631,9 +645,11 @@ The BetterSEQTA+ Team
                 });
             }
             const clientId = crypto.randomUUID();
+            const now = Math.floor(Date.now() / 1000);
+            const expiresAt = now + (DESQTA_CLIENT_TTL_DAYS * 24 * 60 * 60);
             await env.DB.prepare(
-                "INSERT INTO desqta_reserved_clients (id, redirect_uri) VALUES (?, ?)"
-            ).bind(clientId, redirectUri.trim()).run();
+                "INSERT INTO desqta_reserved_clients (id, redirect_uri, expires_at) VALUES (?, ?, ?)"
+            ).bind(clientId, redirectUri.trim(), expiresAt).run();
 
             const baseUrl = env.APP_URL || 'https://accounts.betterseqta.org';
             return new Response(JSON.stringify({
@@ -670,6 +686,7 @@ The BetterSEQTA+ Team
                 headers: { ...corsHeaders, "Content-Type": "application/json" } 
             });
         }
+        await touchDesqtaReservedClient(clientId);
         const baseUrl = env.APP_URL || 'https://accounts.betterseqta.org';
         return new Response(JSON.stringify({
             client_id: clientId,
@@ -735,6 +752,7 @@ The BetterSEQTA+ Team
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
                 });
             }
+            await touchDesqtaReservedClient(client_id);
 
             // Generate new access token (1h)
             const accessToken = await new SignJWT({ id: user.id, email: user.email, username: user.username })
@@ -792,6 +810,7 @@ The BetterSEQTA+ Team
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
                 });
             }
+            await touchDesqtaReservedClient(client_id);
 
             const normalizedLogin = login.includes('@') ? login.toLowerCase().trim() : login;
             const user = await env.DB.prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(?) OR username = ?").bind(normalizedLogin, login).first();
@@ -1024,6 +1043,7 @@ The BetterSEQTA+ Team
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
                 });
             }
+            await touchDesqtaReservedClient(clientId);
 
             // Clean Discord environment variables
             const discordClientId = cleanEnvVar(env.DISCORD_CLIENT_ID);
@@ -1108,6 +1128,7 @@ The BetterSEQTA+ Team
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
                 });
             }
+            await touchDesqtaReservedClient(client_id);
 
             // Clean Discord environment variables
             const discordClientId = cleanEnvVar(env.DISCORD_CLIENT_ID);

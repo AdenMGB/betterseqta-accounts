@@ -18,10 +18,12 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 -- Desqta Reserved Clients (dynamic client_id reservation, no admin pre-registration)
+-- expires_at: 7-day TTL, refreshed on use (config, login, refresh, Discord OAuth)
 CREATE TABLE IF NOT EXISTS desqta_reserved_clients (
     id TEXT PRIMARY KEY,
     redirect_uri TEXT NOT NULL,
-    created_at INTEGER DEFAULT (unixepoch())
+    created_at INTEGER DEFAULT (unixepoch()),
+    expires_at INTEGER
 );
 
 -- OAuth Clients Table

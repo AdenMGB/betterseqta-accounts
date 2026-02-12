@@ -2,7 +2,7 @@
 
 This guide explains how to integrate the **client ID reserve** flow into DesQTA. It allows any user (logged in or not) to obtain a unique `client_id` before authenticating, eliminating the need for admin pre-registration.
 
-> **Note for accounts.betterseqta.org admins:** Run the migration `0007_desqta_reserved_clients.sql` before deploying:
+> **Note for accounts.betterseqta.org admins:** Run migrations `0007_desqta_reserved_clients.sql` and `0008_desqta_reserved_clients_expires.sql` before deploying:
 > ```bash
 > pnpm db:migrate:remote
 > ```
@@ -189,9 +189,22 @@ If you previously used an admin-registered `client_id`:
 | `Invalid client_id or redirect_uri` | Using a reserved client_id with a different redirect_uri than the one used when reserving |
 | `Invalid client_id` | client_id not found (e.g. never reserved, or invalid) |
 
+## Expiration & Refresh
+
+Reserved client IDs expire after **7 days** of inactivity. Any use of the client resets the timer to a fresh 7 days:
+
+- `GET /api/desqta/config`
+- `POST /api/desqta/login`
+- `POST /api/desqta/refresh`
+- `GET /api/oauth/desqta/discord` (initiate)
+- Discord OAuth callback (after successful login)
+
+If a client_id expires, the app must call `POST /api/desqta/client/reserve` again to get a new one.
+
 ## Summary
 
 1. Call `POST /api/desqta/client/reserve` on app startup (before login).
 2. Store the returned `client_id`.
 3. Use that `client_id` for login, refresh, Discord OAuth, and config.
 4. No admin pre-registration required.
+5. Client IDs expire after 7 days of inactivity; using them resets the timer.
