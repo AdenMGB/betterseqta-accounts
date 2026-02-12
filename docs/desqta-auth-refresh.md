@@ -13,8 +13,9 @@ When the access token expires or API returns 401, DesQTA calls the refresh endpo
 
 ## Prerequisites
 
-1. Register DesQTA as an OAuth client at `https://accounts.betterseqta.org/admin` (OAuth Clients tab)
-2. Note your **Client ID** and registered **Redirect URI** (e.g. `desqta://auth/callback`)
+**Option A (recommended):** Use the [Client ID Reserve flow](./desqta-client-reserve.md) – call `POST /api/desqta/client/reserve` on app startup. No admin registration needed.
+
+**Option B:** Register DesQTA as an OAuth client at `https://accounts.betterseqta.org/admin` (OAuth Clients tab) and note your **Client ID** and **Redirect URI** (e.g. `desqta://auth/callback`)
 
 ## 1. Configuration Endpoint
 

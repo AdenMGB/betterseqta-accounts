@@ -17,6 +17,13 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at INTEGER DEFAULT (unixepoch())
 );
 
+-- Desqta Reserved Clients (dynamic client_id reservation, no admin pre-registration)
+CREATE TABLE IF NOT EXISTS desqta_reserved_clients (
+    id TEXT PRIMARY KEY,
+    redirect_uri TEXT NOT NULL,
+    created_at INTEGER DEFAULT (unixepoch())
+);
+
 -- OAuth Clients Table
 CREATE TABLE IF NOT EXISTS oauth_clients (
     id TEXT PRIMARY KEY,

@@ -604,6 +604,56 @@ The BetterSEQTA+ Team
 
     // --- Desqta API Endpoints ---
 
+    // Helper: Validate Desqta client_id (checks oauth_clients OR desqta_reserved_clients)
+    async function getDesqtaClient(clientId, redirectUri) {
+        const oauth = await env.DB.prepare("SELECT id, redirect_uri FROM oauth_clients WHERE id = ?").bind(clientId).first();
+        if (oauth) return { valid: true, redirect_uri: oauth.redirect_uri };
+        const reserved = await env.DB.prepare("SELECT id, redirect_uri FROM desqta_reserved_clients WHERE id = ?").bind(clientId).first();
+        if (reserved) return { valid: true, redirect_uri: reserved.redirect_uri };
+        return { valid: false };
+    }
+
+    async function validateDesqtaClient(clientId, redirectUri) {
+        const client = await getDesqtaClient(clientId, redirectUri);
+        if (!client.valid) return false;
+        return redirectUri ? client.redirect_uri === redirectUri : true;
+    }
+
+    // POST /api/desqta/client/reserve - Reserve a client_id (public, no auth required)
+    if (url.pathname === "/api/desqta/client/reserve" && request.method === "POST") {
+        try {
+            const body = await request.json().catch(() => ({}));
+            const redirectUri = body?.redirect_uri || 'desqta://auth/callback';
+            if (typeof redirectUri !== 'string' || !redirectUri.trim()) {
+                return new Response(JSON.stringify({ error: "redirect_uri must be a non-empty string" }), {
+                    status: 400,
+                    headers: { ...corsHeaders, "Content-Type": "application/json" }
+                });
+            }
+            const clientId = crypto.randomUUID();
+            await env.DB.prepare(
+                "INSERT INTO desqta_reserved_clients (id, redirect_uri) VALUES (?, ?)"
+            ).bind(clientId, redirectUri.trim()).run();
+
+            const baseUrl = env.APP_URL || 'https://accounts.betterseqta.org';
+            return new Response(JSON.stringify({
+                client_id: clientId,
+                redirect_uri: redirectUri.trim(),
+                api_url: baseUrl,
+                config_url: `${baseUrl}/api/desqta/config`,
+                refresh_url: `${baseUrl}/api/desqta/refresh`,
+                login_url: `${baseUrl}/api/desqta/login`,
+                discord_auth_url: `${baseUrl}/api/oauth/desqta/discord`
+            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (err) {
+            console.error("Desqta reserve client error:", err);
+            return new Response(JSON.stringify({ error: "Failed to reserve client" }), {
+                status: 500,
+                headers: { ...corsHeaders, "Content-Type": "application/json" }
+            });
+        }
+    }
+
     // GET /api/desqta/config - Returns client config for Desqta (public)
     if (url.pathname === "/api/desqta/config" && request.method === "GET") {
         const clientId = url.searchParams.get("client_id");
@@ -613,8 +663,8 @@ The BetterSEQTA+ Team
                 headers: { ...corsHeaders, "Content-Type": "application/json" } 
             });
         }
-        const client = await env.DB.prepare("SELECT id FROM oauth_clients WHERE id = ?").bind(clientId).first();
-        if (!client) {
+        const client = await getDesqtaClient(clientId);
+        if (!client.valid) {
             return new Response(JSON.stringify({ error: "Invalid client_id" }), { 
                 status: 404, 
                 headers: { ...corsHeaders, "Content-Type": "application/json" } 
@@ -735,8 +785,8 @@ The BetterSEQTA+ Team
                 });
             }
 
-            const client = await env.DB.prepare("SELECT id, redirect_uri FROM oauth_clients WHERE id = ?").bind(client_id).first();
-            if (!client || client.redirect_uri !== redirect_uri) {
+            const clientValid = await validateDesqtaClient(client_id, redirect_uri);
+            if (!clientValid) {
                 return new Response(JSON.stringify({ error: "Invalid client_id or redirect_uri" }), { 
                     status: 401, 
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
@@ -953,7 +1003,7 @@ The BetterSEQTA+ Team
 
     // --- DesQTA Discord OAuth Endpoints ---
     
-    // Initiate Discord OAuth for DesQTA (requires OAuth client_id)
+    // Initiate Discord OAuth for DesQTA (requires client_id - from reserve or admin dashboard)
     if (url.pathname === "/api/oauth/desqta/discord" && request.method === "GET") {
         try {
             const clientId = url.searchParams.get("client_id");
@@ -966,19 +1016,11 @@ The BetterSEQTA+ Team
                 });
             }
 
-            // Verify OAuth client exists and redirect_uri matches
-            const client = await env.DB.prepare("SELECT id, redirect_uri FROM oauth_clients WHERE id = ?").bind(clientId).first();
-            if (!client) {
-                return new Response(JSON.stringify({ error: "Invalid client_id" }), { 
+            // Verify client exists (oauth_clients or desqta_reserved_clients) and redirect_uri matches
+            const clientValid = await validateDesqtaClient(clientId, redirectUri);
+            if (!clientValid) {
+                return new Response(JSON.stringify({ error: "Invalid client_id or redirect_uri does not match" }), { 
                     status: 401, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
-            }
-
-            // Verify redirect_uri matches registered one
-            if (client.redirect_uri !== redirectUri) {
-                return new Response(JSON.stringify({ error: "redirect_uri does not match registered URI" }), { 
-                    status: 400, 
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
                 });
             }
@@ -1058,9 +1100,9 @@ The BetterSEQTA+ Team
                 });
             }
 
-            // Verify OAuth client exists
-            const client = await env.DB.prepare("SELECT id, redirect_uri FROM oauth_clients WHERE id = ?").bind(client_id).first();
-            if (!client || client.redirect_uri !== redirect_uri) {
+            // Verify client exists (oauth_clients or desqta_reserved_clients) and redirect_uri matches
+            const clientValid = await validateDesqtaClient(client_id, redirect_uri);
+            if (!clientValid) {
                 return new Response(JSON.stringify({ error: "Invalid client or redirect URI mismatch" }), { 
                     status: 401, 
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
