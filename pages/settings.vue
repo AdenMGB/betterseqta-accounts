@@ -65,6 +65,14 @@
                 </button>
               </div>
             </form>
+
+            <!-- PFP Crop Modal -->
+            <ImageCropper
+              :is-open="showPfpCropper"
+              :image-src="pfpCropSource"
+              @confirm="onPfpCropConfirm"
+              @cancel="onPfpCropCancel"
+            />
           </div>
 
           <!-- Account Settings -->
@@ -332,6 +340,7 @@ import { useSettings } from '~/composables/useSettings'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import Switch from '~/components/ui/Switch.vue'
 import ColorPicker from '~/components/ui/ColorPicker.vue'
+import ImageCropper from '~/components/ui/ImageCropper.vue'
 import { UserCircleIcon, ShieldCheckIcon, CogIcon, SwatchIcon, SparklesIcon, CpuChipIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/outline'
 
 const auth = useAuth()
@@ -345,6 +354,8 @@ const success = ref('')
 const pfpInput = ref<HTMLInputElement | null>(null)
 const pfpFile = ref<File | null>(null)
 const pfpPreview = ref<string | null>(null)
+const showPfpCropper = ref(false)
+const pfpCropSource = ref<string | null>(null)
 
 const activeTab = ref('profile')
 const tabs = [
@@ -458,13 +469,28 @@ const loadBsSettings = async () => {
 const handlePfpChange = (event: Event) => {
   const target = event.target as HTMLInputElement
   if (target.files && target.files[0]) {
-    pfpFile.value = target.files[0]
+    const file = target.files[0]
+    if (!file.type.startsWith('image/')) return
     const reader = new FileReader()
     reader.onload = (e) => {
-      pfpPreview.value = e.target?.result as string
+      pfpCropSource.value = e.target?.result as string
+      showPfpCropper.value = true
     }
-    reader.readAsDataURL(pfpFile.value)
+    reader.readAsDataURL(file)
+    target.value = '' // Reset so same file can be selected again
   }
+}
+
+const onPfpCropConfirm = (file: File) => {
+  pfpFile.value = file
+  pfpPreview.value = URL.createObjectURL(file)
+  showPfpCropper.value = false
+  pfpCropSource.value = null
+}
+
+const onPfpCropCancel = () => {
+  showPfpCropper.value = false
+  pfpCropSource.value = null
 }
 
 const updateProfile = async () => {
