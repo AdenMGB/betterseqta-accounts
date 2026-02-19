@@ -137,7 +137,29 @@
                                         >
                                             Demote
                                         </button>
-                                        <span v-if="!canModifyUser(user.admin_level || 0) && !canModerateUsers()" class="text-xs text-zinc-400 dark:text-zinc-500">
+                                        <button 
+                                            v-if="getCurrentAdminLevel() > 0 && user.id !== auth.user.value?.id"
+                                            @click="sendPasswordReset(user)"
+                                            :disabled="sendingResetUserId === user.id"
+                                            :title="'Send password reset email to ' + (user.displayName || user.username)"
+                                            class="text-sm px-3 py-1 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                                        >
+                                            <EnvelopeIcon v-if="sendingResetUserId !== user.id" class="w-4 h-4 inline" />
+                                            <LoadingSpinner v-else size="sm" container-class="inline-flex" />
+                                            <span class="ml-1">Reset</span>
+                                        </button>
+                                        <button 
+                                            v-if="canDeleteUser(user)"
+                                            @click="deleteUser(user)"
+                                            :disabled="deletingUserId === user.id"
+                                            :title="'Delete user ' + (user.displayName || user.username)"
+                                            class="text-sm px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                                        >
+                                            <TrashIcon v-if="deletingUserId !== user.id" class="w-4 h-4 inline" />
+                                            <LoadingSpinner v-else size="sm" container-class="inline-flex" />
+                                            <span class="ml-1">Delete</span>
+                                        </button>
+                                        <span v-if="!canPromoteUser(user.admin_level || 0) && !canDemoteUser(user.admin_level || 0) && !(canModerateUsers() && canModifyUser(user.admin_level || 0)) && !(getCurrentAdminLevel() > 0 && user.id !== auth.user.value?.id) && !canDeleteUser(user)" class="text-xs text-zinc-400 dark:text-zinc-500">
                                             Cannot modify
                                         </span>
                                     </template>
@@ -250,10 +272,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAuth } from '~/composables/useAuth'
-import { ShieldExclamationIcon } from '@heroicons/vue/24/outline'
+import { useToast } from '~/composables/useToast'
+import { ShieldExclamationIcon, EnvelopeIcon, TrashIcon } from '@heroicons/vue/24/outline'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 
 const auth = useAuth()
+const { showToast } = useToast()
 const activeTab = ref('users')
 
 // Users State
@@ -265,6 +289,8 @@ const currentPage = ref(1)
 const totalPages = ref(1)
 const maxAdminLevel = ref(3) // Default to 3, will be updated from API
 const editingUser = ref<any>(null) // User currently being edited
+const sendingResetUserId = ref<string | null>(null)
+const deletingUserId = ref<string | null>(null)
 
 // Clients State
 const clients = ref<any[]>([])
@@ -357,6 +383,50 @@ const canModerateUsers = (): boolean => {
     const currentLevel = getCurrentAdminLevel()
     // Require Middle Admin (level 2) or higher for moderator controls
     return currentLevel >= 2
+}
+
+const canDeleteUser = (user: any): boolean => {
+    const currentLevel = getCurrentAdminLevel()
+    if (currentLevel < maxAdminLevel.value) return false
+    if (user.id === auth.user.value?.id) return false
+    if ((user.admin_level || 0) >= maxAdminLevel.value) return false
+    return true
+}
+
+const sendPasswordReset = async (user: any) => {
+    if (!confirm(`Send a password reset email to ${user.displayName || user.username} (${user.email})?`)) return
+    sendingResetUserId.value = user.id
+    try {
+        await $fetch('/api/admin/send-password-reset', {
+            method: 'POST',
+            body: { userId: user.id },
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+        showToast('Password reset email sent', 'success')
+    } catch (e: any) {
+        showToast(e?.data?.error || 'Failed to send reset email', 'error')
+    } finally {
+        sendingResetUserId.value = null
+    }
+}
+
+const deleteUser = async (user: any) => {
+    if (!confirm(`Permanently delete ${user.displayName || user.username} (${user.email})? This cannot be undone.`)) return
+    deletingUserId.value = user.id
+    try {
+        await $fetch('/api/admin/delete-user', {
+            method: 'POST',
+            body: { userId: user.id },
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+        users.value = users.value.filter(u => u.id !== user.id)
+        totalUsers.value = Math.max(0, totalUsers.value - 1)
+        showToast('User deleted', 'success')
+    } catch (e: any) {
+        showToast(e?.data?.error || 'Failed to delete user', 'error')
+    } finally {
+        deletingUserId.value = null
+    }
 }
 
 const startUserEdit = (user: any) => {

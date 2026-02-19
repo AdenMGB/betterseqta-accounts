@@ -1351,6 +1351,83 @@ The BetterSEQTA+ Team
         return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Admin: Send Password Reset to User (any admin level)
+    if (url.pathname === "/api/admin/send-password-reset" && request.method === "POST") {
+        const admin = await getAdminUser(request);
+        if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+        const { userId } = await request.json();
+        if (!userId) {
+            return new Response(JSON.stringify({ error: "User ID is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        const user = await env.DB.prepare("SELECT id, email, displayName FROM users WHERE id = ?").bind(userId).first();
+        if (!user) {
+            return new Response(JSON.stringify({ error: "User not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        try {
+            await env.DB.prepare("UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND used = 0").bind(user.id).run();
+            const token = crypto.randomUUID();
+            const hashedToken = await bcrypt.hash(token, 10);
+            const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+            await env.DB.prepare(
+                "INSERT INTO password_reset_tokens (token, user_id, expires_at, used) VALUES (?, ?, ?, 0)"
+            ).bind(hashedToken, user.id, expiresAt).run();
+            await sendPasswordResetEmail(user.email, token, env, user.displayName || null);
+        } catch (emailError) {
+            console.error("Admin send password reset email error:", emailError);
+            return new Response(JSON.stringify({ error: "Failed to send reset email" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        return new Response(JSON.stringify({ success: true, message: "Password reset email sent" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Admin: Delete User (Senior Admin only)
+    if (url.pathname === "/api/admin/delete-user" && request.method === "POST") {
+        const admin = await getAdminUserWithLevel(request);
+        if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+        const maxAdminLevel = await getMaxAdminLevel();
+        if ((admin.adminLevel || 0) < maxAdminLevel) {
+            return new Response(JSON.stringify({ error: "Only Senior Admins can delete users" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        const { userId } = await request.json();
+        if (!userId) {
+            return new Response(JSON.stringify({ error: "User ID is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        if (userId === admin.id) {
+            return new Response(JSON.stringify({ error: "You cannot delete your own account" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        const targetUser = await env.DB.prepare("SELECT id, admin_level FROM users WHERE id = ?").bind(userId).first();
+        if (!targetUser) {
+            return new Response(JSON.stringify({ error: "User not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        if ((targetUser.admin_level || 0) >= maxAdminLevel) {
+            return new Response(JSON.stringify({ error: "Cannot delete Senior Admin users" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        try {
+            await env.DB.prepare("DELETE FROM password_reset_tokens WHERE user_id = ?").bind(userId).run();
+            await env.DB.prepare("DELETE FROM settings WHERE user_id = ?").bind(userId).run();
+            await env.DB.prepare("DELETE FROM oauth_codes WHERE user_id = ?").bind(userId).run();
+            const desqtaSessions = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='desqta_sessions'").first();
+            if (desqtaSessions) {
+                await env.DB.prepare("DELETE FROM desqta_sessions WHERE user_id = ?").bind(userId).run();
+            }
+            await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
+        } catch (err) {
+            console.error("Delete user error:", err);
+            return new Response(JSON.stringify({ error: "Failed to delete user" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // List Clients
     if (url.pathname === "/api/admin/clients" && request.method === "GET") {
         const admin = await getAdminUser(request);
