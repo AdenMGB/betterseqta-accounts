@@ -154,13 +154,8 @@
                  </h2>
                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                    <template v-for="key in getSectionKeys('appearance')" :key="key">
-                     <div v-if="key === 'theme'" class="form-group">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <select v-model="bsSettings[key]" class="form-select">
-                         <option value="light">Light</option>
-                         <option value="dark">Dark</option>
-                         <option value="system">System</option>
-                       </select>
+                     <div v-if="key === 'theme'" class="flex items-center gap-3 p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
+                       <span class="text-zinc-700 dark:text-zinc-300 capitalize">{{ bsSettings[key] || '—' }}</span>
                      </div>
                      <div v-else-if="key === 'accent_color'" class="form-group">
                        <label class="form-label">{{ formatLabel(key) }}</label>
@@ -170,19 +165,38 @@
                        <Switch v-model="bsSettings[key]" />
                        <span class="text-zinc-700 dark:text-zinc-300">{{ formatLabel(key) }}</span>
                      </div>
+                     <div v-else-if="key === 'current_theme'" class="form-group">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <input v-model="bsSettings[key]" type="text" class="form-input" placeholder="e.g. sunset" />
+                     </div>
+                     <div v-else-if="key === 'zoom_level'" class="form-group">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <input v-model.number="bsSettings[key]" type="number" class="form-input" placeholder="100" min="80" max="150" step="5" />
+                       <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Page zoom percentage (80–150). Leave empty for default.</p>
+                     </div>
                    </template>
                  </div>
                </section>
 
                <!-- Features -->
-               <section v-if="hasSection('features')">
+               <section v-if="hasSection('features') || getSectionKeys('featuresDisplayOnly').length > 0">
                  <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
                    <SparklesIcon class="w-5 h-5 text-primary-500" /> Features
                  </h2>
                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div v-for="key in getSectionKeys('features')" :key="key" class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
-                     <span class="text-zinc-700 dark:text-zinc-300 font-medium">{{ formatLabel(key) }}</span>
-                     <Switch v-model="bsSettings[key]" :invert="key === 'disable_school_picture'" />
+                   <template v-for="key in getSectionKeys('features')" :key="key">
+                     <div v-if="typeof bsSettings[key] === 'boolean' || (['quiz_generator_enabled'].includes(key) && bsSettings[key] == null)" class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
+                       <span class="text-zinc-700 dark:text-zinc-300 font-medium">{{ formatLabel(key) }}</span>
+                       <Switch v-model="bsSettings[key]" :invert="key === 'disable_school_picture'" />
+                     </div>
+                     <div v-else class="form-group p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <input v-model="bsSettings[key]" type="text" class="form-input" :placeholder="`Enter ${formatLabel(key)}`" />
+                     </div>
+                   </template>
+                   <div v-for="key in getSectionKeys('featuresDisplayOnly')" :key="'disp-' + key" class="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
+                     <span class="text-zinc-500 dark:text-zinc-400 text-sm block">{{ formatLabel(key) }}</span>
+                     <p class="text-zinc-900 dark:text-white font-medium mt-1">{{ typeof bsSettings[key] === 'boolean' ? (bsSettings[key] ? 'Yes' : 'No') : (bsSettings[key] || '—') }}</p>
                    </div>
                  </div>
                </section>
@@ -193,12 +207,19 @@
                    <CpuChipIcon class="w-5 h-5 text-primary-500" /> AI & Analytics
                  </h2>
                  <div class="space-y-4">
-                   <div v-for="key in getSectionKeys('ai')" :key="key">
+                   <template v-for="key in getSectionKeys('ai')" :key="key">
                      <div v-if="typeof bsSettings[key] === 'boolean'" class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
                        <span class="text-zinc-700 dark:text-zinc-300 font-medium">{{ formatLabel(key) }}</span>
                        <Switch v-model="bsSettings[key]" />
                      </div>
-                     <div v-else class="form-group pt-2">
+                     <div v-else-if="key === 'ai_provider'" class="form-group">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <select v-model="bsSettings[key]" class="form-select">
+                         <option value="gemini">Gemini</option>
+                         <option value="cerebras">Cerebras</option>
+                       </select>
+                     </div>
+                     <div v-else-if="key === 'cerebras_api_key' && bsSettings.ai_provider === 'cerebras'" class="form-group">
                        <label class="form-label">{{ formatLabel(key) }}</label>
                        <input 
                          type="password" 
@@ -209,7 +230,53 @@
                          :placeholder="`Enter ${formatLabel(key)}`" 
                        />
                      </div>
+                     <div v-else-if="key !== 'cerebras_api_key'" class="form-group">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <input 
+                         type="password" 
+                         :name="key" 
+                         autocomplete="new-password" 
+                         v-model="bsSettings[key]" 
+                         class="form-input" 
+                         :placeholder="`Enter ${formatLabel(key)}`" 
+                       />
+                     </div>
+                   </template>
+                 </div>
+               </section>
+
+               <!-- Notifications -->
+               <section v-if="hasSection('notifications')">
+                 <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
+                   <BellIcon class="w-5 h-5 text-primary-500" /> Notifications
+                 </h2>
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div v-for="key in getSectionKeys('notifications')" :key="key" class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
+                     <span class="text-zinc-700 dark:text-zinc-300 font-medium">{{ formatLabel(key) }}</span>
+                     <Switch v-model="bsSettings[key]" />
                    </div>
+                 </div>
+               </section>
+
+               <!-- General -->
+               <section v-if="hasSection('general')">
+                 <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
+                   <GlobeAltIcon class="w-5 h-5 text-primary-500" /> General
+                 </h2>
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   <template v-for="key in getSectionKeys('general')" :key="key">
+                     <div class="form-group">
+                       <label class="form-label">{{ formatLabel(key) }}</label>
+                       <select v-model="bsSettings[key]" class="form-select">
+                         <option value="en">English</option>
+                         <option value="es">Spanish</option>
+                         <option value="fr">French</option>
+                         <option value="de">German</option>
+                         <option value="zh">Chinese</option>
+                         <option value="ja">Japanese</option>
+                       </select>
+                     </div>
+                   </template>
                  </div>
                </section>
 
@@ -341,7 +408,7 @@ import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import Switch from '~/components/ui/Switch.vue'
 import ColorPicker from '~/components/ui/ColorPicker.vue'
 import ImageCropper from '~/components/ui/ImageCropper.vue'
-import { UserCircleIcon, ShieldCheckIcon, CogIcon, SwatchIcon, SparklesIcon, CpuChipIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/outline'
+import { UserCircleIcon, ShieldCheckIcon, CogIcon, SwatchIcon, SparklesIcon, CpuChipIcon, ChevronDownIcon, ChevronUpIcon, BellIcon, GlobeAltIcon } from '@heroicons/vue/24/outline'
 
 const auth = useAuth()
 const { getSettings, syncSettings } = useSettings()
@@ -373,9 +440,12 @@ const showDevOptions = ref(false)
 
 // Known settings organization
 const settingsSections = {
-  appearance: ['theme', 'accent_color', 'enhanced_animations'],
-  features: ['weather_enabled', 'reminders_enabled', 'disable_school_picture', 'global_search_enabled'],
-  ai: ['ai_integrations_enabled', 'grade_analyser_enabled', 'lesson_summary_analyser_enabled', 'gemini_api_key'],
+  appearance: ['theme', 'accent_color', 'enhanced_animations', 'current_theme', 'zoom_level'],
+  features: ['weather_enabled', 'reminders_enabled', 'disable_school_picture', 'global_search_enabled', 'separate_rss_feed', 'quiz_generator_enabled'],
+  featuresDisplayOnly: ['weather_city', 'weather_country', 'force_use_location'],
+  ai: ['ai_integrations_enabled', 'ai_provider', 'grade_analyser_enabled', 'lesson_summary_analyser_enabled', 'gemini_api_key', 'cerebras_api_key'],
+  notifications: ['auto_dismiss_message_notifications'],
+  general: ['language'],
   developer: ['dev_sensitive_info_hider', 'dev_force_offline_mode']
 }
 
@@ -397,10 +467,11 @@ const formatLabel = (key: string) => {
 
 const getFieldType = (key: string, value: any): 'switch' | 'color' | 'password' | 'select' | 'number' | 'text' => {
   if (typeof value === 'boolean') return 'switch'
-  if (typeof value === 'number') return 'number'
+  if (typeof value === 'number' || (value === null && key === 'zoom_level')) return 'number'
+  if (value === null && key === 'quiz_generator_enabled') return 'switch'
   if (key.toLowerCase().includes('color')) return 'color'
   if (key.toLowerCase().match(/(key|password|secret|token)/)) return 'password'
-  if (key === 'theme') return 'select'
+  if (['theme', 'ai_provider', 'language'].includes(key)) return 'select'
   return 'text'
 }
 
