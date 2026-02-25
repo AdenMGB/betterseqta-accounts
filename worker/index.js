@@ -701,8 +701,8 @@ The BetterSEQTA+ Team
         try {
             const body = await request.json();
             const { refresh_token, client_id } = body || {};
-            if (!refresh_token || !client_id) {
-                return new Response(JSON.stringify({ error: "Missing refresh_token or client_id" }), { 
+            if (!refresh_token) {
+                return new Response(JSON.stringify({ error: "Missing refresh_token" }), { 
                     status: 400, 
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
                 });
@@ -724,12 +724,8 @@ The BetterSEQTA+ Team
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
                 });
             }
-            if (session.client_id !== client_id) {
-                return new Response(JSON.stringify({ error: "Invalid client_id" }), { 
-                    status: 401, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
-            }
+            // Allow refresh from any client_id to support multi-device (e.g. tokens synced across DesQTA instances)
+            const effectiveClientId = client_id || session.client_id;
             const now = Math.floor(Date.now() / 1000);
             if (session.expires_at < now) {
                 return new Response(JSON.stringify({ error: "Refresh token expired" }), { 
@@ -752,7 +748,7 @@ The BetterSEQTA+ Team
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
                 });
             }
-            await touchDesqtaReservedClient(client_id);
+            await touchDesqtaReservedClient(effectiveClientId);
 
             // Generate new access token (1h)
             const accessToken = await new SignJWT({ id: user.id, email: user.email, username: user.username })
@@ -760,7 +756,7 @@ The BetterSEQTA+ Team
                 .setExpirationTime('1h')
                 .sign(jwtSecret);
 
-            // Rolling: rotate refresh token
+            // Rolling: rotate refresh token (keep session bound to original client_id for multi-device compatibility)
             const newSessionId = crypto.randomUUID();
             const newSecret = crypto.getRandomValues(new Uint8Array(32));
             const newSecretB64 = btoa(String.fromCharCode(...newSecret));
@@ -771,7 +767,7 @@ The BetterSEQTA+ Team
             await env.DB.prepare("DELETE FROM desqta_sessions WHERE id = ?").bind(sessionId).run();
             await env.DB.prepare(
                 "INSERT INTO desqta_sessions (id, user_id, client_id, refresh_token_hash, expires_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?)"
-            ).bind(newSessionId, user.id, client_id, newRefreshTokenHash, newExpiresAt, now).run();
+            ).bind(newSessionId, user.id, effectiveClientId, newRefreshTokenHash, newExpiresAt, now).run();
 
             const newRefreshToken = `${newSessionId}:${newSecretB64}`;
 
@@ -928,8 +924,8 @@ The BetterSEQTA+ Team
         try {
             const body = await request.json();
             const { refresh_token, client_id } = body || {};
-            if (!refresh_token || !client_id) {
-                return new Response(JSON.stringify({ error: "Missing refresh_token or client_id" }), { 
+            if (!refresh_token) {
+                return new Response(JSON.stringify({ error: "Missing refresh_token" }), { 
                     status: 400, 
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
                 });
@@ -951,12 +947,8 @@ The BetterSEQTA+ Team
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
                 });
             }
-            if (session.client_id !== client_id) {
-                return new Response(JSON.stringify({ error: "Invalid client_id" }), { 
-                    status: 401, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
-            }
+            // Allow refresh from any client_id to support multi-device (e.g. tokens synced across extension instances)
+            const effectiveClientId = client_id || session.client_id;
             const now = Math.floor(Date.now() / 1000);
             if (session.expires_at < now) {
                 return new Response(JSON.stringify({ error: "Refresh token expired" }), { 
@@ -979,7 +971,7 @@ The BetterSEQTA+ Team
                     headers: { ...corsHeaders, "Content-Type": "application/json" } 
                 });
             }
-            await touchDesqtaReservedClient(client_id);
+            await touchDesqtaReservedClient(effectiveClientId);
 
             const accessToken = await new SignJWT({ id: user.id, email: user.email, username: user.username })
                 .setProtectedHeader({ alg: 'HS256' })
@@ -996,7 +988,7 @@ The BetterSEQTA+ Team
             await env.DB.prepare("DELETE FROM desqta_sessions WHERE id = ?").bind(sessionId).run();
             await env.DB.prepare(
                 "INSERT INTO desqta_sessions (id, user_id, client_id, refresh_token_hash, expires_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?)"
-            ).bind(newSessionId, user.id, client_id, newRefreshTokenHash, newExpiresAt, now).run();
+            ).bind(newSessionId, user.id, effectiveClientId, newRefreshTokenHash, newExpiresAt, now).run();
 
             const newRefreshToken = `${newSessionId}:${newSecretB64}`;
 
