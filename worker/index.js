@@ -79,20 +79,35 @@ export default {
 
     // --- API: Discord Stats (token-based, for Discord bot) ---
     if (url.pathname === "/api/stats/discord" && request.method === "GET") {
-        const apiKey = await verifyApiKey(request);
-        if (!apiKey) {
-            return new Response(JSON.stringify({ error: "Invalid or missing API key" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
         try {
+            const apiKey = await verifyApiKey(request);
+            if (!apiKey) {
+                return new Response(JSON.stringify({ error: "Invalid or missing API key" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
             const totalResult = await env.DB.prepare("SELECT COUNT(*) as total FROM users").first();
-            const oneDayAgo = Math.floor(Date.now() / 1000) - 86400;
-            const lastDayResult = await env.DB.prepare("SELECT COUNT(*) as count FROM users WHERE created_at >= ?").bind(oneDayAgo).first();
+            let lastDay = 0;
+            try {
+                const oneDayAgo = Math.floor(Date.now() / 1000) - 86400;
+                const lastDayResult = await env.DB.prepare("SELECT COUNT(*) as count FROM users WHERE created_at >= ?").bind(oneDayAgo).first();
+                lastDay = lastDayResult?.count ?? 0;
+            } catch (_) {
+                // created_at column may not exist on older schemas
+            }
             return new Response(JSON.stringify({
                 total: totalResult?.total ?? 0,
-                lastDay: lastDayResult?.count ?? 0
+                lastDay
             }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e) {
-            return new Response(JSON.stringify({ error: "Failed to fetch stats" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            const msg = e?.message || String(e);
+            const isTableMissing = /no such table|table.*does not exist/i.test(msg);
+            const isColumnMissing = /no such column/i.test(msg);
+            let errMsg = "Failed to fetch stats";
+            if (isTableMissing) errMsg = "API keys table not found. Run migration: pnpm db:migrate:remote";
+            else if (isColumnMissing) errMsg = "Database schema outdated. Run migration: pnpm db:migrate:remote";
+            return new Response(JSON.stringify({
+                error: errMsg,
+                detail: msg
+            }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
     }
 
