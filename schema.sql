@@ -44,3 +44,11 @@ CREATE TABLE IF NOT EXISTS oauth_codes (
     created_at INTEGER DEFAULT (unixepoch())
 );
 
+-- API Keys (for Discord bot stats, etc.)
+CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    created_at INTEGER DEFAULT (unixepoch())
+);
+

@@ -30,6 +30,12 @@
         >
             OAuth Clients
         </button>
+        <button 
+            @click="activeTab = 'apikeys'" 
+            :class="['pb-2 px-1 font-medium transition-colors duration-200 border-b-2', activeTab === 'apikeys' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
+        >
+            API Keys
+        </button>
       </div>
 
       <!-- Users Tab -->
@@ -265,6 +271,73 @@
             </div>
         </div>
       </div>
+
+      <!-- API Keys Tab -->
+      <div v-if="activeTab === 'apikeys'" class="space-y-8">
+        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Discord Bot Stats API</h3>
+          <p class="text-zinc-600 dark:text-zinc-400 text-sm">
+            Use an API key to fetch user stats: <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">GET /api/stats/discord</code> with <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">Authorization: Bearer &lt;token&gt;</code> or <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">X-API-Key: &lt;token&gt;</code>. Returns <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">{ total, lastDay }</code>.
+          </p>
+        </div>
+
+        <!-- Create API Key -->
+        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
+            <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-4">Create New API Key</h3>
+            <form @submit.prevent="createApiKey" class="flex gap-4 items-end">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Name (e.g. Discord Bot)</label>
+                    <input v-model="newApiKeyName" type="text" required placeholder="Discord Bot" class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white">
+                </div>
+                <button type="submit" class="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-all duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center">
+                    <LoadingSpinner v-if="creatingApiKey" size="sm" class="mr-2" />
+                    Create API Key
+                </button>
+            </form>
+            
+            <div v-if="lastCreatedApiKey" class="mt-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                <h4 class="text-green-800 dark:text-green-300 font-medium mb-2">API Key Created! Copy it now – it won't be shown again.</h4>
+                <div class="flex justify-between items-center gap-2">
+                    <code class="flex-1 bg-white dark:bg-black/30 px-2 py-1 rounded text-sm break-all select-all">{{ lastCreatedApiKey.token }}</code>
+                    <button @click="copyApiKey(lastCreatedApiKey.token)" class="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors duration-200 shrink-0">Copy</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Keys List -->
+        <div>
+            <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-4">Existing API Keys</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="border-b border-zinc-200 dark:border-zinc-700">
+                            <th class="pb-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Name</th>
+                            <th class="pb-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Created</th>
+                            <th class="pb-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
+                        <tr v-for="key in apiKeys" :key="key.id">
+                            <td class="py-4 text-zinc-900 dark:text-white font-medium">{{ key.name }}</td>
+                            <td class="py-4 text-zinc-600 dark:text-zinc-400 text-sm">{{ formatDate(key.createdAt) }}</td>
+                            <td class="py-4 text-right">
+                                <button 
+                                    @click="deleteApiKey(key)"
+                                    :disabled="deletingApiKeyId === key.id"
+                                    class="text-sm px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                                >
+                                    <TrashIcon v-if="deletingApiKeyId !== key.id" class="w-4 h-4 inline" />
+                                    <LoadingSpinner v-else size="sm" container-class="inline-flex" />
+                                    <span class="ml-1">Delete</span>
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p v-if="apiKeys.length === 0" class="text-center py-6 text-zinc-500 dark:text-zinc-400">No API keys yet.</p>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -298,6 +371,13 @@ const desqtaClientsCount = ref(0)
 const newClient = ref({ name: '', redirect_uri: '' })
 const creatingClient = ref(false)
 const lastCreatedClient = ref<any>(null)
+
+// API Keys State
+const apiKeys = ref<any[]>([])
+const newApiKeyName = ref('')
+const creatingApiKey = ref(false)
+const lastCreatedApiKey = ref<any>(null)
+const deletingApiKeyId = ref<string | null>(null)
 
 // Actions
 const searchUsers = async (page: number = 1) => {
@@ -588,10 +668,74 @@ const createClient = async () => {
     }
 }
 
+const loadApiKeys = async () => {
+    try {
+        const res = await $fetch<any[]>('/api/admin/api-keys', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+        apiKeys.value = res
+    } catch (e) {
+        console.error('Failed to load API keys', e)
+    }
+}
+
+const createApiKey = async () => {
+    creatingApiKey.value = true
+    lastCreatedApiKey.value = null
+    try {
+        const res = await $fetch<any>('/api/admin/api-keys', {
+            method: 'POST',
+            body: { name: newApiKeyName.value.trim() },
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+        lastCreatedApiKey.value = res
+        apiKeys.value.unshift({ id: res.id, name: res.name, createdAt: res.createdAt })
+        newApiKeyName.value = ''
+        showToast('API key created. Copy it now – it won\'t be shown again.', 'success')
+    } catch (e: any) {
+        showToast(e?.data?.error || 'Failed to create API key', 'error')
+    } finally {
+        creatingApiKey.value = false
+    }
+}
+
+const copyApiKey = async (token: string) => {
+    try {
+        await navigator.clipboard.writeText(token)
+        showToast('Copied to clipboard', 'success')
+    } catch {
+        showToast('Failed to copy', 'error')
+    }
+}
+
+const formatDate = (ts: number) => {
+    if (!ts) return '-'
+    return new Date(ts * 1000).toLocaleDateString()
+}
+
+const deleteApiKey = async (key: any) => {
+    if (!confirm(`Delete API key "${key.name}"? This will revoke access immediately.`)) return
+    deletingApiKeyId.value = key.id
+    try {
+        await $fetch('/api/admin/api-keys', {
+            method: 'DELETE',
+            body: { id: key.id },
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+        apiKeys.value = apiKeys.value.filter(k => k.id !== key.id)
+        showToast('API key deleted', 'success')
+    } catch (e: any) {
+        showToast(e?.data?.error || 'Failed to delete API key', 'error')
+    } finally {
+        deletingApiKeyId.value = null
+    }
+}
+
 onMounted(() => {
     if (auth.user.value && (auth.user.value?.admin_level || 0) > 0) {
         loadClients()
         loadDesqtaClientsCount()
+        loadApiKeys()
         searchUsers(1) // Load initial users
     }
 })

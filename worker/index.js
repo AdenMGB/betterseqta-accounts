@@ -9,8 +9,8 @@ export default {
     // CORS headers
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-ID',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-ID, X-API-Key',
     };
 
     if (request.method === "OPTIONS") {
@@ -65,6 +65,35 @@ export default {
         const maxLevel = result?.max_level || 3;
         // Ensure we return at least 3 as the minimum maximum (for systems that haven't migrated yet)
         return Math.max(maxLevel, 3);
+    }
+
+    // --- Helper: Verify API Key (Bearer or X-API-Key header) ---
+    async function verifyApiKey(req) {
+        const bearer = req.headers.get("Authorization");
+        const apiKeyHeader = req.headers.get("X-API-Key");
+        const token = (bearer && bearer.startsWith("Bearer ")) ? bearer.slice(7) : (apiKeyHeader || "").trim();
+        if (!token) return null;
+        const row = await env.DB.prepare("SELECT id FROM api_keys WHERE token = ?").bind(token).first();
+        return row ? { id: row.id } : null;
+    }
+
+    // --- API: Discord Stats (token-based, for Discord bot) ---
+    if (url.pathname === "/api/stats/discord" && request.method === "GET") {
+        const apiKey = await verifyApiKey(request);
+        if (!apiKey) {
+            return new Response(JSON.stringify({ error: "Invalid or missing API key" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        try {
+            const totalResult = await env.DB.prepare("SELECT COUNT(*) as total FROM users").first();
+            const oneDayAgo = Math.floor(Date.now() / 1000) - 86400;
+            const lastDayResult = await env.DB.prepare("SELECT COUNT(*) as count FROM users WHERE created_at >= ?").bind(oneDayAgo).first();
+            return new Response(JSON.stringify({
+                total: totalResult?.total ?? 0,
+                lastDay: lastDayResult?.count ?? 0
+            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e) {
+            return new Response(JSON.stringify({ error: "Failed to fetch stats" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
     }
 
     // --- API: Register ---
@@ -1682,6 +1711,46 @@ The BetterSEQTA+ Team
             .bind(id, name, secret, redirect_uri).run();
 
         return new Response(JSON.stringify({ id, name, secret, redirect_uri }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // List API Keys
+    if (url.pathname === "/api/admin/api-keys" && request.method === "GET") {
+        const admin = await getAdminUser(request);
+        if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+        const rows = await env.DB.prepare("SELECT id, name, created_at FROM api_keys ORDER BY created_at DESC").all();
+        return new Response(JSON.stringify(rows.results.map(r => ({ id: r.id, name: r.name, createdAt: r.created_at }))), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Create API Key
+    if (url.pathname === "/api/admin/api-keys" && request.method === "POST") {
+        const admin = await getAdminUser(request);
+        if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+        const { name } = await request.json();
+        if (!name || typeof name !== "string" || !name.trim()) {
+            return new Response(JSON.stringify({ error: "Name is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const id = crypto.randomUUID();
+        const token = "bs_" + crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+        await env.DB.prepare("INSERT INTO api_keys (id, name, token) VALUES (?, ?, ?)").bind(id, name.trim(), token).run();
+        return new Response(JSON.stringify({ id, name: name.trim(), token, createdAt: Math.floor(Date.now() / 1000) }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Delete API Key
+    if (url.pathname === "/api/admin/api-keys" && request.method === "DELETE") {
+        const admin = await getAdminUser(request);
+        if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+        const { id } = await request.json();
+        if (!id) {
+            return new Response(JSON.stringify({ error: "API key ID is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const result = await env.DB.prepare("DELETE FROM api_keys WHERE id = ?").bind(id).run();
+        if (result.meta.changes === 0) {
+            return new Response(JSON.stringify({ error: "API key not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Update User Profile (Moderator Control - Level 2+ Admins Only)
