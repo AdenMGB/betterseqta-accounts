@@ -77,13 +77,27 @@ export default {
         return row ? { id: row.id } : null;
     }
 
+    // --- Helper: API key error response ---
+    function apiKeyUnauthorized() {
+        return new Response(JSON.stringify({ error: "Invalid or missing API key" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // --- Helper: API key DB error response ---
+    function apiKeyDbError(e) {
+        const msg = e?.message || String(e);
+        const isTableMissing = /no such table|table.*does not exist/i.test(msg);
+        const isColumnMissing = /no such column/i.test(msg);
+        let errMsg = "Database error";
+        if (isTableMissing) errMsg = "API keys table not found. Run migration: pnpm db:migrate:remote";
+        else if (isColumnMissing) errMsg = "Database schema outdated. Run migration: pnpm db:migrate:remote";
+        return new Response(JSON.stringify({ error: errMsg, detail: msg }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // --- API: Discord Stats (token-based, for Discord bot) ---
     if (url.pathname === "/api/stats/discord" && request.method === "GET") {
         try {
             const apiKey = await verifyApiKey(request);
-            if (!apiKey) {
-                return new Response(JSON.stringify({ error: "Invalid or missing API key" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-            }
+            if (!apiKey) return apiKeyUnauthorized();
             const totalResult = await env.DB.prepare("SELECT COUNT(*) as total FROM users").first();
             let lastDay = 0;
             try {
@@ -98,16 +112,47 @@ export default {
                 lastDay
             }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e) {
-            const msg = e?.message || String(e);
-            const isTableMissing = /no such table|table.*does not exist/i.test(msg);
-            const isColumnMissing = /no such column/i.test(msg);
-            let errMsg = "Failed to fetch stats";
-            if (isTableMissing) errMsg = "API keys table not found. Run migration: pnpm db:migrate:remote";
-            else if (isColumnMissing) errMsg = "Database schema outdated. Run migration: pnpm db:migrate:remote";
-            return new Response(JSON.stringify({
-                error: errMsg,
-                detail: msg
-            }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            return apiKeyDbError(e);
+        }
+    }
+
+    // --- API: Export - User count (light) ---
+    if (url.pathname === "/api/export/users/count" && request.method === "GET") {
+        try {
+            const apiKey = await verifyApiKey(request);
+            if (!apiKey) return apiKeyUnauthorized();
+            const totalResult = await env.DB.prepare("SELECT COUNT(*) as total FROM users").first();
+            return new Response(JSON.stringify({ total: totalResult?.total ?? 0 }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e) {
+            return apiKeyDbError(e);
+        }
+    }
+
+    // --- API: Export - Reserved client instances (light) ---
+    if (url.pathname === "/api/export/reserved-clients" && request.method === "GET") {
+        try {
+            const apiKey = await verifyApiKey(request);
+            if (!apiKey) return apiKeyUnauthorized();
+            const result = await env.DB.prepare("SELECT COUNT(*) as count FROM desqta_reserved_clients").first();
+            return new Response(JSON.stringify({ count: result?.count ?? 0 }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e) {
+            return apiKeyDbError(e);
+        }
+    }
+
+    // --- API: Export - Full user table (everything except password) ---
+    if (url.pathname === "/api/export/users/full" && request.method === "GET") {
+        try {
+            const apiKey = await verifyApiKey(request);
+            if (!apiKey) return apiKeyUnauthorized();
+            const { results: rows } = await env.DB.prepare(
+                "SELECT id, email, username, displayName, pfpUrl, admin_level, created_at FROM users ORDER BY created_at ASC"
+            ).all();
+            return new Response(JSON.stringify({ users: rows ?? [], count: (rows ?? []).length }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" }
+            });
+        } catch (e) {
+            return apiKeyDbError(e);
         }
     }
 

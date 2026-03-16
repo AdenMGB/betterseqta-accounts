@@ -274,11 +274,17 @@
 
       <!-- API Keys Tab -->
       <div v-if="activeTab === 'apikeys'" class="space-y-8">
-        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700">
-          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Discord Bot Stats API</h3>
+        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-4">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">API Key Endpoints</h3>
           <p class="text-zinc-600 dark:text-zinc-400 text-sm">
-            Use an API key to fetch user stats: <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">GET /api/stats/discord</code> with <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">Authorization: Bearer &lt;token&gt;</code> or <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">X-API-Key: &lt;token&gt;</code>. Returns <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">{ total, lastDay }</code>.
+            All endpoints use <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">Authorization: Bearer &lt;token&gt;</code> or <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">X-API-Key: &lt;token&gt;</code>.
           </p>
+          <ul class="text-sm text-zinc-600 dark:text-zinc-400 space-y-2 list-disc list-inside">
+            <li><code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">GET /api/stats/discord</code> — <code>{ total, lastDay }</code> (Discord bot stats)</li>
+            <li><code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">GET /api/export/users/count</code> — <code>{ total }</code> (user count only)</li>
+            <li><code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">GET /api/export/reserved-clients</code> — <code>{ count }</code> (reserved DesQTA client instances)</li>
+            <li><code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">GET /api/export/users/full</code> — <code>{ users, count }</code> (full user table, excludes password)</li>
+          </ul>
         </div>
 
         <!-- Create API Key -->
