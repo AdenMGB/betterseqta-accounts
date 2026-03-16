@@ -51,13 +51,16 @@ Returns full user table as JSON (password excluded).
       "username": "username",
       "displayName": "Display Name",
       "pfpUrl": "https://...",
-      "admin_level": 0,
-      "created_at": 1700000000
+      "createdAt": "2025-11-28 06:50:26",
+      "is_admin": 0,
+      "admin_level": 0
     }
   ],
   "count": 1234
 }
 ```
+
+*Note: Column names follow your DB schema. `createdAt` or `created_at` may appear depending on migration history. Password is always excluded.*
 
 ---
 

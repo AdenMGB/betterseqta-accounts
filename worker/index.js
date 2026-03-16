@@ -145,10 +145,22 @@ export default {
         try {
             const apiKey = await verifyApiKey(request);
             if (!apiKey) return apiKeyUnauthorized();
-            const { results: rows } = await env.DB.prepare(
-                "SELECT id, email, username, displayName, pfpUrl, admin_level, created_at FROM users ORDER BY created_at ASC"
-            ).all();
-            return new Response(JSON.stringify({ users: rows ?? [], count: (rows ?? []).length }), {
+            // Use SELECT * and strip password - handles varying schemas (createdAt vs created_at)
+            let rows;
+            try {
+                const r = await env.DB.prepare("SELECT * FROM users ORDER BY createdAt ASC").all();
+                rows = r.results ?? [];
+            } catch (_) {
+                try {
+                    const r = await env.DB.prepare("SELECT * FROM users ORDER BY created_at ASC").all();
+                    rows = r.results ?? [];
+                } catch (__) {
+                    const r = await env.DB.prepare("SELECT * FROM users ORDER BY id ASC").all();
+                    rows = r.results ?? [];
+                }
+            }
+            const users = rows.map(({ password, ...rest }) => rest);
+            return new Response(JSON.stringify({ users, count: users.length }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" }
             });
         } catch (e) {
