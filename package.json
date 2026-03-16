@@ -2,6 +2,12 @@
   "name": "nuxt-app",
   "private": true,
   "type": "module",
+  "pnpm": {
+    "overrides": {
+      "vite": "^8.0.0",
+      "esbuild": "^0.27.0"
+    }
+  },
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
@@ -42,6 +48,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.15.3",
+    "vite": "^8.0.0",
     "@nuxt/types": "^2.18.1",
     "@nuxtjs/tailwindcss": "^6.12.2",
     "@tailwindcss/forms": "^0.5.9",
