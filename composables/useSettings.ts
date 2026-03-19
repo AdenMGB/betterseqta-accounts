@@ -26,6 +26,12 @@ export const useSettings = () => {
     }
 
     const savedData = await response.json();
+    // POST /api/settings returns { ok, server, ...mergedSettings } after sync-metadata migration
+    if (savedData && typeof savedData === 'object' && savedData.ok === true && savedData.server) {
+      const { ok: _ok, server: _server, ...settingsOnly } = savedData;
+      console.log('Settings saved:', settingsOnly, 'server:', _server);
+      return settingsOnly;
+    }
     console.log("Settings saved:", savedData);
     return savedData;
   };

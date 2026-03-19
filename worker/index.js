@@ -30,6 +30,24 @@ export default {
         }
     }
 
+    // --- Helpers: canonical JSON + SHA-256 for settings_metadata.content_hash ---
+    function stableStringify(value) {
+        if (value === null || typeof value !== "object") {
+            return JSON.stringify(value);
+        }
+        if (Array.isArray(value)) {
+            return "[" + value.map(stableStringify).join(",") + "]";
+        }
+        const keys = Object.keys(value).sort();
+        return "{" + keys.map((k) => JSON.stringify(k) + ":" + stableStringify(value[k])).join(",") + "}";
+    }
+
+    async function sha256HexCanonicalJson(obj) {
+        const canonical = stableStringify(obj);
+        const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+        return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
     // --- Helper: Get User Admin Level ---
     async function getUserAdminLevel(userId) {
         const user = await env.DB.prepare("SELECT admin_level FROM users WHERE id = ?").bind(userId).first();
@@ -1737,6 +1755,11 @@ The BetterSEQTA+ Team
 
         try {
             await env.DB.prepare("DELETE FROM password_reset_tokens WHERE user_id = ?").bind(userId).run();
+            try {
+                await env.DB.prepare("DELETE FROM settings_metadata WHERE user_id = ?").bind(userId).run();
+            } catch (_) {
+                /* table may not exist on very old schemas */
+            }
             await env.DB.prepare("DELETE FROM settings WHERE user_id = ?").bind(userId).run();
             await env.DB.prepare("DELETE FROM oauth_codes WHERE user_id = ?").bind(userId).run();
             const desqtaSessions = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='desqta_sessions'").first();
@@ -1901,6 +1924,150 @@ The BetterSEQTA+ Team
         return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // --- API: Settings sync initialization (DesQTA) ---
+    if (url.pathname === "/api/settings/sync-init" && request.method === "POST") {
+      const syncInitJsonHeaders = { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" };
+
+      const payload = await getUser(request);
+      if (!payload) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: syncInitJsonHeaders });
+      }
+
+      const xUserId = request.headers.get("X-User-ID");
+      if (!xUserId || String(xUserId).trim() === "") {
+        return new Response(JSON.stringify({ error: "X-User-ID header is required" }), { status: 400, headers: syncInitJsonHeaders });
+      }
+      if (String(xUserId) !== String(payload.id)) {
+        return new Response(JSON.stringify({ error: "Forbidden", detail: "X-User-ID does not match token subject" }), { status: 403, headers: syncInitJsonHeaders });
+      }
+
+      const userId = payload.id;
+
+      let body;
+      try {
+        body = await request.json();
+      } catch (_) {
+        return new Response(JSON.stringify({ error: "Invalid JSON body" }), { status: 400, headers: syncInitJsonHeaders });
+      }
+
+      if (!body || typeof body !== "object" || !body.client || !body.local) {
+        return new Response(JSON.stringify({ error: "Invalid body", detail: "client and local objects are required" }), { status: 400, headers: syncInitJsonHeaders });
+      }
+      if (body.client.app !== "desqta") {
+        return new Response(JSON.stringify({ error: "Invalid body", detail: 'client.app must be "desqta"' }), { status: 400, headers: syncInitJsonHeaders });
+      }
+
+      let rClient = body.local.settings_revision;
+      if (typeof rClient !== "number" || !Number.isFinite(rClient) || rClient < 0) {
+        rClient = 0;
+      }
+      rClient = Math.floor(rClient);
+
+      try {
+        const settingsRow = await env.DB.prepare("SELECT data FROM settings WHERE user_id = ?").bind(userId).first();
+        let metaRow = await env.DB.prepare(
+          "SELECT settings_revision, settings_updated_at, content_hash FROM settings_metadata WHERE user_id = ?"
+        )
+          .bind(userId)
+          .first();
+
+        if (settingsRow && !metaRow) {
+          let parsed;
+          try {
+            parsed = JSON.parse(settingsRow.data);
+          } catch (_) {
+            parsed = {};
+          }
+          const hash = await sha256HexCanonicalJson(parsed);
+          const isoNow = new Date().toISOString();
+          await env.DB.prepare(
+            "INSERT OR IGNORE INTO settings_metadata (user_id, settings_revision, settings_updated_at, content_hash) VALUES (?, 1, ?, ?)"
+          )
+            .bind(userId, isoNow, hash)
+            .run();
+          metaRow = await env.DB.prepare(
+            "SELECT settings_revision, settings_updated_at, content_hash FROM settings_metadata WHERE user_id = ?"
+          )
+            .bind(userId)
+            .first();
+        }
+
+        if (settingsRow && !metaRow) {
+          return new Response(
+            JSON.stringify({
+              error: "Settings metadata unavailable",
+              detail: "settings_metadata row missing after insert; check migrations",
+            }),
+            { status: 500, headers: syncInitJsonHeaders }
+          );
+        }
+
+        if (!settingsRow) {
+          return new Response(
+            JSON.stringify({
+              status: "no_remote_settings",
+              server: { settings_revision: 0, settings_updated_at: null },
+              settings: null,
+            }),
+            { headers: syncInitJsonHeaders }
+          );
+        }
+
+        const rServer = metaRow ? metaRow.settings_revision : 0;
+        const serverUpdatedAt = metaRow ? metaRow.settings_updated_at : null;
+        const serverInfo = { settings_revision: rServer, settings_updated_at: serverUpdatedAt };
+
+        let parsedSettings;
+        try {
+          parsedSettings = JSON.parse(settingsRow.data);
+        } catch (_) {
+          parsedSettings = {};
+        }
+
+        if (rClient > rServer) {
+          return new Response(
+            JSON.stringify({
+              status: "client_ahead",
+              server: serverInfo,
+              settings: null,
+            }),
+            { headers: syncInitJsonHeaders }
+          );
+        }
+
+        if (rClient === rServer) {
+          return new Response(
+            JSON.stringify({
+              status: "up_to_date",
+              server: serverInfo,
+              settings: null,
+            }),
+            { headers: syncInitJsonHeaders }
+          );
+        }
+
+        // rClient < rServer or rClient === 0 with rServer >= 1
+        return new Response(
+          JSON.stringify({
+            status: "server_has_newer",
+            server: serverInfo,
+            settings: parsedSettings,
+          }),
+          { headers: syncInitJsonHeaders }
+        );
+      } catch (err) {
+        const msg = err?.message || String(err);
+        const isSchema = /no such table|no such column/i.test(msg);
+        return new Response(
+          JSON.stringify({
+            error: isSchema ? "Database schema outdated. Run migration: pnpm db:migrate:remote" : "Sync failed",
+            detail: msg,
+          }),
+          { status: 500, headers: syncInitJsonHeaders }
+        );
+      }
+    }
+
     // --- API Route: Handle Settings ---
     if (url.pathname === "/api/settings") {
       // SECURITY: Always require JWT token - never trust client-provided user IDs
@@ -1935,20 +2102,52 @@ The BetterSEQTA+ Team
           // 2. Merge (New settings overwrite old ones)
           const mergedData = { ...currentData, ...newSettings };
           const mergedString = JSON.stringify(mergedData);
+          const nowIso = new Date().toISOString();
+          const contentHash = await sha256HexCanonicalJson(mergedData);
 
-          // 3. Save back to DB
-          await env.DB.prepare(
-            "INSERT OR REPLACE INTO settings (user_id, data) VALUES (?, ?)"
+          // 3. Atomically persist settings + bump metadata revision
+          await env.DB.batch([
+            env.DB.prepare("INSERT OR REPLACE INTO settings (user_id, data) VALUES (?, ?)").bind(userId, mergedString),
+            env.DB.prepare(
+              `INSERT INTO settings_metadata (user_id, settings_revision, settings_updated_at, content_hash)
+               VALUES (?, 1, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 settings_revision = settings_metadata.settings_revision + 1,
+                 settings_updated_at = excluded.settings_updated_at,
+                 content_hash = excluded.content_hash`
+            ).bind(userId, nowIso, contentHash),
+          ]);
+
+          const meta = await env.DB.prepare(
+            "SELECT settings_revision, settings_updated_at FROM settings_metadata WHERE user_id = ?"
           )
-            .bind(userId, mergedString)
-            .run();
+            .bind(userId)
+            .first();
 
-          return new Response(mergedString, {
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          const responseBody = {
+            ok: true,
+            server: {
+              settings_revision: meta?.settings_revision ?? 1,
+              settings_updated_at: meta?.settings_updated_at ?? nowIso,
+            },
+            ...mergedData,
+          };
+
+          return new Response(JSON.stringify(responseBody), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
       } catch (err) {
-        return new Response(err.message, { status: 500, headers: corsHeaders });
+        const msg = err?.message || String(err);
+        const isSchema = /no such table|no such column/i.test(msg);
+        return new Response(
+          JSON.stringify(
+            isSchema
+              ? { error: "Database schema outdated. Run migration: pnpm db:migrate:remote", detail: msg }
+              : { error: msg }
+          ),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
     }
 
