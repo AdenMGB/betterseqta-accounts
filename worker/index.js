@@ -2101,11 +2101,58 @@ The BetterSEQTA+ Team
           
           // 2. Merge (New settings overwrite old ones)
           const mergedData = { ...currentData, ...newSettings };
+          const mergedCanonical = stableStringify(mergedData);
+          let existingCanonical = null;
+          if (existing?.data) {
+            try {
+              existingCanonical = stableStringify(JSON.parse(existing.data));
+            } catch (_) {
+              existingCanonical = null;
+            }
+          }
+          const unchanged =
+            existing &&
+            existingCanonical !== null &&
+            mergedCanonical === existingCanonical;
+
+          if (unchanged) {
+            let meta = await env.DB.prepare(
+              "SELECT settings_revision, settings_updated_at FROM settings_metadata WHERE user_id = ?"
+            )
+              .bind(userId)
+              .first();
+            if (!meta) {
+              const iso = new Date().toISOString();
+              const hash = await sha256HexCanonicalJson(mergedData);
+              await env.DB.prepare(
+                "INSERT OR IGNORE INTO settings_metadata (user_id, settings_revision, settings_updated_at, content_hash) VALUES (?, 1, ?, ?)"
+              )
+                .bind(userId, iso, hash)
+                .run();
+              meta = await env.DB.prepare(
+                "SELECT settings_revision, settings_updated_at FROM settings_metadata WHERE user_id = ?"
+              )
+                .bind(userId)
+                .first();
+            }
+            const responseBody = {
+              ok: true,
+              server: {
+                settings_revision: meta?.settings_revision ?? 1,
+                settings_updated_at: meta?.settings_updated_at ?? null,
+              },
+              ...mergedData,
+            };
+            return new Response(JSON.stringify(responseBody), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+
           const mergedString = JSON.stringify(mergedData);
           const nowIso = new Date().toISOString();
           const contentHash = await sha256HexCanonicalJson(mergedData);
 
-          // 3. Atomically persist settings + bump metadata revision
+          // 3. Persist + bump metadata only when merged document actually changed (or first save)
           await env.DB.batch([
             env.DB.prepare("INSERT OR REPLACE INTO settings (user_id, data) VALUES (?, ?)").bind(userId, mergedString),
             env.DB.prepare(

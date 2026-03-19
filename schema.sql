@@ -17,6 +17,15 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at INTEGER DEFAULT (unixepoch())
 );
 
+-- Settings sync metadata (DesQTA sync-init); no FK to users — same as settings
+CREATE TABLE IF NOT EXISTS settings_metadata (
+    user_id TEXT PRIMARY KEY,
+    settings_revision INTEGER NOT NULL DEFAULT 1,
+    settings_updated_at TEXT NOT NULL,
+    content_hash TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_settings_metadata_user_id ON settings_metadata(user_id);
+
 -- Desqta Reserved Clients (dynamic client_id reservation, no admin pre-registration)
 -- expires_at: 7-day TTL, refreshed on use (config, login, refresh, Discord OAuth)
 CREATE TABLE IF NOT EXISTS desqta_reserved_clients (

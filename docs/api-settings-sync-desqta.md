@@ -159,8 +159,9 @@ Cache-Control: no-store
 
 **Rules:**
 
-- Every successful save increments **`settings_revision`** by 1 (even if merged JSON is identical to the previous version).
-- `server.settings_updated_at` is ISO 8601 UTC and matches what a subsequent **`sync-init`** would return in `server`.
+- **`settings_revision`** and **`settings_updated_at`** advance only when the **merged** settings document **actually changes** (server compares **canonical JSON**: sorted keys recursively, so key order in the request does not matter). If the client POSTs the same logical data that is already stored, the row is not rewritten and revision/timestamp stay the same; the response still returns **`ok: true`** and the current **`server`** values from `settings_metadata`.
+- On real changes, each save increments **`settings_revision`** by 1 and sets **`settings_updated_at`** to now (UTC).
+- `server.settings_updated_at` always comes from the DB row — **`sync-init`** does not fabricate a new timestamp per request.
 - `content_hash` is stored server-side (SHA-256 of **canonical** JSON) for diagnostics; clients should rely on **revision** for sync decisions.
 
 **DesQTA client parsing recommendation:**
@@ -204,7 +205,7 @@ Still returns the raw stored JSON document (passwords / secrets are not in this 
 
 | Column | Type | Notes |
 |--------|------|--------|
-| `user_id` | TEXT PK | Same as `settings.user_id` / JWT user id |
+| `user_id` | TEXT PK | Same as `settings.user_id` / JWT user id. **No foreign key** to `users` (matches `settings`; orphan rows possible from legacy deletes) |
 | `settings_revision` | INTEGER NOT NULL | Starts at **1** when the row is created; +1 on each successful `POST /api/settings` |
 | `settings_updated_at` | TEXT NOT NULL | ISO 8601 UTC timestamp |
 | `content_hash` | TEXT nullable | 64-char hex SHA-256 of canonical merged JSON |
@@ -214,6 +215,15 @@ Still returns the raw stored JSON document (passwords / secrets are not in this 
 **Existing users:** On migrate, every row in `settings` gets a metadata row with **`settings_revision = 1`** and **`settings_updated_at = datetime('now')`** at migration time. Until clients learn that revision, they send `R_client = 0` and receive **`server_has_newer`** once with the full document, then store revision **1** locally.
 
 **Deploy:** Apply D1 migrations (e.g. `pnpm db:migrate:remote`) before relying on the new fields.
+
+**If migrate failed with `FOREIGN KEY constraint failed`:** An older `0010` script used a FK to `users`; some `settings.user_id` values may no longer exist in `users`. Pull the latest `0010` (no FK), then drop any partial table and re-apply:
+
+```bash
+npx wrangler d1 execute BS_SETTINGS --remote --command "DROP TABLE IF EXISTS settings_metadata;"
+npx wrangler d1 migrations apply BS_SETTINGS --remote
+```
+
+(Or run the updated `0010` SQL file with `d1 execute --file=` if you are not using tracked migrations.)
 
 ---
 
