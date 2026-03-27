@@ -875,26 +875,19 @@ The BetterSEQTA+ Team
                 .setExpirationTime('1h')
                 .sign(jwtSecret);
 
-            // Rolling: rotate refresh token (keep session bound to original client_id for multi-device compatibility)
-            const newSessionId = crypto.randomUUID();
-            const newSecret = crypto.getRandomValues(new Uint8Array(32));
-            const newSecretB64 = btoa(String.fromCharCode(...newSecret));
-            const newRefreshTokenHash = await bcrypt.hash(newSecretB64, 10);
+            // Do not rotate refresh_token: rotation invalidates any other device (or synced copy) still
+            // holding the same token. New login already creates a separate session row per device.
             const REFRESH_EXPIRY_DAYS = 90;
             const newExpiresAt = now + (REFRESH_EXPIRY_DAYS * 24 * 60 * 60);
-
-            await env.DB.prepare("DELETE FROM desqta_sessions WHERE id = ?").bind(sessionId).run();
             await env.DB.prepare(
-                "INSERT INTO desqta_sessions (id, user_id, client_id, refresh_token_hash, expires_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?)"
-            ).bind(newSessionId, user.id, effectiveClientId, newRefreshTokenHash, newExpiresAt, now).run();
-
-            const newRefreshToken = `${newSessionId}:${newSecretB64}`;
+                "UPDATE desqta_sessions SET last_used_at = ?, expires_at = ?, client_id = ? WHERE id = ?"
+            ).bind(now, newExpiresAt, effectiveClientId, sessionId).run();
 
             return new Response(JSON.stringify({
                 access_token: accessToken,
                 token_type: "Bearer",
                 expires_in: 3600,
-                refresh_token: newRefreshToken,
+                refresh_token: refresh_token,
                 user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl, admin_level: user.admin_level || 0 }
             }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (err) {
@@ -1097,25 +1090,17 @@ The BetterSEQTA+ Team
                 .setExpirationTime('1h')
                 .sign(jwtSecret);
 
-            const newSessionId = crypto.randomUUID();
-            const newSecret = crypto.getRandomValues(new Uint8Array(32));
-            const newSecretB64 = btoa(String.fromCharCode(...newSecret));
-            const newRefreshTokenHash = await bcrypt.hash(newSecretB64, 10);
             const REFRESH_EXPIRY_DAYS = 90;
             const newExpiresAt = now + (REFRESH_EXPIRY_DAYS * 24 * 60 * 60);
-
-            await env.DB.prepare("DELETE FROM desqta_sessions WHERE id = ?").bind(sessionId).run();
             await env.DB.prepare(
-                "INSERT INTO desqta_sessions (id, user_id, client_id, refresh_token_hash, expires_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?)"
-            ).bind(newSessionId, user.id, effectiveClientId, newRefreshTokenHash, newExpiresAt, now).run();
-
-            const newRefreshToken = `${newSessionId}:${newSecretB64}`;
+                "UPDATE desqta_sessions SET last_used_at = ?, expires_at = ?, client_id = ? WHERE id = ?"
+            ).bind(now, newExpiresAt, effectiveClientId, sessionId).run();
 
             return new Response(JSON.stringify({
                 access_token: accessToken,
                 token_type: "Bearer",
                 expires_in: 3600,
-                refresh_token: newRefreshToken,
+                refresh_token: refresh_token,
                 user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl, admin_level: user.admin_level || 0 }
             }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (err) {
