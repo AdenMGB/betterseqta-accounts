@@ -17,6 +17,12 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
+    const ACCESS_TOKEN_TTL = '1h';
+    const WEBSITE_ACCESS_EXPIRES_IN = 60 * 60;
+    const WEBSITE_REFRESH_EXPIRY_DAYS = 180;
+    const APP_REFRESH_EXPIRY_DAYS = 180;
+    const REFRESH_COOKIE_NAME = 'bs_refresh_token';
+
     // --- Helper: Verify Auth ---
     async function getUser(req) {
         const authHeader = req.headers.get("Authorization");
@@ -28,6 +34,145 @@ export default {
         } catch (e) {
             return null;
         }
+    }
+
+    function getRequestIp(req) {
+        return req.headers.get('CF-Connecting-IP')
+            || req.headers.get('X-Forwarded-For')
+            || null;
+    }
+
+    function parseCookies(req) {
+        const cookieHeader = req.headers.get('Cookie') || '';
+        return Object.fromEntries(
+            cookieHeader
+                .split(';')
+                .map((cookie) => cookie.trim())
+                .filter(Boolean)
+                .map((cookie) => {
+                    const separatorIndex = cookie.indexOf('=');
+                    if (separatorIndex === -1) {
+                        return [cookie, ''];
+                    }
+                    const name = cookie.slice(0, separatorIndex).trim();
+                    const value = cookie.slice(separatorIndex + 1).trim();
+                    return [name, decodeURIComponent(value)];
+                })
+        );
+    }
+
+    function createCookie(name, value, options = {}) {
+        const parts = [`${name}=${encodeURIComponent(value)}`];
+        if (options.maxAge !== undefined) parts.push(`Max-Age=${options.maxAge}`);
+        if (options.expires) parts.push(`Expires=${options.expires.toUTCString()}`);
+        parts.push(`Path=${options.path || '/'}`);
+        if (options.httpOnly !== false) parts.push('HttpOnly');
+        if (options.secure !== false) parts.push('Secure');
+        parts.push(`SameSite=${options.sameSite || 'Lax'}`);
+        return parts.join('; ');
+    }
+
+    function clearCookie(name) {
+        return createCookie(name, '', { maxAge: 0, expires: new Date(0) });
+    }
+
+    async function createAccessToken(user) {
+        return await new SignJWT({ id: user.id, email: user.email, username: user.username })
+            .setProtectedHeader({ alg: 'HS256' })
+            .setExpirationTime(ACCESS_TOKEN_TTL)
+            .sign(jwtSecret);
+    }
+
+    async function createSession({ userId, platform, clientId = null, deviceName = null, request, refreshDays = WEBSITE_REFRESH_EXPIRY_DAYS }) {
+        const sessionId = crypto.randomUUID();
+        const secret = crypto.getRandomValues(new Uint8Array(32));
+        const secretB64 = btoa(String.fromCharCode(...secret));
+        const refreshTokenHash = await bcrypt.hash(secretB64, 10);
+        const now = Math.floor(Date.now() / 1000);
+        const expiresAt = now + (refreshDays * 24 * 60 * 60);
+        const userAgent = request.headers.get('User-Agent');
+        const ipAddress = getRequestIp(request);
+
+        await env.DB.prepare(
+            `INSERT INTO user_sessions (
+                id, user_id, platform, client_id, refresh_token_hash, device_name,
+                user_agent, created_ip, last_ip, created_at, last_used_at, expires_at, revoked_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+        ).bind(
+            sessionId,
+            userId,
+            platform,
+            clientId,
+            refreshTokenHash,
+            deviceName,
+            userAgent,
+            ipAddress,
+            ipAddress,
+            now,
+            now,
+            expiresAt
+        ).run();
+
+        return {
+            sessionId,
+            refreshToken: `${sessionId}:${secretB64}`,
+            expiresAt,
+        };
+    }
+
+    async function getSessionByRefreshToken(refreshToken) {
+        if (!refreshToken || typeof refreshToken !== 'string') {
+            return { error: 'Missing refresh_token', status: 400 };
+        }
+        const colonIdx = refreshToken.indexOf(':');
+        if (colonIdx < 1) {
+            return { error: 'Invalid refresh_token format', status: 400 };
+        }
+        const sessionId = refreshToken.substring(0, colonIdx);
+        const secret = refreshToken.substring(colonIdx + 1);
+        const session = await env.DB.prepare('SELECT * FROM user_sessions WHERE id = ?').bind(sessionId).first();
+        if (!session) {
+            return { error: 'Invalid refresh_token', status: 401 };
+        }
+        if (session.revoked_at) {
+            return { error: 'Session revoked', status: 401 };
+        }
+        const now = Math.floor(Date.now() / 1000);
+        if (session.expires_at < now) {
+            return { error: 'Refresh token expired', status: 401 };
+        }
+        const valid = await bcrypt.compare(secret, session.refresh_token_hash);
+        if (!valid) {
+            return { error: 'Invalid refresh_token', status: 401 };
+        }
+        return { session, sessionId, now };
+    }
+
+    async function touchUserSession(sessionId, now, request, { expiresAt = null, clientId } = {}) {
+        const nextExpiresAt = expiresAt ?? (now + (APP_REFRESH_EXPIRY_DAYS * 24 * 60 * 60));
+        const ipAddress = getRequestIp(request);
+        await env.DB.prepare(
+            'UPDATE user_sessions SET last_used_at = ?, expires_at = ?, last_ip = ?, client_id = COALESCE(?, client_id) WHERE id = ?'
+        ).bind(now, nextExpiresAt, ipAddress, clientId ?? null, sessionId).run();
+        return nextExpiresAt;
+    }
+
+    async function revokeSessionById(sessionId) {
+        const now = Math.floor(Date.now() / 1000);
+        await env.DB.prepare('UPDATE user_sessions SET revoked_at = ?, expires_at = MIN(expires_at, ?) WHERE id = ? AND revoked_at IS NULL').bind(now, now, sessionId).run();
+    }
+
+    function authJson(data, extraHeaders = {}) {
+        return new Response(JSON.stringify(data), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json', ...extraHeaders }
+        });
+    }
+
+    function authError(message, status = 401, extraHeaders = {}) {
+        return new Response(JSON.stringify({ error: message }), {
+            status,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json', ...extraHeaders }
+        });
     }
 
     // --- Helpers: canonical JSON + SHA-256 for settings_metadata.content_hash ---
@@ -209,13 +354,24 @@ export default {
             return new Response(JSON.stringify({ error: "User already exists" }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
-        const token = await new SignJWT({ id, email: normalizedEmail, username })
-            .setProtectedHeader({ alg: 'HS256' })
-            .setExpirationTime('7d')
-            .sign(jwtSecret);
+        const token = await createAccessToken({ id, email: normalizedEmail, username });
+        const session = await createSession({
+            userId: id,
+            platform: 'web',
+            deviceName: 'Website',
+            request,
+            refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
+        });
+        const refreshCookie = createCookie(REFRESH_COOKIE_NAME, session.refreshToken, {
+            maxAge: WEBSITE_REFRESH_EXPIRY_DAYS * 24 * 60 * 60,
+        });
 
-        return new Response(JSON.stringify({ token, user: { id, email: normalizedEmail, username, displayName, admin_level: 0 } }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
+        return authJson({
+            token,
+            expires_in: WEBSITE_ACCESS_EXPIRES_IN,
+            user: { id, email: normalizedEmail, username, displayName, admin_level: 0 }
+        }, {
+            'Set-Cookie': refreshCookie,
         });
 
       } catch (err) {
@@ -235,13 +391,24 @@ export default {
                 return new Response(JSON.stringify({ error: "Invalid credentials" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
             }
 
-            const token = await new SignJWT({ id: user.id, email: user.email, username: user.username })
-                .setProtectedHeader({ alg: 'HS256' })
-                .setExpirationTime('7d')
-                .sign(jwtSecret);
+            const token = await createAccessToken(user);
+            const session = await createSession({
+                userId: user.id,
+                platform: 'web',
+                deviceName: 'Website',
+                request,
+                refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
+            });
+            const refreshCookie = createCookie(REFRESH_COOKIE_NAME, session.refreshToken, {
+                maxAge: WEBSITE_REFRESH_EXPIRY_DAYS * 24 * 60 * 60,
+            });
 
-            return new Response(JSON.stringify({ token, user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl, admin_level: user.admin_level || 0 } }), {
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
+            return authJson({
+                token,
+                expires_in: WEBSITE_ACCESS_EXPIRES_IN,
+                user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl, admin_level: user.admin_level || 0 }
+            }, {
+                'Set-Cookie': refreshCookie,
             });
         } catch (err) {
             return new Response(err.message, { status: 500, headers: corsHeaders });
@@ -255,6 +422,94 @@ export default {
 
         const user = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, admin_level FROM users WHERE id = ?").bind(payload.id).first();
         return new Response(JSON.stringify(user), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // --- API: Refresh website session ---
+    if (url.pathname === "/api/auth/refresh" && request.method === "POST") {
+        try {
+            const cookies = parseCookies(request);
+            const refreshToken = cookies[REFRESH_COOKIE_NAME];
+            const sessionResult = await getSessionByRefreshToken(refreshToken);
+            if (sessionResult.error) {
+                return authError(sessionResult.error, sessionResult.status, {
+                    'Set-Cookie': clearCookie(REFRESH_COOKIE_NAME),
+                });
+            }
+
+            const { session, sessionId, now } = sessionResult;
+            if (session.platform !== 'web') {
+                return authError('Invalid session platform', 401, {
+                    'Set-Cookie': clearCookie(REFRESH_COOKIE_NAME),
+                });
+            }
+
+            const user = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, admin_level FROM users WHERE id = ?").bind(session.user_id).first();
+            if (!user) {
+                await revokeSessionById(sessionId);
+                return authError('User not found', 401, {
+                    'Set-Cookie': clearCookie(REFRESH_COOKIE_NAME),
+                });
+            }
+
+            const newExpiresAt = now + (WEBSITE_REFRESH_EXPIRY_DAYS * 24 * 60 * 60);
+            await touchUserSession(sessionId, now, request, { expiresAt: newExpiresAt });
+            const accessToken = await createAccessToken(user);
+            const refreshCookie = createCookie(REFRESH_COOKIE_NAME, refreshToken, {
+                maxAge: WEBSITE_REFRESH_EXPIRY_DAYS * 24 * 60 * 60,
+            });
+
+            return authJson({
+                token: accessToken,
+                expires_in: WEBSITE_ACCESS_EXPIRES_IN,
+                user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl, admin_level: user.admin_level || 0 }
+            }, {
+                'Set-Cookie': refreshCookie,
+            });
+        } catch (err) {
+            console.error('Website refresh error:', err);
+            return authError('Refresh failed', 500, {
+                'Set-Cookie': clearCookie(REFRESH_COOKIE_NAME),
+            });
+        }
+    }
+
+    // --- API: Logout current website session ---
+    if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+        try {
+            const cookies = parseCookies(request);
+            const refreshToken = cookies[REFRESH_COOKIE_NAME];
+            const sessionResult = await getSessionByRefreshToken(refreshToken);
+            if (!sessionResult.error) {
+                await revokeSessionById(sessionResult.sessionId);
+            }
+            return authJson({ success: true }, {
+                'Set-Cookie': clearCookie(REFRESH_COOKIE_NAME),
+            });
+        } catch (err) {
+            console.error('Website logout error:', err);
+            return authJson({ success: true }, {
+                'Set-Cookie': clearCookie(REFRESH_COOKIE_NAME),
+            });
+        }
+    }
+
+    // --- API: Logout all website sessions for user ---
+    if (url.pathname === "/api/auth/logout-all" && request.method === "POST") {
+        const payload = await getUser(request);
+        if (!payload) {
+            return authError('Unauthorized', 401, {
+                'Set-Cookie': clearCookie(REFRESH_COOKIE_NAME),
+            });
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        await env.DB.prepare(
+            "UPDATE user_sessions SET revoked_at = ?, expires_at = MIN(expires_at, ?) WHERE user_id = ? AND platform = 'web' AND revoked_at IS NULL"
+        ).bind(now, now, payload.id).run();
+
+        return authJson({ success: true }, {
+            'Set-Cookie': clearCookie(REFRESH_COOKIE_NAME),
+        });
     }
 
     // --- API: Change Password ---
@@ -820,76 +1075,33 @@ The BetterSEQTA+ Team
         try {
             const body = await request.json();
             const { refresh_token, client_id } = body || {};
-            if (!refresh_token) {
-                return new Response(JSON.stringify({ error: "Missing refresh_token" }), { 
-                    status: 400, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
+            const sessionResult = await getSessionByRefreshToken(refresh_token);
+            if (sessionResult.error) {
+                return authError(sessionResult.error, sessionResult.status);
             }
-            const colonIdx = refresh_token.indexOf(':');
-            if (colonIdx < 1) {
-                return new Response(JSON.stringify({ error: "Invalid refresh_token format" }), { 
-                    status: 400, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
+            const { session, sessionId, now } = sessionResult;
+            if (session.platform !== 'desqta') {
+                return authError('Invalid refresh_token', 401);
             }
-            const sessionId = refresh_token.substring(0, colonIdx);
-            const secret = refresh_token.substring(colonIdx + 1);
 
-            const session = await env.DB.prepare("SELECT * FROM desqta_sessions WHERE id = ?").bind(sessionId).first();
-            if (!session) {
-                return new Response(JSON.stringify({ error: "Invalid refresh_token" }), { 
-                    status: 401, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
-            }
-            // Allow refresh from any client_id to support multi-device (e.g. tokens synced across DesQTA instances)
             const effectiveClientId = client_id || session.client_id;
-            const now = Math.floor(Date.now() / 1000);
-            if (session.expires_at < now) {
-                return new Response(JSON.stringify({ error: "Refresh token expired" }), { 
-                    status: 401, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
-            }
-            const valid = await bcrypt.compare(secret, session.refresh_token_hash);
-            if (!valid) {
-                return new Response(JSON.stringify({ error: "Invalid refresh_token" }), { 
-                    status: 401, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
-            }
-
             const user = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, admin_level FROM users WHERE id = ?").bind(session.user_id).first();
             if (!user) {
-                return new Response(JSON.stringify({ error: "User not found" }), { 
-                    status: 401, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
+                await revokeSessionById(sessionId);
+                return authError('User not found', 401);
             }
-            await touchDesqtaReservedClient(effectiveClientId);
 
-            // Generate new access token (1h)
-            const accessToken = await new SignJWT({ id: user.id, email: user.email, username: user.username })
-                .setProtectedHeader({ alg: 'HS256' })
-                .setExpirationTime('1h')
-                .sign(jwtSecret);
+            const accessToken = await createAccessToken(user);
+            const newExpiresAt = now + (APP_REFRESH_EXPIRY_DAYS * 24 * 60 * 60);
+            await touchUserSession(sessionId, now, request, { expiresAt: newExpiresAt, clientId: effectiveClientId });
 
-            // Do not rotate refresh_token: rotation invalidates any other device (or synced copy) still
-            // holding the same token. New login already creates a separate session row per device.
-            const REFRESH_EXPIRY_DAYS = 90;
-            const newExpiresAt = now + (REFRESH_EXPIRY_DAYS * 24 * 60 * 60);
-            await env.DB.prepare(
-                "UPDATE desqta_sessions SET last_used_at = ?, expires_at = ?, client_id = ? WHERE id = ?"
-            ).bind(now, newExpiresAt, effectiveClientId, sessionId).run();
-
-            return new Response(JSON.stringify({
+            return authJson({
                 access_token: accessToken,
                 token_type: "Bearer",
-                expires_in: 3600,
+                expires_in: WEBSITE_ACCESS_EXPIRES_IN,
                 refresh_token: refresh_token,
                 user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl, admin_level: user.admin_level || 0 }
-            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            });
         } catch (err) {
             console.error("Desqta refresh error:", err);
             return new Response(JSON.stringify({ error: "Refresh failed" }), { 
@@ -930,32 +1142,22 @@ The BetterSEQTA+ Team
                 });
             }
 
-            // Generate access token (24h)
-            const accessToken = await new SignJWT({ id: user.id, email: user.email, username: user.username })
-                .setProtectedHeader({ alg: 'HS256' })
-                .setExpirationTime('24h')
-                .sign(jwtSecret);
+            const accessToken = await createAccessToken(user);
+            const session = await createSession({
+                userId: user.id,
+                platform: 'desqta',
+                clientId: client_id,
+                deviceName: 'DesQTA',
+                request,
+                refreshDays: APP_REFRESH_EXPIRY_DAYS,
+            });
 
-            // Create desqta session for refresh token
-            const sessionId = crypto.randomUUID();
-            const secret = crypto.getRandomValues(new Uint8Array(32));
-            const secretB64 = btoa(String.fromCharCode(...secret));
-            const refreshTokenHash = await bcrypt.hash(secretB64, 10);
-            const REFRESH_EXPIRY_DAYS = 90;
-            const expiresAt = Math.floor(Date.now() / 1000) + (REFRESH_EXPIRY_DAYS * 24 * 60 * 60);
-
-            await env.DB.prepare(
-                "INSERT INTO desqta_sessions (id, user_id, client_id, refresh_token_hash, expires_at) VALUES (?, ?, ?, ?, ?)"
-            ).bind(sessionId, user.id, client_id, refreshTokenHash, expiresAt).run();
-
-            const refreshToken = `${sessionId}:${secretB64}`;
-
-            return new Response(JSON.stringify({
+            return authJson({
                 access_token: accessToken,
-                refresh_token: refreshToken,
-                expires_in: 86400,
+                refresh_token: session.refreshToken,
+                expires_in: WEBSITE_ACCESS_EXPIRES_IN,
                 user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl, admin_level: user.admin_level || 0 }
-            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            });
         } catch (err) {
             console.error("Desqta login error:", err);
             return new Response(JSON.stringify({ error: "Login failed" }), { 
@@ -1036,73 +1238,33 @@ The BetterSEQTA+ Team
         try {
             const body = await request.json();
             const { refresh_token, client_id } = body || {};
-            if (!refresh_token) {
-                return new Response(JSON.stringify({ error: "Missing refresh_token" }), { 
-                    status: 400, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
+            const sessionResult = await getSessionByRefreshToken(refresh_token);
+            if (sessionResult.error) {
+                return authError(sessionResult.error, sessionResult.status);
             }
-            const colonIdx = refresh_token.indexOf(':');
-            if (colonIdx < 1) {
-                return new Response(JSON.stringify({ error: "Invalid refresh_token format" }), { 
-                    status: 400, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
+            const { session, sessionId, now } = sessionResult;
+            if (session.platform !== 'bsplus') {
+                return authError('Invalid refresh_token', 401);
             }
-            const sessionId = refresh_token.substring(0, colonIdx);
-            const secret = refresh_token.substring(colonIdx + 1);
 
-            const session = await env.DB.prepare("SELECT * FROM desqta_sessions WHERE id = ?").bind(sessionId).first();
-            if (!session) {
-                return new Response(JSON.stringify({ error: "Invalid refresh_token" }), { 
-                    status: 401, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
-            }
-            // Allow refresh from any client_id to support multi-device (e.g. tokens synced across extension instances)
             const effectiveClientId = client_id || session.client_id;
-            const now = Math.floor(Date.now() / 1000);
-            if (session.expires_at < now) {
-                return new Response(JSON.stringify({ error: "Refresh token expired" }), { 
-                    status: 401, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
-            }
-            const valid = await bcrypt.compare(secret, session.refresh_token_hash);
-            if (!valid) {
-                return new Response(JSON.stringify({ error: "Invalid refresh_token" }), { 
-                    status: 401, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
-            }
-
             const user = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, admin_level FROM users WHERE id = ?").bind(session.user_id).first();
             if (!user) {
-                return new Response(JSON.stringify({ error: "User not found" }), { 
-                    status: 401, 
-                    headers: { ...corsHeaders, "Content-Type": "application/json" } 
-                });
+                await revokeSessionById(sessionId);
+                return authError('User not found', 401);
             }
-            await touchDesqtaReservedClient(effectiveClientId);
 
-            const accessToken = await new SignJWT({ id: user.id, email: user.email, username: user.username })
-                .setProtectedHeader({ alg: 'HS256' })
-                .setExpirationTime('1h')
-                .sign(jwtSecret);
+            const accessToken = await createAccessToken(user);
+            const newExpiresAt = now + (APP_REFRESH_EXPIRY_DAYS * 24 * 60 * 60);
+            await touchUserSession(sessionId, now, request, { expiresAt: newExpiresAt, clientId: effectiveClientId });
 
-            const REFRESH_EXPIRY_DAYS = 90;
-            const newExpiresAt = now + (REFRESH_EXPIRY_DAYS * 24 * 60 * 60);
-            await env.DB.prepare(
-                "UPDATE desqta_sessions SET last_used_at = ?, expires_at = ?, client_id = ? WHERE id = ?"
-            ).bind(now, newExpiresAt, effectiveClientId, sessionId).run();
-
-            return new Response(JSON.stringify({
+            return authJson({
                 access_token: accessToken,
                 token_type: "Bearer",
-                expires_in: 3600,
+                expires_in: WEBSITE_ACCESS_EXPIRES_IN,
                 refresh_token: refresh_token,
                 user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl, admin_level: user.admin_level || 0 }
-            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            });
         } catch (err) {
             console.error("BS Plus refresh error:", err);
             return new Response(JSON.stringify({ error: "Refresh failed" }), { 
@@ -1143,30 +1305,22 @@ The BetterSEQTA+ Team
                 });
             }
 
-            const accessToken = await new SignJWT({ id: user.id, email: user.email, username: user.username })
-                .setProtectedHeader({ alg: 'HS256' })
-                .setExpirationTime('24h')
-                .sign(jwtSecret);
+            const accessToken = await createAccessToken(user);
+            const session = await createSession({
+                userId: user.id,
+                platform: 'bsplus',
+                clientId: client_id,
+                deviceName: 'BetterSEQTA Plus',
+                request,
+                refreshDays: APP_REFRESH_EXPIRY_DAYS,
+            });
 
-            const sessionId = crypto.randomUUID();
-            const secret = crypto.getRandomValues(new Uint8Array(32));
-            const secretB64 = btoa(String.fromCharCode(...secret));
-            const refreshTokenHash = await bcrypt.hash(secretB64, 10);
-            const REFRESH_EXPIRY_DAYS = 90;
-            const expiresAt = Math.floor(Date.now() / 1000) + (REFRESH_EXPIRY_DAYS * 24 * 60 * 60);
-
-            await env.DB.prepare(
-                "INSERT INTO desqta_sessions (id, user_id, client_id, refresh_token_hash, expires_at) VALUES (?, ?, ?, ?, ?)"
-            ).bind(sessionId, user.id, client_id, refreshTokenHash, expiresAt).run();
-
-            const refreshToken = `${sessionId}:${secretB64}`;
-
-            return new Response(JSON.stringify({
+            return authJson({
                 access_token: accessToken,
-                refresh_token: refreshToken,
-                expires_in: 86400,
+                refresh_token: session.refreshToken,
+                expires_in: WEBSITE_ACCESS_EXPIRES_IN,
                 user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, pfpUrl: user.pfpUrl, admin_level: user.admin_level || 0 }
-            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            });
         } catch (err) {
             console.error("BS Plus login error:", err);
             return new Response(JSON.stringify({ error: "Login failed" }), { 
@@ -1321,17 +1475,26 @@ The BetterSEQTA+ Team
                 ).bind(displayName, pfpUrl, user.id).run();
             }
 
-            // Generate JWT token
-            const token = await new SignJWT({ id: user.id, email: user.email, username: user.username })
-                .setProtectedHeader({ alg: 'HS256' })
-                .setExpirationTime('7d')
-                .sign(jwtSecret);
-
-            // Redirect to frontend callback page with token
+            const token = await createAccessToken(user);
+            const session = await createSession({
+                userId: user.id,
+                platform: 'web',
+                deviceName: 'Website (Discord)',
+                request,
+                refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
+            });
             const frontendCallbackUrl = new URL(`${env.APP_URL || 'https://accounts.betterseqta.org'}/auth/discord/callback`);
             frontendCallbackUrl.searchParams.set("token", token);
 
-            return Response.redirect(frontendCallbackUrl.toString(), 302);
+            return new Response(null, {
+                status: 302,
+                headers: {
+                    Location: frontendCallbackUrl.toString(),
+                    'Set-Cookie': createCookie(REFRESH_COOKIE_NAME, session.refreshToken, {
+                        maxAge: WEBSITE_REFRESH_EXPIRY_DAYS * 24 * 60 * 60,
+                    }),
+                },
+            });
 
         } catch (err) {
             console.error("Discord OAuth callback error:", err);
@@ -1554,31 +1717,23 @@ The BetterSEQTA+ Team
                 ).bind(displayName, pfpUrl, user.id).run();
             }
 
-            // Generate JWT token for API access (24h - refresh flow handles longevity)
-            const apiToken = await new SignJWT({ id: user.id, email: user.email, username: user.username })
-                .setProtectedHeader({ alg: 'HS256' })
-                .setExpirationTime('24h')
-                .sign(jwtSecret);
-
-            // Create desqta session for refresh token flow
-            const sessionId = crypto.randomUUID();
-            const secret = crypto.getRandomValues(new Uint8Array(32));
-            const secretB64 = btoa(String.fromCharCode(...secret));
-            const refreshTokenHash = await bcrypt.hash(secretB64, 10);
-            const REFRESH_EXPIRY_DAYS = 90;
-            const expiresAt = Math.floor(Date.now() / 1000) + (REFRESH_EXPIRY_DAYS * 24 * 60 * 60);
-
-            await env.DB.prepare(
-                "INSERT INTO desqta_sessions (id, user_id, client_id, refresh_token_hash, expires_at) VALUES (?, ?, ?, ?, ?)"
-            ).bind(sessionId, user.id, client_id, refreshTokenHash, expiresAt).run();
-
-            const refreshToken = `${sessionId}:${secretB64}`;
+            const apiToken = await createAccessToken(user);
+            const platform = redirect_uri.startsWith('desqta://') ? 'desqta' : 'bsplus';
+            const deviceName = platform === 'desqta' ? 'DesQTA (Discord)' : 'BetterSEQTA Plus (Discord)';
+            const session = await createSession({
+                userId: user.id,
+                platform,
+                clientId: client_id,
+                deviceName,
+                request,
+                refreshDays: APP_REFRESH_EXPIRY_DAYS,
+            });
 
             // Redirect to DesQTA's redirect_uri with token and refresh_token
             const desqtaCallbackUrl = new URL(redirect_uri);
             desqtaCallbackUrl.searchParams.set("token", apiToken);
             desqtaCallbackUrl.searchParams.set("user_id", user.id);
-            desqtaCallbackUrl.searchParams.set("refresh_token", refreshToken);
+            desqtaCallbackUrl.searchParams.set("refresh_token", session.refreshToken);
 
             return Response.redirect(desqtaCallbackUrl.toString(), 302);
 
@@ -1747,6 +1902,10 @@ The BetterSEQTA+ Team
             }
             await env.DB.prepare("DELETE FROM settings WHERE user_id = ?").bind(userId).run();
             await env.DB.prepare("DELETE FROM oauth_codes WHERE user_id = ?").bind(userId).run();
+            const userSessions = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='user_sessions'").first();
+            if (userSessions) {
+                await env.DB.prepare("DELETE FROM user_sessions WHERE user_id = ?").bind(userId).run();
+            }
             const desqtaSessions = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='desqta_sessions'").first();
             if (desqtaSessions) {
                 await env.DB.prepare("DELETE FROM desqta_sessions WHERE user_id = ?").bind(userId).run();

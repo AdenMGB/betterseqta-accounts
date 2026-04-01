@@ -20,18 +20,14 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   // Only call useAuth() for protected pages
   const { user, fetchUser } = useAuth()
 
-  // If user is not loaded, try to fetch
+  // If user is not loaded, try to restore or refresh the session
   if (!user.value) {
-    // Only fetch if we have a token
-    const token = localStorage.getItem('token')
-    if (token) {
-        await fetchUser()
-    }
+    await fetchUser()
   }
 
   // If still not logged in, redirect to login
   if (!user.value) {
-    return navigateTo('/login')
+    return navigateTo(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
   }
 })
 

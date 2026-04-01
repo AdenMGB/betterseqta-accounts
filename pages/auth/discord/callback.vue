@@ -25,10 +25,7 @@ onMounted(async () => {
   }
 
   try {
-    // Store token
-    localStorage.setItem('token', token)
-    
-    // Fetch user data to populate auth state
+    auth.setStoredToken(token)
     await auth.fetchUser()
     
     // Redirect to home

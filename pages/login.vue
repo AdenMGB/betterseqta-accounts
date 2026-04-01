@@ -82,6 +82,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useAuth } from '~/composables/useAuth'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 
 definePageMeta({ layout: false })
@@ -92,6 +93,7 @@ const error = ref('')
 const loading = ref(false)
 const router = useRouter()
 const route = useRoute()
+const { setStoredToken, fetchUser } = useAuth()
 
 const handleLogin = async () => {
   loading.value = true
@@ -102,7 +104,8 @@ const handleLogin = async () => {
       body: { login: login.value, password: password.value },
     })
     if (res.token) {
-      localStorage.setItem('token', res.token)
+      setStoredToken(res.token)
+      await fetchUser()
       const redirect = route.query.redirect as string || '/'
       router.push(redirect)
     }
