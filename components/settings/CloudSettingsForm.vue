@@ -1,5 +1,26 @@
 <template>
   <div class="space-y-8">
+    <!-- Cloud & account (BS+ cloud backup / sync prefs) -->
+    <section v-if="hasSection('cloudAccount')">
+      <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
+        <CloudArrowUpIcon class="w-5 h-5 text-primary-500" /> Cloud &amp; account
+      </h2>
+      <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+        Account, analytics, and onboarding flags synced with your BetterSEQTA+ cloud backup.
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <template v-for="key in getSectionKeys('cloudAccount')" :key="key">
+          <div
+            v-if="typeof settings[key] === 'boolean'"
+            class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50"
+          >
+            <span class="text-zinc-700 dark:text-zinc-300 font-medium">{{ formatLabel(key) }}</span>
+            <Switch v-model="settings[key]" />
+          </div>
+        </template>
+      </div>
+    </section>
+
     <!-- Appearance -->
     <section v-if="hasSection('appearance')">
       <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
@@ -7,8 +28,9 @@
       </h2>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <template v-for="key in getSectionKeys('appearance')" :key="key">
-          <div v-if="key === 'theme'" class="flex items-center gap-3 p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
-            <span class="text-zinc-700 dark:text-zinc-300 capitalize">{{ settings[key] || '—' }}</span>
+          <div v-if="key === 'theme'" class="form-group">
+            <label class="form-label">{{ formatLabel(key) }}</label>
+            <input v-model="settings[key]" type="text" class="form-input capitalize" placeholder="e.g. dark, light, system" />
           </div>
           <div v-else-if="key === 'accent_color'" class="form-group">
             <label class="form-label">{{ formatLabel(key) }}</label>
@@ -20,12 +42,57 @@
           </div>
           <div v-else-if="key === 'current_theme'" class="form-group">
             <label class="form-label">{{ formatLabel(key) }}</label>
-            <input v-model="settings[key]" type="text" class="form-input" placeholder="e.g. sunset" />
+            <input v-model="settings[key]" type="text" class="form-input" placeholder="e.g. space, sunset" />
           </div>
           <div v-else-if="key === 'zoom_level'" class="form-group">
             <label class="form-label">{{ formatLabel(key) }}</label>
-            <input v-model.number="settings[key]" type="number" class="form-input" placeholder="100" min="80" max="150" step="5" />
-            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Page zoom percentage (80–150). Leave empty for default.</p>
+            <input v-model.number="settings[key]" type="number" class="form-input" placeholder="100 or scale" step="any" />
+            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">UI zoom / scale (extension-specific). Use empty for default.</p>
+          </div>
+          <div v-else-if="key === 'default_page'" class="form-group md:col-span-2">
+            <label class="form-label">Default page</label>
+            <input v-model="settings[key]" type="text" class="form-input" placeholder="e.g. / or /courses" />
+            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Route opened when SEQTA Learn loads.</p>
+          </div>
+          <div v-else-if="getFieldType(key, settings[key]) === 'color'" class="form-group">
+            <label class="form-label">{{ formatLabel(key) }}</label>
+            <ColorPicker v-model="settings[key]" />
+          </div>
+          <div
+            v-else-if="typeof settings[key] === 'boolean'"
+            class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50"
+          >
+            <span class="text-zinc-700 dark:text-zinc-300 font-medium">{{ formatLabel(key) }}</span>
+            <Switch v-model="settings[key]" />
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <!-- Sidebar & layout -->
+    <section v-if="hasSection('sidebar')">
+      <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
+        <Bars3BottomLeftIcon class="w-5 h-5 text-primary-500" /> Sidebar &amp; layout
+      </h2>
+      <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Sidebar order, hidden pages, and collapse behaviour.</p>
+      <div class="grid grid-cols-1 gap-4">
+        <template v-for="key in getSectionKeys('sidebar')" :key="key">
+          <div
+            v-if="typeof settings[key] === 'boolean'"
+            class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50 md:max-w-xl"
+          >
+            <span class="text-zinc-700 dark:text-zinc-300 font-medium">{{ formatLabel(key) }}</span>
+            <Switch v-model="settings[key]" />
+          </div>
+          <div v-else-if="isJsonLike(settings[key])" class="form-group">
+            <label class="form-label">{{ formatLabel(key) }}</label>
+            <textarea
+              class="form-input font-mono text-sm min-h-[140px] leading-relaxed"
+              spellcheck="false"
+              :value="stringifySettingJson(settings[key])"
+              @blur="onJsonSettingBlur(key, $event)"
+            />
+            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">JSON array. Invalid JSON on blur is ignored.</p>
           </div>
         </template>
       </div>
@@ -50,6 +117,26 @@
         <div v-for="key in getSectionKeys('featuresDisplayOnly')" :key="'disp-' + key" class="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
           <span class="text-zinc-500 dark:text-zinc-400 text-sm block">{{ formatLabel(key) }}</span>
           <p class="text-zinc-900 dark:text-white font-medium mt-1">{{ typeof settings[key] === 'boolean' ? (settings[key] ? 'Yes' : 'No') : (settings[key] || '—') }}</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Feeds & shortcuts (JSON arrays) -->
+    <section v-if="hasSection('feedsShortcuts')">
+      <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
+        <RssIcon class="w-5 h-5 text-primary-500" /> Feeds &amp; shortcuts
+      </h2>
+      <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-4">RSS feed URLs and custom shortcuts (stored as JSON arrays).</p>
+      <div class="grid grid-cols-1 gap-4">
+        <div v-for="key in getSectionKeys('feedsShortcuts')" :key="key" class="form-group">
+          <label class="form-label">{{ formatLabel(key) }}</label>
+          <textarea
+            class="form-input font-mono text-sm min-h-[160px] leading-relaxed"
+            spellcheck="false"
+            :value="stringifySettingJson(settings[key])"
+            @blur="onJsonSettingBlur(key, $event)"
+          />
+          <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Edit as JSON. Invalid JSON on blur is ignored.</p>
         </div>
       </div>
     </section>
@@ -118,7 +205,7 @@
       </h2>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <template v-for="key in getSectionKeys('general')" :key="key">
-          <div class="form-group">
+          <div v-if="key === 'language'" class="form-group">
             <label class="form-label">{{ formatLabel(key) }}</label>
             <select v-model="settings[key]" class="form-select">
               <option value="en">English</option>
@@ -129,7 +216,39 @@
               <option value="ja">Japanese</option>
             </select>
           </div>
+          <div v-else class="form-group">
+            <label class="form-label">{{ formatLabel(key) }}</label>
+            <input v-model="settings[key]" type="text" class="form-input" :placeholder="formatLabel(key)" />
+          </div>
         </template>
+      </div>
+    </section>
+
+    <!-- Themes & sync state (large JSON blobs) -->
+    <section v-if="hasSection('themesSync')" class="border-t border-zinc-200 dark:border-zinc-700 pt-6">
+      <button
+        type="button"
+        @click="showThemesSync = !showThemesSync"
+        class="w-full flex items-center justify-between text-lg font-semibold text-zinc-900 dark:text-white mb-4 hover:text-primary-500 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded-lg"
+      >
+        <span class="flex items-center gap-2">
+          <CircleStackIcon class="w-5 h-5 text-primary-500" /> Themes &amp; sync state
+        </span>
+        <component :is="showThemesSync ? ChevronUpIcon : ChevronDownIcon" class="w-5 h-5" />
+      </button>
+      <p v-if="!showThemesSync" class="text-sm text-zinc-500 dark:text-zinc-400 mb-2">
+        Downloaded themes, enabled plugins, and sidebar activity (advanced).
+      </p>
+      <div v-if="showThemesSync" class="grid grid-cols-1 gap-4 animate-fade-in">
+        <div v-for="key in getSectionKeys('themesSync')" :key="key" class="form-group">
+          <label class="form-label">{{ formatLabel(key) }}</label>
+          <textarea
+            class="form-input font-mono text-sm min-h-[120px] leading-relaxed"
+            spellcheck="false"
+            :value="stringifySettingJson(settings[key])"
+            @blur="onJsonSettingBlur(key, $event)"
+          />
+        </div>
       </div>
     </section>
 
@@ -157,6 +276,15 @@
           <div v-if="typeof settings[key] === 'boolean'" class="form-group flex items-center gap-3">
             <Switch v-model="settings[key]" />
             <span class="text-zinc-700 dark:text-zinc-300">{{ formatLabel(key) }}</span>
+          </div>
+          <div v-else-if="isJsonLike(settings[key])" class="form-group md:col-span-2">
+            <label class="form-label">{{ formatLabel(key) }}</label>
+            <textarea
+              class="form-input font-mono text-sm min-h-[120px] leading-relaxed"
+              spellcheck="false"
+              :value="stringifySettingJson(settings[key])"
+              @blur="onJsonSettingBlur(key, $event)"
+            />
           </div>
           <div v-else-if="getFieldType(key, settings[key]) === 'color'" class="form-group">
             <label class="form-label">{{ formatLabel(key) }}</label>
@@ -225,6 +353,10 @@ import {
   ChevronUpIcon,
   BellIcon,
   GlobeAltIcon,
+  CloudArrowUpIcon,
+  Bars3BottomLeftIcon,
+  RssIcon,
+  CircleStackIcon,
 } from '@heroicons/vue/24/outline'
 
 const settings = defineModel<Record<string, any>>({ default: () => ({}) })
@@ -232,6 +364,7 @@ const settings = defineModel<Record<string, any>>({ default: () => ({}) })
 /** Keys we still sync but do not show on the BS+ settings UI (internal / noisy / large blobs). */
 const BSPLUS_UI_HIDDEN_KEYS_RAW = [
   'PrivacyStatementLastUpdated',
+  'PrivacyStatementShown',
   'SelectedTheme',
   'Shortcuts',
   'Subjectfilters',
@@ -267,15 +400,69 @@ const props = withDefaults(
 defineEmits<{ save: [] }>()
 
 const showDevOptions = ref(false)
+const showThemesSync = ref(false)
 
+/** Section order matches BetterSEQTA+ / DesQTA cloud settings shape (snake_case keys). */
 const settingsSections = {
-  appearance: ['theme', 'accent_color', 'enhanced_animations', 'current_theme', 'zoom_level'],
-  features: ['weather_enabled', 'reminders_enabled', 'disable_school_picture', 'global_search_enabled', 'separate_rss_feed', 'quiz_generator_enabled'],
+  cloudAccount: [
+    'accepted_cloud_eula',
+    'sync_cloud_pfp',
+    'send_anonymous_usage_statistics',
+    'biometric_enabled',
+    'has_completed_post_login_prompts',
+    'has_been_through_onboarding',
+  ],
+  appearance: [
+    'theme',
+    'dark_mode',
+    'accent_color',
+    'adaptive_theme_colour',
+    'transparency_effects',
+    'animated_background',
+    'twelve_hour_time',
+    'use_12_hour_time',
+    'enhanced_animations',
+    'current_theme',
+    'zoom_level',
+    'default_page',
+  ],
+  sidebar: [
+    'menu_order',
+    'disabled_sidebar_pages',
+    'auto_collapse_sidebar',
+    'auto_expand_sidebar_hover',
+    'icon_only_sidebar',
+  ],
+  features: [
+    'weather_enabled',
+    'reminders_enabled',
+    'disable_school_picture',
+    'global_search_enabled',
+    'separate_rss_feed',
+    'quiz_generator_enabled',
+    'minimize_to_tray',
+  ],
+  feedsShortcuts: ['shortcuts', 'feeds'],
   featuresDisplayOnly: ['weather_city', 'weather_country', 'force_use_location'],
-  ai: ['ai_integrations_enabled', 'ai_provider', 'grade_analyser_enabled', 'lesson_summary_analyser_enabled', 'gemini_api_key', 'cerebras_api_key'],
+  ai: [
+    'ai_integrations_enabled',
+    'ai_provider',
+    'grade_analyser_enabled',
+    'lesson_summary_analyser_enabled',
+    'gemini_api_key',
+    'cerebras_api_key',
+  ],
   notifications: ['auto_dismiss_message_notifications'],
-  general: ['language'],
+  general: ['language', 'seqta_platform'],
   developer: ['dev_sensitive_info_hider', 'dev_force_offline_mode'],
+  themesSync: [
+    'downloaded_theme_ids',
+    'downloaded_theme_metadata',
+    'sidebar_recent_activity',
+    'sidebar_folders',
+    'sidebar_favorites',
+    'enabled_plugins',
+  ],
 }
 
 const hasSection = (section: string) => {
@@ -293,6 +480,28 @@ const getSectionKeys = (section: string) => {
 
 const formatLabel = (key: string) => {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
+}
+
+const isJsonLike = (value: unknown): boolean =>
+  value !== null && typeof value === 'object'
+
+const stringifySettingJson = (value: unknown): string => {
+  try {
+    return JSON.stringify(value ?? null, null, 2)
+  } catch {
+    return ''
+  }
+}
+
+const onJsonSettingBlur = (key: string, e: Event) => {
+  const el = e.target as HTMLTextAreaElement
+  const raw = el.value.trim()
+  if (raw === '') return
+  try {
+    settings.value[key] = JSON.parse(raw)
+  } catch {
+    el.value = stringifySettingJson(settings.value[key])
+  }
 }
 
 const getFieldType = (key: string, value: any): 'switch' | 'color' | 'password' | 'select' | 'number' | 'text' => {
