@@ -149,10 +149,9 @@
               <button type="button" @click="loadBsPlusSettings" class="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">Retry</button>
             </div>
 
-            <SettingsCloudSettingsForm
+            <SettingsBsPlusCloudSettingsForm
               v-else
               v-model="bsPlusSettings"
-              hide-bs-plus-internal-keys
               :loading="bsPlusLoading"
               :error="bsPlusError"
               :success="bsPlusSuccess"

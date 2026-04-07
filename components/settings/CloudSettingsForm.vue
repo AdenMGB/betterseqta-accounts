@@ -230,7 +230,7 @@ import {
 const settings = defineModel<Record<string, any>>({ default: () => ({}) })
 
 /** Keys we still sync but do not show on the BS+ settings UI (internal / noisy / large blobs). */
-const BSPLUS_UI_HIDDEN_KEYS = new Set([
+const BSPLUS_UI_HIDDEN_KEYS_RAW = [
   'PrivacyStatementLastUpdated',
   'SelectedTheme',
   'Shortcuts',
@@ -246,7 +246,12 @@ const BSPLUS_UI_HIDDEN_KEYS = new Set([
   'Customshortcuts',
   'Defaultmenuorder',
   'Bksliderinput',
-])
+] as const
+
+/** Extension storage keys vary by casing; match case-insensitively. */
+const BSPLUS_UI_HIDDEN_KEYS_LOWER = new Set(
+  BSPLUS_UI_HIDDEN_KEYS_RAW.map((k) => k.trim().toLowerCase()),
+)
 
 const props = withDefaults(
   defineProps<{
@@ -278,7 +283,8 @@ const hasSection = (section: string) => {
 }
 
 const isBsPlusUiHidden = (key: string) =>
-  props.hideBsPlusInternalKeys && BSPLUS_UI_HIDDEN_KEYS.has(key)
+  props.hideBsPlusInternalKeys &&
+  BSPLUS_UI_HIDDEN_KEYS_LOWER.has(String(key).trim().toLowerCase())
 
 const getSectionKeys = (section: string) => {
   const knownKeys = settingsSections[section as keyof typeof settingsSections] || []
