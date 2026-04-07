@@ -149,7 +149,7 @@
               <button type="button" @click="loadBsPlusSettings" class="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">Retry</button>
             </div>
 
-            <CloudSettingsForm
+            <SettingsCloudSettingsForm
               v-else
               v-model="bsPlusSettings"
               :loading="bsPlusLoading"
@@ -172,7 +172,7 @@
               <button type="button" @click="loadBsSettings" class="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">Retry</button>
             </div>
 
-            <CloudSettingsForm
+            <SettingsCloudSettingsForm
               v-else
               v-model="bsSettings"
               :loading="bsLoading"
@@ -229,7 +229,7 @@
 </style>
 
 <script setup lang="ts">
-import { ref, onMounted, shallowRef } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useSettings } from '~/composables/useSettings'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
@@ -252,10 +252,10 @@ const pfpCropSource = ref<string | null>(null)
 
 const activeTab = ref('profile')
 const tabs = [
-  { name: 'profile', label: 'Profile', icon: shallowRef(UserCircleIcon) },
-  { name: 'account', label: 'Account', icon: shallowRef(ShieldCheckIcon) },
-  { name: 'bsplus-settings', label: 'BetterSEQTA+ Settings', icon: shallowRef(SparklesIcon) },
-  { name: 'bs-settings', label: 'DesQTA Settings', icon: shallowRef(CogIcon) },
+  { name: 'profile', label: 'Profile', icon: UserCircleIcon },
+  { name: 'account', label: 'Account', icon: ShieldCheckIcon },
+  { name: 'bsplus-settings', label: 'BetterSEQTA+ Settings', icon: SparklesIcon },
+  { name: 'bs-settings', label: 'DesQTA Settings', icon: CogIcon },
 ]
 
 // DesQTA cloud settings
