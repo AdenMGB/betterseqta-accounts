@@ -152,6 +152,7 @@
             <SettingsCloudSettingsForm
               v-else
               v-model="bsPlusSettings"
+              hide-bs-plus-internal-keys
               :loading="bsPlusLoading"
               :error="bsPlusError"
               :success="bsPlusSuccess"

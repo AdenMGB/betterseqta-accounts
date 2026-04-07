@@ -229,11 +229,35 @@ import {
 
 const settings = defineModel<Record<string, any>>({ default: () => ({}) })
 
-defineProps<{
-  loading?: boolean
-  error?: string
-  success?: string
-}>()
+/** Keys we still sync but do not show on the BS+ settings UI (internal / noisy / large blobs). */
+const BSPLUS_UI_HIDDEN_KEYS = new Set([
+  'PrivacyStatementLastUpdated',
+  'SelectedTheme',
+  'Shortcuts',
+  'Subjectfilters',
+  'Plugin.NotificationCollector.Storage.LastNotificationCount',
+  'Plugin.Profile-Picture.Settings',
+  'Plugin.Timetable.Settings',
+  'Plugin.TimetableEdit.Storage.TimetableOverrides',
+  'Plugin.NotificationCollector.Storage.ConsecutiveErrors',
+  'Plugin.NotificationCollector.Storage.LastCheckedTime',
+  'Plugin.Assessments-Average.Settings',
+  'Plugin.Global-Search.Settings',
+  'Customshortcuts',
+  'Defaultmenuorder',
+  'Bksliderinput',
+])
+
+const props = withDefaults(
+  defineProps<{
+    loading?: boolean
+    error?: string
+    success?: string
+    /** Only for BetterSEQTA+ tab: hide internal keys from the form; values stay in the model for save. */
+    hideBsPlusInternalKeys?: boolean
+  }>(),
+  { hideBsPlusInternalKeys: false },
+)
 
 defineEmits<{ save: [] }>()
 
@@ -253,9 +277,12 @@ const hasSection = (section: string) => {
   return getSectionKeys(section).length > 0
 }
 
+const isBsPlusUiHidden = (key: string) =>
+  props.hideBsPlusInternalKeys && BSPLUS_UI_HIDDEN_KEYS.has(key)
+
 const getSectionKeys = (section: string) => {
   const knownKeys = settingsSections[section as keyof typeof settingsSections] || []
-  return knownKeys.filter((key) => key in settings.value)
+  return knownKeys.filter((key) => key in settings.value && !isBsPlusUiHidden(key))
 }
 
 const formatLabel = (key: string) => {
@@ -274,7 +301,9 @@ const getFieldType = (key: string, value: any): 'switch' | 'color' | 'password' 
 
 const getOtherSettings = computed(() => {
   const allKnownKeys = Object.values(settingsSections).flat()
-  return Object.keys(settings.value).filter((key) => !allKnownKeys.includes(key))
+  return Object.keys(settings.value).filter(
+    (key) => !allKnownKeys.includes(key) && !isBsPlusUiHidden(key),
+  )
 })
 </script>
 
