@@ -133,225 +133,53 @@
             </div>
           </div>
           
-           <!-- BetterSEQTA Settings -->
+          <!-- BetterSEQTA+ Settings (extension cloud backup) -->
+          <div v-if="activeTab === 'bsplus-settings'">
+            <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-2">BetterSEQTA+ Settings</h2>
+            <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-6">
+              Cloud backup for the browser extension (same data as sync from the extension). DesQTA desktop app settings are separate below.
+            </p>
+
+            <div v-if="bsPlusLoading && Object.keys(bsPlusSettings).length === 0" class="flex justify-center py-12">
+              <LoadingSpinner size="lg" />
+            </div>
+
+            <div v-else-if="bsPlusError && Object.keys(bsPlusSettings).length === 0" class="text-center py-12">
+              <p class="text-red-500 mb-4">{{ bsPlusError }}</p>
+              <button type="button" @click="loadBsPlusSettings" class="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">Retry</button>
+            </div>
+
+            <CloudSettingsForm
+              v-else
+              v-model="bsPlusSettings"
+              :loading="bsPlusLoading"
+              :error="bsPlusError"
+              :success="bsPlusSuccess"
+              @save="saveBsPlusSettings"
+            />
+          </div>
+
+          <!-- DesQTA Settings -->
           <div v-if="activeTab === 'bs-settings'">
-             <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-6">DesQTA Settings</h2>
-             
-             <div v-if="bsLoading && Object.keys(bsSettings).length === 0" class="flex justify-center py-12">
-               <LoadingSpinner size="lg" />
-             </div>
-             
-             <div v-else-if="bsError && Object.keys(bsSettings).length === 0" class="text-center py-12">
-               <p class="text-red-500 mb-4">{{ bsError }}</p>
-               <button @click="loadBsSettings" class="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">Retry</button>
-             </div>
-             
-             <div v-else class="space-y-8">
-               <!-- Appearance -->
-               <section v-if="hasSection('appearance')">
-                 <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-                   <SwatchIcon class="w-5 h-5 text-primary-500" /> Appearance
-                 </h2>
-                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                   <template v-for="key in getSectionKeys('appearance')" :key="key">
-                     <div v-if="key === 'theme'" class="flex items-center gap-3 p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
-                       <span class="text-zinc-700 dark:text-zinc-300 capitalize">{{ bsSettings[key] || '—' }}</span>
-                     </div>
-                     <div v-else-if="key === 'accent_color'" class="form-group">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <ColorPicker v-model="bsSettings[key]" />
-                     </div>
-                     <div v-else-if="key === 'enhanced_animations'" class="form-group flex items-center gap-3 md:col-span-2">
-                       <Switch v-model="bsSettings[key]" />
-                       <span class="text-zinc-700 dark:text-zinc-300">{{ formatLabel(key) }}</span>
-                     </div>
-                     <div v-else-if="key === 'current_theme'" class="form-group">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <input v-model="bsSettings[key]" type="text" class="form-input" placeholder="e.g. sunset" />
-                     </div>
-                     <div v-else-if="key === 'zoom_level'" class="form-group">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <input v-model.number="bsSettings[key]" type="number" class="form-input" placeholder="100" min="80" max="150" step="5" />
-                       <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Page zoom percentage (80–150). Leave empty for default.</p>
-                     </div>
-                   </template>
-                 </div>
-               </section>
+            <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-6">DesQTA Settings</h2>
 
-               <!-- Features -->
-               <section v-if="hasSection('features') || getSectionKeys('featuresDisplayOnly').length > 0">
-                 <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-                   <SparklesIcon class="w-5 h-5 text-primary-500" /> Features
-                 </h2>
-                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <template v-for="key in getSectionKeys('features')" :key="key">
-                     <div v-if="typeof bsSettings[key] === 'boolean' || (['quiz_generator_enabled'].includes(key) && bsSettings[key] == null)" class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
-                       <span class="text-zinc-700 dark:text-zinc-300 font-medium">{{ formatLabel(key) }}</span>
-                       <Switch v-model="bsSettings[key]" :invert="key === 'disable_school_picture'" />
-                     </div>
-                     <div v-else class="form-group p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <input v-model="bsSettings[key]" type="text" class="form-input" :placeholder="`Enter ${formatLabel(key)}`" />
-                     </div>
-                   </template>
-                   <div v-for="key in getSectionKeys('featuresDisplayOnly')" :key="'disp-' + key" class="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
-                     <span class="text-zinc-500 dark:text-zinc-400 text-sm block">{{ formatLabel(key) }}</span>
-                     <p class="text-zinc-900 dark:text-white font-medium mt-1">{{ typeof bsSettings[key] === 'boolean' ? (bsSettings[key] ? 'Yes' : 'No') : (bsSettings[key] || '—') }}</p>
-                   </div>
-                 </div>
-               </section>
+            <div v-if="bsLoading && Object.keys(bsSettings).length === 0" class="flex justify-center py-12">
+              <LoadingSpinner size="lg" />
+            </div>
 
-               <!-- AI & Analytics -->
-               <section v-if="hasSection('ai')">
-                 <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-                   <CpuChipIcon class="w-5 h-5 text-primary-500" /> AI & Analytics
-                 </h2>
-                 <div class="space-y-4">
-                   <template v-for="key in getSectionKeys('ai')" :key="key">
-                     <div v-if="typeof bsSettings[key] === 'boolean'" class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
-                       <span class="text-zinc-700 dark:text-zinc-300 font-medium">{{ formatLabel(key) }}</span>
-                       <Switch v-model="bsSettings[key]" />
-                     </div>
-                     <div v-else-if="key === 'ai_provider'" class="form-group">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <select v-model="bsSettings[key]" class="form-select">
-                         <option value="gemini">Gemini</option>
-                         <option value="cerebras">Cerebras</option>
-                       </select>
-                     </div>
-                     <div v-else-if="key === 'cerebras_api_key' && bsSettings.ai_provider === 'cerebras'" class="form-group">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <input 
-                         type="password" 
-                         :name="key" 
-                         autocomplete="new-password" 
-                         v-model="bsSettings[key]" 
-                         class="form-input" 
-                         :placeholder="`Enter ${formatLabel(key)}`" 
-                       />
-                     </div>
-                     <div v-else-if="key !== 'cerebras_api_key'" class="form-group">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <input 
-                         type="password" 
-                         :name="key" 
-                         autocomplete="new-password" 
-                         v-model="bsSettings[key]" 
-                         class="form-input" 
-                         :placeholder="`Enter ${formatLabel(key)}`" 
-                       />
-                     </div>
-                   </template>
-                 </div>
-               </section>
+            <div v-else-if="bsError && Object.keys(bsSettings).length === 0" class="text-center py-12">
+              <p class="text-red-500 mb-4">{{ bsError }}</p>
+              <button type="button" @click="loadBsSettings" class="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600">Retry</button>
+            </div>
 
-               <!-- Notifications -->
-               <section v-if="hasSection('notifications')">
-                 <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-                   <BellIcon class="w-5 h-5 text-primary-500" /> Notifications
-                 </h2>
-                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div v-for="key in getSectionKeys('notifications')" :key="key" class="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-700/50">
-                     <span class="text-zinc-700 dark:text-zinc-300 font-medium">{{ formatLabel(key) }}</span>
-                     <Switch v-model="bsSettings[key]" />
-                   </div>
-                 </div>
-               </section>
-
-               <!-- General -->
-               <section v-if="hasSection('general')">
-                 <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-                   <GlobeAltIcon class="w-5 h-5 text-primary-500" /> General
-                 </h2>
-                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                   <template v-for="key in getSectionKeys('general')" :key="key">
-                     <div class="form-group">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <select v-model="bsSettings[key]" class="form-select">
-                         <option value="en">English</option>
-                         <option value="es">Spanish</option>
-                         <option value="fr">French</option>
-                         <option value="de">German</option>
-                         <option value="zh">Chinese</option>
-                         <option value="ja">Japanese</option>
-                       </select>
-                     </div>
-                   </template>
-                 </div>
-               </section>
-
-               <!-- Developer -->
-               <section v-if="hasSection('developer')" class="border-t border-zinc-200 dark:border-zinc-700 pt-6">
-                 <button @click="showDevOptions = !showDevOptions" class="w-full flex items-center justify-between text-lg font-semibold text-zinc-900 dark:text-white mb-4 hover:text-primary-500 transition-colors duration-200 focus:outline-none">
-                   <span>Developer Options</span>
-                   <component :is="showDevOptions ? ChevronUpIcon : ChevronDownIcon" class="w-5 h-5" />
-                 </button>
-                 <div v-if="showDevOptions" class="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
-                   <div v-for="key in getSectionKeys('developer')" :key="key" class="flex items-center justify-between p-3 rounded-lg">
-                     <span class="text-sm text-zinc-600 dark:text-zinc-400">{{ formatLabel(key) }}</span>
-                     <Switch v-model="bsSettings[key]" />
-                   </div>
-                 </div>
-               </section>
-
-               <!-- Other Settings -->
-               <section v-if="getOtherSettings.length > 0">
-                 <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-                   <CogIcon class="w-5 h-5 text-primary-500" /> Other Settings
-                 </h2>
-                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                   <template v-for="key in getOtherSettings" :key="key">
-                     <div v-if="typeof bsSettings[key] === 'boolean'" class="form-group flex items-center gap-3">
-                       <Switch v-model="bsSettings[key]" />
-                       <span class="text-zinc-700 dark:text-zinc-300">{{ formatLabel(key) }}</span>
-                     </div>
-                     <div v-else-if="getFieldType(key, bsSettings[key]) === 'color'" class="form-group">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <ColorPicker v-model="bsSettings[key]" />
-                     </div>
-                     <div v-else-if="getFieldType(key, bsSettings[key]) === 'password'" class="form-group">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <input 
-                         type="password" 
-                         :name="key" 
-                         autocomplete="new-password" 
-                         v-model="bsSettings[key]" 
-                         class="form-input" 
-                         :placeholder="`Enter ${formatLabel(key)}`" 
-                       />
-                     </div>
-                     <div v-else-if="typeof bsSettings[key] === 'number'" class="form-group">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <input 
-                         type="number" 
-                         v-model.number="bsSettings[key]" 
-                         class="form-input" 
-                         :placeholder="`Enter ${formatLabel(key)}`" 
-                       />
-                     </div>
-                     <div v-else class="form-group">
-                       <label class="form-label">{{ formatLabel(key) }}</label>
-                       <input 
-                         type="text" 
-                         v-model="bsSettings[key]" 
-                         class="form-input" 
-                         :placeholder="`Enter ${formatLabel(key)}`" 
-                       />
-                     </div>
-                   </template>
-                 </div>
-               </section>
-
-               <!-- Save Button -->
-               <div class="flex justify-end pt-4 border-t border-zinc-200 dark:border-zinc-700 sticky bottom-0 bg-white/80 dark:bg-zinc-800/80 backdrop-blur p-4 -mx-8 -mb-8 rounded-b-2xl z-10">
-                 <p v-if="bsSuccess" class="mr-4 text-green-500 font-medium self-center animate-fade-in">Settings saved!</p>
-                 <p v-if="bsError" class="mr-4 text-red-500 dark:text-red-400 font-medium self-center animate-fade-in">{{ bsError }}</p>
-                 <button @click="saveBsSettings" :disabled="bsLoading" class="bg-primary-500 hover:bg-primary-600 text-white font-bold py-2 px-6 rounded-lg transition-all duration-200 shadow-lg shadow-primary-500/30 flex items-center gap-2 transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed">
-                   <LoadingSpinner v-if="bsLoading" size="sm" class="text-white" />
-                   <span v-else>Save Changes</span>
-                 </button>
-               </div>
-             </div>
+            <CloudSettingsForm
+              v-else
+              v-model="bsSettings"
+              :loading="bsLoading"
+              :error="bsError"
+              :success="bsSuccess"
+              @save="saveBsSettings"
+            />
           </div>
         </div>
       </div>
@@ -401,17 +229,15 @@
 </style>
 
 <script setup lang="ts">
-import { ref, onMounted, shallowRef, computed } from 'vue'
+import { ref, onMounted, shallowRef } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useSettings } from '~/composables/useSettings'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
-import Switch from '~/components/ui/Switch.vue'
-import ColorPicker from '~/components/ui/ColorPicker.vue'
 import ImageCropper from '~/components/ui/ImageCropper.vue'
-import { UserCircleIcon, ShieldCheckIcon, CogIcon, SwatchIcon, SparklesIcon, CpuChipIcon, ChevronDownIcon, ChevronUpIcon, BellIcon, GlobeAltIcon } from '@heroicons/vue/24/outline'
+import { UserCircleIcon, ShieldCheckIcon, CogIcon, SparklesIcon } from '@heroicons/vue/24/outline'
 
 const auth = useAuth()
-const { getSettings, syncSettings } = useSettings()
+const { getSettings, syncSettings, getBsPlusSync, putBsPlusSync } = useSettings()
 
 const displayName = ref('')
 const username = ref('')
@@ -428,59 +254,21 @@ const activeTab = ref('profile')
 const tabs = [
   { name: 'profile', label: 'Profile', icon: shallowRef(UserCircleIcon) },
   { name: 'account', label: 'Account', icon: shallowRef(ShieldCheckIcon) },
+  { name: 'bsplus-settings', label: 'BetterSEQTA+ Settings', icon: shallowRef(SparklesIcon) },
   { name: 'bs-settings', label: 'DesQTA Settings', icon: shallowRef(CogIcon) },
 ]
 
-// BS Settings state
-const bsSettings = ref<any>({})
+// DesQTA cloud settings
+const bsSettings = ref<Record<string, any>>({})
 const bsLoading = ref(false)
 const bsError = ref('')
 const bsSuccess = ref('')
-const showDevOptions = ref(false)
 
-// Known settings organization
-const settingsSections = {
-  appearance: ['theme', 'accent_color', 'enhanced_animations', 'current_theme', 'zoom_level'],
-  features: ['weather_enabled', 'reminders_enabled', 'disable_school_picture', 'global_search_enabled', 'separate_rss_feed', 'quiz_generator_enabled'],
-  featuresDisplayOnly: ['weather_city', 'weather_country', 'force_use_location'],
-  ai: ['ai_integrations_enabled', 'ai_provider', 'grade_analyser_enabled', 'lesson_summary_analyser_enabled', 'gemini_api_key', 'cerebras_api_key'],
-  notifications: ['auto_dismiss_message_notifications'],
-  general: ['language'],
-  developer: ['dev_sensitive_info_hider', 'dev_force_offline_mode']
-}
-
-// Helper functions
-const hasSection = (section: string) => {
-  return getSectionKeys(section).length > 0
-}
-
-const getSectionKeys = (section: string) => {
-  const knownKeys = settingsSections[section as keyof typeof settingsSections] || []
-  return knownKeys.filter(key => key in bsSettings.value)
-}
-
-const formatLabel = (key: string) => {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, l => l.toUpperCase())
-}
-
-const getFieldType = (key: string, value: any): 'switch' | 'color' | 'password' | 'select' | 'number' | 'text' => {
-  if (typeof value === 'boolean') return 'switch'
-  if (typeof value === 'number' || (value === null && key === 'zoom_level')) return 'number'
-  if (value === null && key === 'quiz_generator_enabled') return 'switch'
-  if (key.toLowerCase().includes('color')) return 'color'
-  if (key.toLowerCase().match(/(key|password|secret|token)/)) return 'password'
-  if (['theme', 'ai_provider', 'language'].includes(key)) return 'select'
-  return 'text'
-}
-
-
-// Get other settings (not in known sections)
-const getOtherSettings = computed(() => {
-  const allKnownKeys = Object.values(settingsSections).flat()
-  return Object.keys(bsSettings.value).filter(key => !allKnownKeys.includes(key))
-})
+// BetterSEQTA+ extension cloud backup
+const bsPlusSettings = ref<Record<string, any>>({})
+const bsPlusLoading = ref(false)
+const bsPlusError = ref('')
+const bsPlusSuccess = ref('')
 
 // Password Change State
 const currentPassword = ref('')
@@ -519,8 +307,7 @@ onMounted(async () => {
     })
   }
   
-  // Load BS Settings
-  await loadBsSettings()
+  await Promise.all([loadBsSettings(), loadBsPlusSettings()])
 })
 
 const loadBsSettings = async () => {
@@ -531,9 +318,23 @@ const loadBsSettings = async () => {
     bsSettings.value = settings || {}
   } catch (e) {
     bsError.value = 'Failed to load settings.'
-    console.error("Failed to load BS Settings", e)
+    console.error('Failed to load DesQTA settings', e)
   } finally {
     bsLoading.value = false
+  }
+}
+
+const loadBsPlusSettings = async () => {
+  bsPlusLoading.value = true
+  bsPlusError.value = ''
+  try {
+    const { data } = await getBsPlusSync()
+    bsPlusSettings.value = (data || {}) as Record<string, any>
+  } catch (e) {
+    bsPlusError.value = 'Failed to load settings.'
+    console.error('Failed to load BetterSEQTA+ settings', e)
+  } finally {
+    bsPlusLoading.value = false
   }
 }
 
@@ -621,20 +422,37 @@ const updateProfile = async () => {
 }
 
 const saveBsSettings = async () => {
-    bsLoading.value = true
-    bsError.value = ''
-    bsSuccess.value = ''
-    
-    try {
-        await syncSettings(bsSettings.value)
-        bsSuccess.value = 'Settings saved to cloud!'
-        setTimeout(() => bsSuccess.value = '', 3000)
-    } catch (e) {
-        bsError.value = 'Failed to save settings.'
-        console.error(e)
-    } finally {
-        bsLoading.value = false
-    }
+  bsLoading.value = true
+  bsError.value = ''
+  bsSuccess.value = ''
+
+  try {
+    await syncSettings(bsSettings.value)
+    bsSuccess.value = 'Settings saved to cloud!'
+    setTimeout(() => (bsSuccess.value = ''), 3000)
+  } catch (e) {
+    bsError.value = 'Failed to save settings.'
+    console.error(e)
+  } finally {
+    bsLoading.value = false
+  }
+}
+
+const saveBsPlusSettings = async () => {
+  bsPlusLoading.value = true
+  bsPlusError.value = ''
+  bsPlusSuccess.value = ''
+
+  try {
+    await putBsPlusSync(bsPlusSettings.value as Record<string, unknown>)
+    bsPlusSuccess.value = 'BetterSEQTA+ cloud settings saved!'
+    setTimeout(() => (bsPlusSuccess.value = ''), 3000)
+  } catch (e) {
+    bsPlusError.value = 'Failed to save settings.'
+    console.error(e)
+  } finally {
+    bsPlusLoading.value = false
+  }
 }
 
 const changePassword = async () => {
