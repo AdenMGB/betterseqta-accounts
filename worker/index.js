@@ -4,12 +4,14 @@ import bcrypt from 'bcryptjs';
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const BSPLUS_SYNC_SCHEMA_VERSION = 1;
+    const BSPLUS_SYNC_MAX_BYTES = 2 * 1024 * 1024;
     const jwtSecret = new TextEncoder().encode(env.JWT_SECRET);
     
     // CORS headers
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-ID, X-API-Key',
     };
 
@@ -1330,6 +1332,123 @@ The BetterSEQTA+ Team
         }
     }
 
+    // --- BetterSEQTA+ extension cloud settings sync (GET/PUT /api/bsplus/settings/sync) ---
+    if (url.pathname === "/api/bsplus/settings/sync") {
+        const bsSyncJsonHeaders = { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" };
+        const bsUser = await getUser(request);
+        if (!bsUser) {
+            return authError("Unauthorized", 401, bsSyncJsonHeaders);
+        }
+        const bsUserId = bsUser.id;
+
+        if (request.method === "GET") {
+            const row = await env.DB.prepare(
+                "SELECT schema_version, data, updated_at FROM bsplus_settings_sync WHERE user_id = ?"
+            )
+                .bind(bsUserId)
+                .first();
+            if (!row) {
+                return new Response(JSON.stringify({ error: "Not found" }), { status: 404, headers: bsSyncJsonHeaders });
+            }
+            let dataObj;
+            try {
+                dataObj = JSON.parse(row.data);
+            } catch {
+                return new Response(JSON.stringify({ error: "Invalid stored data" }), { status: 500, headers: bsSyncJsonHeaders });
+            }
+            return new Response(
+                JSON.stringify({
+                    schemaVersion: row.schema_version,
+                    data: dataObj,
+                    updated_at: row.updated_at,
+                }),
+                { headers: bsSyncJsonHeaders }
+            );
+        }
+
+        if (request.method === "PUT") {
+            let body;
+            try {
+                body = await request.json();
+            } catch {
+                return new Response(JSON.stringify({ error: "Invalid JSON body" }), { status: 400, headers: bsSyncJsonHeaders });
+            }
+            const sv = body?.schemaVersion;
+            const dataPayload = body?.data;
+            if (typeof sv !== "number" || !Number.isFinite(sv) || Math.floor(sv) !== sv) {
+                return new Response(JSON.stringify({ error: "schemaVersion must be an integer" }), {
+                    status: 422,
+                    headers: bsSyncJsonHeaders,
+                });
+            }
+            if (sv !== BSPLUS_SYNC_SCHEMA_VERSION) {
+                return new Response(JSON.stringify({ error: "Unsupported schemaVersion" }), {
+                    status: 422,
+                    headers: bsSyncJsonHeaders,
+                });
+            }
+            if (dataPayload === null || typeof dataPayload !== "object" || Array.isArray(dataPayload)) {
+                return new Response(JSON.stringify({ error: "data must be a plain object" }), {
+                    status: 422,
+                    headers: bsSyncJsonHeaders,
+                });
+            }
+            const dataStr = JSON.stringify(dataPayload);
+            if (dataStr.length > BSPLUS_SYNC_MAX_BYTES) {
+                return new Response(JSON.stringify({ error: "Payload too large" }), { status: 413, headers: bsSyncJsonHeaders });
+            }
+            const updatedAt = new Date().toISOString();
+            await env.DB.prepare(
+                `INSERT INTO bsplus_settings_sync (user_id, schema_version, data, updated_at)
+                 VALUES (?, ?, ?, ?)
+                 ON CONFLICT(user_id) DO UPDATE SET
+                   schema_version = excluded.schema_version,
+                   data = excluded.data,
+                   updated_at = excluded.updated_at`
+            )
+                .bind(bsUserId, sv, dataStr, updatedAt)
+                .run();
+            return new Response(JSON.stringify({ updated_at: updatedAt }), { status: 200, headers: bsSyncJsonHeaders });
+        }
+
+        return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: bsSyncJsonHeaders });
+    }
+
+    // GET /api/user/cloud-summary — DesQTA + BS+ last-updated for dashboard
+    if (url.pathname === "/api/user/cloud-summary" && request.method === "GET") {
+        const summaryHeaders = { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" };
+        const su = await getUser(request);
+        if (!su) {
+            return authError("Unauthorized", 401, summaryHeaders);
+        }
+        const summaryUserId = su.id;
+
+        const settingsRow = await env.DB.prepare("SELECT user_id FROM settings WHERE user_id = ?")
+            .bind(summaryUserId)
+            .first();
+        let desqta = null;
+        if (settingsRow) {
+            const meta = await env.DB.prepare(
+                "SELECT settings_revision, settings_updated_at FROM settings_metadata WHERE user_id = ?"
+            )
+                .bind(summaryUserId)
+                .first();
+            desqta = {
+                updated_at: meta?.settings_updated_at ?? null,
+                revision: meta?.settings_revision ?? 1,
+            };
+        }
+
+        const bsRow = await env.DB.prepare("SELECT schema_version, updated_at FROM bsplus_settings_sync WHERE user_id = ?")
+            .bind(summaryUserId)
+            .first();
+        const bsplus = bsRow
+            ? { updated_at: bsRow.updated_at, schemaVersion: bsRow.schema_version }
+            : null;
+
+        return new Response(JSON.stringify({ desqta, bsplus }), { headers: summaryHeaders });
+    }
+
     // --- Helper: Clean Environment Variable ---
     function cleanEnvVar(value) {
         if (!value) return null;
@@ -1897,6 +2016,11 @@ The BetterSEQTA+ Team
             await env.DB.prepare("DELETE FROM password_reset_tokens WHERE user_id = ?").bind(userId).run();
             try {
                 await env.DB.prepare("DELETE FROM settings_metadata WHERE user_id = ?").bind(userId).run();
+            } catch (_) {
+                /* table may not exist on very old schemas */
+            }
+            try {
+                await env.DB.prepare("DELETE FROM bsplus_settings_sync WHERE user_id = ?").bind(userId).run();
             } catch (_) {
                 /* table may not exist on very old schemas */
             }
