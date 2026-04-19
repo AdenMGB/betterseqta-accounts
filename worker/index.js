@@ -900,15 +900,27 @@ The BetterSEQTA+ Team
 
     // --- API: OAuth Endpoints ---
     
-    // Check Client (public)
+    // Check Client (public) - checks both oauth_clients and reserved clients
     if (url.pathname === "/api/oauth/client" && request.method === "GET") {
         const clientId = url.searchParams.get("client_id");
         if (!clientId) return new Response("Missing client_id", { status: 400, headers: corsHeaders });
 
         const client = await env.DB.prepare("SELECT name, redirect_uri FROM oauth_clients WHERE id = ?").bind(clientId).first();
-        if (!client) return new Response("Invalid Client", { status: 404, headers: corsHeaders });
+        if (client) {
+            return new Response(JSON.stringify(client), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
 
-        return new Response(JSON.stringify(client), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        // Check reserved clients (BetterSEQTA Plus / DesQTA)
+        const reserved = await env.DB.prepare("SELECT id, redirect_uri, expires_at FROM desqta_reserved_clients WHERE id = ?").bind(clientId).first();
+        if (reserved) {
+            const now = Math.floor(Date.now() / 1000);
+            if (reserved.expires_at != null && reserved.expires_at < now) {
+                return new Response("Invalid Client", { status: 404, headers: corsHeaders });
+            }
+            return new Response(JSON.stringify({ name: "BetterSEQTA+", redirect_uri: reserved.redirect_uri }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        return new Response("Invalid Client", { status: 404, headers: corsHeaders });
     }
 
     // Approve & Generate Code (Authenticated)
@@ -917,21 +929,56 @@ The BetterSEQTA+ Team
         if (!user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
         const { client_id, redirect_uri } = await request.json();
+
+        // Check full OAuth clients first (code flow with client_secret)
         const client = await env.DB.prepare("SELECT id FROM oauth_clients WHERE id = ? AND redirect_uri = ?").bind(client_id, redirect_uri).first();
         
-        if (!client) return new Response("Invalid Client or Redirect URI", { status: 400, headers: corsHeaders });
+        if (client) {
+            // Standard OAuth code flow for full clients
+            const code = crypto.randomUUID();
+            const expiresAt = Math.floor(Date.now() / 1000) + 600; // 10 minutes
 
-        const code = crypto.randomUUID();
-        const expiresAt = Math.floor(Date.now() / 1000) + 600; // 10 minutes
+            await env.DB.prepare("INSERT INTO oauth_codes (code, client_id, user_id, expires_at) VALUES (?, ?, ?, ?)")
+                .bind(code, client_id, user.id, expiresAt).run();
 
-        await env.DB.prepare("INSERT INTO oauth_codes (code, client_id, user_id, expires_at) VALUES (?, ?, ?, ?)")
-            .bind(code, client_id, user.id, expiresAt).run();
+            const redirectUrl = new URL(redirect_uri);
+            redirectUrl.searchParams.set("code", code);
 
-        // Construct redirect URL
-        const redirectUrl = new URL(redirect_uri);
-        redirectUrl.searchParams.set("code", code);
+            return new Response(JSON.stringify({ redirectUrl: redirectUrl.toString() }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
 
-        return new Response(JSON.stringify({ redirectUrl: redirectUrl.toString() }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        // Check reserved clients (BetterSEQTA Plus / DesQTA) - direct token flow
+        const reserved = await env.DB.prepare("SELECT id, redirect_uri, expires_at FROM desqta_reserved_clients WHERE id = ? AND redirect_uri = ?").bind(client_id, redirect_uri).first();
+        if (reserved) {
+            const now = Math.floor(Date.now() / 1000);
+            if (reserved.expires_at != null && reserved.expires_at < now) {
+                return new Response("Invalid Client or Redirect URI", { status: 400, headers: corsHeaders });
+            }
+            await touchDesqtaReservedClient(client_id);
+
+            const fullUser = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, admin_level FROM users WHERE id = ?").bind(user.id).first();
+            if (!fullUser) return new Response("User not found", { status: 404, headers: corsHeaders });
+
+            const accessToken = await createAccessToken(fullUser);
+            const platform = redirect_uri.startsWith('desqta://') ? 'desqta' : 'bsplus';
+            const session = await createSession({
+                userId: fullUser.id,
+                platform,
+                clientId: client_id,
+                deviceName: 'BetterSEQTA Plus',
+                request,
+                refreshDays: APP_REFRESH_EXPIRY_DAYS,
+            });
+
+            const callbackUrl = new URL(redirect_uri);
+            callbackUrl.searchParams.set("token", accessToken);
+            callbackUrl.searchParams.set("refresh_token", session.refreshToken);
+            callbackUrl.searchParams.set("user_id", fullUser.id);
+
+            return new Response(JSON.stringify({ redirectUrl: callbackUrl.toString() }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        return new Response("Invalid Client or Redirect URI", { status: 400, headers: corsHeaders });
     }
 
     // Exchange Token (Public/Server-to-Server)
