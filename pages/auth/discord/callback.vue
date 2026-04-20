@@ -28,8 +28,9 @@ onMounted(async () => {
     auth.setStoredToken(token)
     await auth.fetchUser()
     
-    // Redirect to home
-    router.replace('/')
+    // Redirect to the post-login destination, or home
+    const redirect = route.query.redirect as string || '/'
+    router.replace(redirect)
   } catch (err: any) {
     console.error('Discord login error:', err)
     error.value = 'Failed to complete Discord login. Please try again.'

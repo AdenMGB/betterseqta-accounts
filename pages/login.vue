@@ -117,6 +117,10 @@ const handleLogin = async () => {
 }
 
 const loginWithDiscord = () => {
-  window.location.href = '/api/oauth/discord'
+  const redirect = route.query.redirect as string || ''
+  const discordUrl = redirect
+    ? `/api/oauth/discord?redirect=${encodeURIComponent(redirect)}`
+    : '/api/oauth/discord'
+  window.location.href = discordUrl
 }
 </script> 

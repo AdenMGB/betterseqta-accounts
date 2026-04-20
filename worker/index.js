@@ -1529,12 +1529,17 @@ The BetterSEQTA+ Team
             return new Response("Discord OAuth not configured", { status: 500, headers: corsHeaders });
         }
 
+        // Carry the post-login redirect through Discord's state param
+        const postLoginRedirect = url.searchParams.get("redirect") || "";
+        const state = postLoginRedirect ? btoa(JSON.stringify({ redirect: postLoginRedirect })) : undefined;
+
         // Build Discord OAuth URL
         const discordAuthUrl = new URL("https://discord.com/api/oauth2/authorize");
         discordAuthUrl.searchParams.set("client_id", discordClientId);
         discordAuthUrl.searchParams.set("redirect_uri", discordRedirectUri);
         discordAuthUrl.searchParams.set("response_type", "code");
         discordAuthUrl.searchParams.set("scope", "identify email");
+        if (state) discordAuthUrl.searchParams.set("state", state);
 
         return Response.redirect(discordAuthUrl.toString(), 302);
     }
@@ -1544,6 +1549,16 @@ The BetterSEQTA+ Team
         try {
             const code = url.searchParams.get("code");
             const error = url.searchParams.get("error");
+            const stateParam = url.searchParams.get("state");
+
+            // Extract post-login redirect from state if present
+            let postLoginRedirect = "";
+            if (stateParam) {
+                try {
+                    const stateData = JSON.parse(atob(stateParam));
+                    postLoginRedirect = stateData.redirect || "";
+                } catch (_) {}
+            }
 
             if (error) {
                 return Response.redirect(`${env.APP_URL || 'https://accounts.betterseqta.org'}/login?error=${encodeURIComponent(error)}`, 302);
@@ -1651,6 +1666,7 @@ The BetterSEQTA+ Team
             });
             const frontendCallbackUrl = new URL(`${env.APP_URL || 'https://accounts.betterseqta.org'}/auth/discord/callback`);
             frontendCallbackUrl.searchParams.set("token", token);
+            if (postLoginRedirect) frontendCallbackUrl.searchParams.set("redirect", postLoginRedirect);
 
             return new Response(null, {
                 status: 302,
