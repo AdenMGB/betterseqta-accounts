@@ -1,6 +1,9 @@
 <template>
   <div class="flex items-center justify-center min-h-screen bg-zinc-100 dark:bg-zinc-900">
-    <div class="w-full max-w-md animate-fade-in">
+    <div v-if="checkingSession" class="text-center">
+      <LoadingSpinner size="lg" />
+    </div>
+    <div v-else class="w-full max-w-md animate-fade-in">
       <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-8">
         <div class="text-center mb-8">
           <h1 class="text-3xl font-bold text-zinc-900 dark:text-white font-display">Welcome Back</h1>
@@ -80,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '~/composables/useAuth'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
@@ -91,9 +94,20 @@ const login = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
+const checkingSession = ref(true)
 const router = useRouter()
 const route = useRoute()
-const { setStoredToken, fetchUser } = useAuth()
+const { setStoredToken, fetchUser, isLoggedIn, user } = useAuth()
+
+onMounted(async () => {
+  await fetchUser()
+  if (isLoggedIn()) {
+    const redirect = route.query.redirect as string || '/'
+    router.replace(redirect)
+    return
+  }
+  checkingSession.value = false
+})
 
 const handleLogin = async () => {
   loading.value = true
