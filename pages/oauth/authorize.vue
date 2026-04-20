@@ -93,9 +93,8 @@ const approve = async () => {
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
         window.location.href = res.redirectUrl
-    } catch (e: any) {
-        const detail = e?.data?.error || e?.data?.detail || e?.message || 'Unknown error'
-        error.value = `Failed to authorize request: ${detail}`
+    } catch (e) {
+        error.value = 'Failed to authorize request.'
         processing.value = false
     }
 }

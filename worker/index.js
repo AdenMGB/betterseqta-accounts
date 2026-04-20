@@ -23,6 +23,7 @@ export default {
     const WEBSITE_ACCESS_EXPIRES_IN = 60 * 60;
     const WEBSITE_REFRESH_EXPIRY_DAYS = 180;
     const APP_REFRESH_EXPIRY_DAYS = 180;
+    const DESQTA_CLIENT_TTL_DAYS = 7;
     const REFRESH_COOKIE_NAME = 'bs_refresh_token';
 
     // --- Helper: Verify Auth ---
@@ -982,7 +983,7 @@ The BetterSEQTA+ Team
             return new Response(JSON.stringify({ error: "Invalid Client or Redirect URI" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (err) {
             console.error("OAuth approve error:", err);
-            return new Response(JSON.stringify({ error: "Authorization failed", detail: err?.message || String(err) }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            return new Response(JSON.stringify({ error: "Authorization failed" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
     }
 
@@ -1031,8 +1032,6 @@ The BetterSEQTA+ Team
     }
 
     // --- Desqta API Endpoints ---
-
-    const DESQTA_CLIENT_TTL_DAYS = 7;
 
     // Helper: Validate Desqta client_id (checks oauth_clients OR desqta_reserved_clients)
     async function getDesqtaClient(clientId, redirectUri) {
