@@ -64,6 +64,36 @@ Returns full user table as JSON (password excluded).
 
 ---
 
+## GET /api/export/users/contact
+
+Returns a paginated list of user emails and display names. Useful for contact lists, newsletters, and integrations.
+
+**Query Parameters (optional):**
+
+| Parameter | Type | Default | Max | Description |
+|-----------|------|---------|-----|-------------|
+| `page` | integer | `1` | — | Page number (1-indexed) |
+| `limit` | integer | `1000` | `5000` | Records per page |
+
+**Response:** `200 OK`
+
+```json
+{
+  "users": [
+    { "email": "user@example.com", "displayName": "Display Name" }
+  ],
+  "count": 1000,
+  "total": 4200,
+  "page": 1,
+  "limit": 1000,
+  "totalPages": 5
+}
+```
+
+*See [export-contact.md](./export-contact.md) for full documentation including pagination examples.*
+
+---
+
 ## Error Responses
 
 | Status | Body |

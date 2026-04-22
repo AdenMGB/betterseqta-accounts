@@ -334,6 +334,56 @@ export default {
         }
     }
 
+    // --- API: Export - Emails and display names (contact list) ---
+    if (url.pathname === "/api/export/users/contact" && request.method === "GET") {
+        try {
+            const apiKey = await verifyApiKey(request);
+            if (!apiKey) return apiKeyUnauthorized();
+
+            // Optional query params: ?page=1&limit=100
+            const pageParam = parseInt(url.searchParams.get("page") || "1", 10);
+            const limitParam = parseInt(url.searchParams.get("limit") || "1000", 10);
+            const page = Math.max(1, isNaN(pageParam) ? 1 : pageParam);
+            const limit = Math.min(5000, Math.max(1, isNaN(limitParam) ? 1000 : limitParam));
+            const offset = (page - 1) * limit;
+
+            let rows, totalResult;
+            try {
+                totalResult = await env.DB.prepare("SELECT COUNT(*) as total FROM users").first();
+                const r = await env.DB.prepare(
+                    "SELECT email, displayName FROM users ORDER BY created_at ASC LIMIT ? OFFSET ?"
+                ).bind(limit, offset).all();
+                rows = r.results ?? [];
+            } catch (_) {
+                try {
+                    const r = await env.DB.prepare(
+                        "SELECT email, displayName FROM users ORDER BY createdAt ASC LIMIT ? OFFSET ?"
+                    ).bind(limit, offset).all();
+                    rows = r.results ?? [];
+                } catch (__) {
+                    const r = await env.DB.prepare(
+                        "SELECT email, displayName FROM users ORDER BY id ASC LIMIT ? OFFSET ?"
+                    ).bind(limit, offset).all();
+                    rows = r.results ?? [];
+                }
+            }
+
+            const total = totalResult?.total ?? rows.length;
+            const totalPages = Math.ceil(total / limit);
+
+            return new Response(JSON.stringify({
+                users: rows,
+                count: rows.length,
+                total,
+                page,
+                limit,
+                totalPages
+            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e) {
+            return apiKeyDbError(e);
+        }
+    }
+
     // --- API: Register ---
     if (url.pathname === "/api/auth/register" && request.method === "POST") {
       try {
