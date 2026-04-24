@@ -37,6 +37,31 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      return new Response(JSON.stringify({ error: "Username is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const emailRow = await env.DB.prepare("SELECT id FROM users WHERE LOWER(email) = ?")
+      .bind(normalizedEmail)
+      .first();
+    if (emailRow) {
+      return new Response(JSON.stringify({ error: "Email is already registered" }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const usernameRow = await env.DB.prepare("SELECT id FROM users WHERE username = ?").bind(trimmedUsername).first();
+    if (usernameRow) {
+      return new Response(JSON.stringify({ error: "Username is already taken" }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const id = crypto.randomUUID();
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -45,16 +70,16 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
       await env.DB.prepare(
         "INSERT INTO users (id, email, password, username, displayName, admin_level) VALUES (?, ?, ?, ?, ?, ?)",
       )
-        .bind(id, normalizedEmail, hashedPassword, username, displayName || username, 0)
+        .bind(id, normalizedEmail, hashedPassword, trimmedUsername, displayName || trimmedUsername, 0)
         .run();
     } catch {
-      return new Response(JSON.stringify({ error: "User already exists" }), {
+      return new Response(JSON.stringify({ error: "This email or username is already in use" }), {
         status: 409,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const token = await createAccessToken({ id, email: normalizedEmail, username }, jwtSecret);
+    const token = await createAccessToken({ id, email: normalizedEmail, username: trimmedUsername }, jwtSecret);
     const session = await createSession(env, {
       userId: id,
       platform: "web",
@@ -70,7 +95,7 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
       {
         token,
         expires_in: WEBSITE_ACCESS_EXPIRES_IN,
-        user: { id, email: normalizedEmail, username, displayName, admin_level: 0 },
+        user: { id, email: normalizedEmail, username: trimmedUsername, displayName, admin_level: 0 },
       },
       {
         "Set-Cookie": refreshCookie,

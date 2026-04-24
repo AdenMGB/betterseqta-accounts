@@ -147,7 +147,7 @@ const onSubmit = async () => {
     }
     router.push('/')
   } catch (err: any) {
-    error.value = err?.data?.statusMessage || 'Registration failed.'
+    error.value = err?.data?.error || err?.data?.statusMessage || 'Registration failed.'
   } finally {
     loading.value = false
   }
