@@ -15,6 +15,7 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "typecheck": "nuxt typecheck",
+    "worker:typecheck": "tsc -p worker/tsconfig.json",
     "cf:deploy": "pnpm generate && wrangler deploy",
     "cf:dev": "pnpm generate && wrangler dev",
     "db:migrate:local": "wrangler d1 migrations apply BS_SETTINGS --local",
@@ -47,6 +48,7 @@
     "vue-router": "latest"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250424.0",
     "@cloudflare/vite-plugin": "^1.15.3",
     "vite": "^8.0.0",
     "@nuxt/types": "^2.18.1",
