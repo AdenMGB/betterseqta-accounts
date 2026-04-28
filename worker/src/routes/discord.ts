@@ -129,9 +129,10 @@ export async function handleDiscordOAuthCallback({ env, request, url, jwtSecret 
       normalizedEmail = `discord_${discordUser.id}@discord.local`;
     }
 
-    let user = (await env.DB.prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(?)")
-      .bind(normalizedEmail)
-      .first()) as Record<string, unknown> | null;
+    let user = (await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(normalizedEmail).first()) as Record<
+      string,
+      unknown
+    > | null;
 
     if (!user) {
       const userId = crypto.randomUUID();
@@ -362,9 +363,10 @@ export async function handleDesqtaDiscordCallback({ env, request, url, jwtSecret
       normalizedEmail = `discord_${discordUser.id}@discord.local`;
     }
 
-    let user = (await env.DB.prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(?)")
-      .bind(normalizedEmail)
-      .first()) as Record<string, unknown> | null;
+    let user = (await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(normalizedEmail).first()) as Record<
+      string,
+      unknown
+    > | null;
 
     if (!user) {
       const userId = crypto.randomUUID();

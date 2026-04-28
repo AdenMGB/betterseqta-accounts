@@ -3,6 +3,7 @@ import { authJson, authError, createAccessToken } from "../lib/auth";
 import { getDesqtaClient, validateDesqtaClient, touchDesqtaReservedClient } from "../lib/desqta-client";
 import bcrypt from "bcryptjs";
 import { createSession, getSessionByRefreshToken, touchUserSession, revokeSessionById } from "../lib/session";
+import { findUserByCredentialsLogin } from "../lib/user-by-login";
 import type { RequestContext } from "../types/context";
 
 export async function handleDesqtaReserve({ env, request }: RequestContext): Promise<Response> {
@@ -149,10 +150,7 @@ export async function handleDesqtaLogin({ env, request, jwtSecret }: RequestCont
     }
     await touchDesqtaReservedClient(env, client_id);
 
-    const normalizedLogin = login.includes("@") ? login.toLowerCase().trim() : login;
-    const user = (await env.DB.prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(?) OR username = ?")
-      .bind(normalizedLogin, login)
-      .first()) as Record<string, string> | null;
+    const user = (await findUserByCredentialsLogin(env.DB, login)) as Record<string, string> | null;
 
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return new Response(JSON.stringify({ error: "Invalid credentials" }), {

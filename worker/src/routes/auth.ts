@@ -19,6 +19,7 @@ import {
   touchUserSession,
   revokeSessionById,
 } from "../lib/session";
+import { findUserByCredentialsLogin, findUserProfileByLogin } from "../lib/user-by-login";
 import type { RequestContext } from "../types/context";
 
 export async function handleRegister({ env, request, jwtSecret }: RequestContext): Promise<Response> {
@@ -45,9 +46,7 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
       });
     }
 
-    const emailRow = await env.DB.prepare("SELECT id FROM users WHERE LOWER(email) = ?")
-      .bind(normalizedEmail)
-      .first();
+    const emailRow = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(normalizedEmail).first();
     if (emailRow) {
       return new Response(JSON.stringify({ error: "Email is already registered" }), {
         status: 409,
@@ -110,10 +109,7 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
 export async function handleLogin({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   try {
     const { login, password } = (await request.json()) as { login?: string; password?: string };
-    const normalizedLogin = login!.includes("@") ? login!.toLowerCase().trim() : login!;
-    const user = (await env.DB.prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(?) OR username = ?")
-      .bind(normalizedLogin, login)
-      .first()) as Record<string, string> | null;
+    const user = (await findUserByCredentialsLogin(env.DB, login!)) as Record<string, string> | null;
 
     if (!user || !(await bcrypt.compare(password!, user.password))) {
       return new Response(JSON.stringify({ error: "Invalid credentials" }), {
@@ -366,9 +362,7 @@ export async function handleChangeEmail({ env, request, jwtSecret }: RequestCont
       });
     }
 
-    const existingUser = await env.DB.prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?)")
-      .bind(normalizedNewEmail)
-      .first();
+    const existingUser = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(normalizedNewEmail).first();
     if (existingUser) {
       return new Response(JSON.stringify({ error: "Email already in use" }), {
         status: 409,
@@ -403,10 +397,7 @@ export async function handleForgotPassword({ env, request }: RequestContext): Pr
       });
     }
 
-    const normalizedLogin = login.includes("@") ? login.toLowerCase().trim() : login;
-    const user = (await env.DB.prepare("SELECT id, email, displayName FROM users WHERE LOWER(email) = LOWER(?) OR username = ?")
-      .bind(normalizedLogin, login)
-      .first()) as { id: string; email: string; displayName?: string } | null;
+    const user = await findUserProfileByLogin(env.DB, login);
 
     if (user) {
       const recentToken = await env.DB.prepare(

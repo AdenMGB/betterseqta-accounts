@@ -368,7 +368,7 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
     }
     const normalizedEmail = email.toLowerCase().trim();
     if (normalizedEmail !== targetUser.email.toLowerCase()) {
-      const existingUser = await env.DB.prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ?")
+      const existingUser = await env.DB.prepare("SELECT id FROM users WHERE email = ? AND id != ?")
         .bind(normalizedEmail, userId)
         .first();
       if (existingUser) {
