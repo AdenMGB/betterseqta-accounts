@@ -417,3 +417,63 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+export async function handleAdminMigratePfps({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const maxAdminLevel = await getMaxAdminLevel(env);
+  if ((admin.adminLevel || 0) < maxAdminLevel) {
+    return new Response(JSON.stringify({ error: "Only Senior Admins can migrate profile pictures" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const users = await env.DB.prepare(
+    "SELECT id, pfpUrl FROM users WHERE pfpUrl IS NOT NULL AND pfpUrl != '' AND pfpUrl NOT LIKE ?",
+  )
+    .bind("/api/user/pfp/%")
+    .all();
+
+  const rows = (users.results || []) as { id: string; pfpUrl: string }[];
+  const results: { userId: string; oldUrl: string; success: boolean; error?: string }[] = [];
+
+  for (const user of rows) {
+    try {
+      const response = await fetch(user.pfpUrl);
+      if (!response.ok) {
+        results.push({
+          userId: user.id,
+          oldUrl: user.pfpUrl,
+          success: false,
+          error: `Download failed: HTTP ${response.status}`,
+        });
+        continue;
+      }
+
+      const contentType = response.headers.get("content-type") || "image/png";
+      const buffer = await response.arrayBuffer();
+      const key = `pfp/${user.id}`;
+
+      await env.PFP_BUCKET.put(key, buffer, { httpMetadata: { contentType } });
+
+      const newUrl = `/api/user/pfp/${user.id}`;
+      await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(newUrl, user.id).run();
+
+      results.push({ userId: user.id, oldUrl: user.pfpUrl, success: true });
+    } catch (e) {
+      results.push({ userId: user.id, oldUrl: user.pfpUrl, success: false, error: String(e) });
+    }
+  }
+
+  return new Response(
+    JSON.stringify({
+      total: rows.length,
+      migrated: results.filter((r) => r.success).length,
+      failed: results.filter((r) => !r.success).length,
+      results,
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}

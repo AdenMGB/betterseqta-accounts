@@ -72,6 +72,8 @@ const routes: Route[] = [
   { test: (m, p) => p === "/api/settings", handle: (c) => settings.handleSettings(c) },
   { test: (m, p) => m === "POST" && p === "/api/user/update", handle: (c) => user.handleUserUpdate(c) },
   { test: (m, p) => m === "POST" && p === "/api/user/pfp", handle: (c) => user.handleUserPfp(c) },
+  { test: (m, p) => m === "GET" && p.startsWith("/api/user/pfp/") && p.split("/").length === 5, handle: (c) => user.handleUserPfpGet(c) },
+  { test: (m, p) => m === "POST" && p === "/api/admin/migrate-pfps", handle: (c) => admin.handleAdminMigratePfps(c) },
 ];
 
 export async function dispatch(ctx: RequestContext): Promise<Response | null> {

@@ -36,6 +36,12 @@
         >
             API Keys
         </button>
+        <button 
+            @click="activeTab = 'pfp-migration'" 
+            :class="['pb-2 px-1 font-medium transition-colors duration-200 border-b-2', isTab('pfp-migration') ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
+        >
+            PFP Migration
+        </button>
       </div>
 
       <!-- Users Tab -->
@@ -343,6 +349,61 @@
             </div>
             <p v-if="apiKeys.length === 0" class="text-center py-6 text-zinc-500 dark:text-zinc-400">No API keys yet.</p>
         </div>
+      <!-- PFP Migration Tab -->
+      <div v-if="isTab('pfp-migration')" class="space-y-6">
+        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Migrate Profile Pictures to Cloudflare R2</h3>
+          <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+            Downloads all user profile pictures from external providers (ImgBB, Discord CDN, etc.) and uploads them to our Cloudflare R2 bucket. Only users whose PFP is not already served from R2 will be processed.
+          </p>
+          <button
+            @click="migratePfps"
+            :disabled="migratingPfps"
+            class="px-6 py-3 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center gap-2"
+          >
+            <LoadingSpinner v-if="migratingPfps" size="sm" />
+            <template v-else>
+              <ArrowPathIcon class="w-5 h-5" />
+            </template>
+            {{ migratingPfps ? 'Migrating...' : 'Start Migration' }}
+          </button>
+        </div>
+
+        <div v-if="migrationResult" class="space-y-4">
+          <div class="grid grid-cols-3 gap-4">
+            <div class="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/30 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-2xl font-bold text-zinc-900 dark:text-white">{{ migrationResult.total }}</p>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400">Total Found</p>
+            </div>
+            <div class="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-center">
+              <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{ migrationResult.migrated }}</p>
+              <p class="text-sm text-green-600 dark:text-green-400">Migrated</p>
+            </div>
+            <div class="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-center">
+              <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{ migrationResult.failed }}</p>
+              <p class="text-sm text-red-600 dark:text-red-400">Failed</p>
+            </div>
+          </div>
+
+          <div v-if="migrationResult.failed > 0" class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+            <div class="max-h-[300px] overflow-y-auto">
+              <table class="w-full text-left">
+                <thead class="sticky top-0 bg-zinc-50 dark:bg-zinc-800/95 backdrop-blur-sm z-10">
+                  <tr class="border-b border-zinc-200 dark:border-zinc-700">
+                    <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">User ID</th>
+                    <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Error</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
+                  <tr v-for="r in failedResults" :key="r.userId" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                    <td class="py-3 px-4 text-sm font-mono text-zinc-900 dark:text-white">{{ r.userId }}</td>
+                    <td class="py-3 px-4 text-sm text-red-500">{{ r.error }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -352,12 +413,12 @@
 import { ref, onMounted } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
-import { ShieldExclamationIcon, EnvelopeIcon, TrashIcon } from '@heroicons/vue/24/outline'
+import { ShieldExclamationIcon, EnvelopeIcon, TrashIcon, ArrowPathIcon } from '@heroicons/vue/24/outline'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 
 const auth = useAuth()
 const { showToast } = useToast()
-const activeTab = ref('users')
+const activeTab = ref<string>('users')
 
 // Users State
 const searchQuery = ref('')
@@ -384,6 +445,12 @@ const newApiKeyName = ref('')
 const creatingApiKey = ref(false)
 const lastCreatedApiKey = ref<any>(null)
 const deletingApiKeyId = ref<string | null>(null)
+
+// PFP Migration State
+const migratingPfps = ref(false)
+const migrationResult = ref<{ total: number; migrated: number; failed: number; results: any[] } | null>(null)
+const failedResults = computed(() => migrationResult.value?.results?.filter(r => !r.success) || [])
+const isTab = (tab: string) => activeTab.value === tab
 
 // Actions
 const searchUsers = async (page: number = 1) => {
@@ -735,6 +802,23 @@ const deleteApiKey = async (key: any) => {
     } finally {
         deletingApiKeyId.value = null
     }
+}
+
+const migratePfps = async () => {
+  if (!confirm('This will download all external profile pictures and upload them to Cloudflare R2. This may take a while. Continue?')) return
+  migratingPfps.value = true
+  migrationResult.value = null
+  try {
+    const res = await $fetch<{ total: number; migrated: number; failed: number; results: any[] }>('/api/admin/migrate-pfps', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    })
+    migrationResult.value = res
+  } catch (e: any) {
+    showToast(e?.data?.error || 'Migration failed', 'error')
+  } finally {
+    migratingPfps.value = false
+  }
 }
 
 onMounted(() => {

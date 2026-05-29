@@ -9,5 +9,4 @@ export interface Env {
   DISCORD_CLIENT_ID?: string;
   DISCORD_CLIENT_SECRET?: string;
   DISCORD_REDIRECT_URI?: string;
-  IMGBB_API_KEY?: string;
 }

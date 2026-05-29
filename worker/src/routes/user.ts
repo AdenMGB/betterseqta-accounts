@@ -66,23 +66,13 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
       return new Response("File too large (max 5MB)", { status: 400, headers: corsHeaders });
     }
 
-    const imgbbForm = new FormData();
-    imgbbForm.append("image", file);
-    imgbbForm.append("key", env.IMGBB_API_KEY as string);
+    const key = `pfp/${user.id}`;
 
-    const imgbbRes = await fetch("https://api.imgbb.com/1/upload", {
-      method: "POST",
-      body: imgbbForm,
+    await env.PFP_BUCKET.put(key, await file.arrayBuffer(), {
+      httpMetadata: { contentType: file.type },
     });
 
-    const imgbbData = (await imgbbRes.json()) as { success?: boolean; data?: { url: string } };
-
-    if (!imgbbData.success) {
-      console.error("ImgBB Error:", imgbbData);
-      return new Response("Failed to upload image to provider", { status: 502, headers: corsHeaders });
-    }
-
-    const pfpUrl = imgbbData.data!.url;
+    const pfpUrl = `/api/user/pfp/${user.id}`;
 
     await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, user.id).run();
 
@@ -93,4 +83,27 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
     const message = e instanceof Error ? e.message : String(e);
     return new Response(message, { status: 500, headers: corsHeaders });
   }
+}
+
+export async function handleUserPfpGet({ env, url, jwtSecret }: RequestContext): Promise<Response> {
+  const segments = url.pathname.split("/");
+  const userId = segments[segments.length - 1];
+
+  if (!userId) {
+    return new Response("Not found", { status: 404, headers: corsHeaders });
+  }
+
+  const key = `pfp/${userId}`;
+  const object = await env.PFP_BUCKET.get(key);
+
+  if (!object) {
+    return new Response("Not found", { status: 404, headers: corsHeaders });
+  }
+
+  const headers = new Headers(corsHeaders);
+  headers.set("Content-Type", object.httpMetadata?.contentType || "image/png");
+  headers.set("Cache-Control", "private, max-age=86400");
+  headers.set("ETag", object.etag);
+
+  return new Response(object.body, { headers });
 }
