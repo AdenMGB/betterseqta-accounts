@@ -189,7 +189,12 @@ export async function handleUserPfpGet({ env, url }: RequestContext): Promise<Re
 
   const headers = new Headers(corsHeaders);
   headers.set("Content-Type", object.httpMetadata?.contentType || "image/png");
-  headers.set("Cache-Control", "private, max-age=86400");
+  // Current slot is overwritten in place; history blobs are immutable.
+  const isHistory = r2Key.includes("/hist/");
+  headers.set(
+    "Cache-Control",
+    isHistory ? "private, max-age=31536000, immutable" : "private, no-cache, must-revalidate",
+  );
   headers.set("ETag", object.etag);
 
   return new Response(object.body, { headers });

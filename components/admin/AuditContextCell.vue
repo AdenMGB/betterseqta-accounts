@@ -2,22 +2,22 @@
   <div class="text-sm text-zinc-600 dark:text-zinc-400 max-w-md">
     <div v-if="pfpResolved" class="flex items-center gap-2">
       <button
-        v-if="pfpResolved.from.available"
+        v-if="pfpResolved.from.available && pfpResolved.from.url"
         type="button"
         class="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
-        @click="$emit('view', pfpResolved.from.url!)"
+        @click="$emit('view', bust(pfpResolved.from.url))"
       >
-        <img :src="pfpResolved.from.url" alt="Before" class="w-10 h-10 rounded-full object-cover border-2 border-zinc-300 dark:border-zinc-600" />
+        <img :src="bust(pfpResolved.from.url)" alt="Before" class="w-10 h-10 rounded-full object-cover border-2 border-zinc-300 dark:border-zinc-600" />
       </button>
       <div v-else class="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[9px] text-zinc-500 text-center px-1" title="No longer available">N/A</div>
       <span class="text-zinc-400 shrink-0">→</span>
       <button
-        v-if="pfpResolved.to.available"
+        v-if="pfpResolved.to.available && pfpResolved.to.url"
         type="button"
         class="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
-        @click="$emit('view', pfpResolved.to.url!)"
+        @click="$emit('view', bust(pfpResolved.to.url))"
       >
-        <img :src="pfpResolved.to.url" alt="After" class="w-10 h-10 rounded-full object-cover border-2 border-zinc-300 dark:border-zinc-600" />
+        <img :src="bust(pfpResolved.to.url)" alt="After" class="w-10 h-10 rounded-full object-cover border-2 border-zinc-300 dark:border-zinc-600" />
       </button>
       <div v-else class="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[9px] text-zinc-500 text-center px-1" title="No longer available">N/A</div>
     </div>
@@ -29,7 +29,7 @@
       <span v-if="ctx.targetUsername" class="text-xs text-zinc-500">({{ ctx.targetUsername }})</span>
     </div>
 
-    <ul v-else-if="ctx.changes" class="space-y-1 text-xs">
+    <ul v-else-if="hasFieldChanges" class="space-y-1 text-xs">
       <li v-for="(change, field) in ctx.changes" :key="String(field)">
         <span class="font-medium capitalize">{{ field }}:</span>
         <span class="line-through text-zinc-400 mx-1">{{ change.from || '—' }}</span>
@@ -65,6 +65,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { withPfpCacheBust } from '~/utils/pfp'
 
 const props = defineProps<{
   entry: {
@@ -77,12 +78,20 @@ const props = defineProps<{
     }
   }
   maxAdminLevel?: number
+  cacheVersion?: number | string
 }>()
 
 defineEmits<{ view: [src: string] }>()
 
 const ctx = computed(() => (props.entry.details?.context ?? {}) as Record<string, any>)
 const pfpResolved = computed(() => props.entry.contextResolved)
+
+const hasFieldChanges = computed(() => {
+  const changes = ctx.value.changes
+  return changes && typeof changes === 'object' && Object.keys(changes).length > 0
+})
+
+const bust = (url: string) => withPfpCacheBust(url, props.cacheVersion)
 
 const roleLabel = (level: number) => {
   const max = props.maxAdminLevel ?? 3

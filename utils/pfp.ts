@@ -1,8 +1,17 @@
+/** Current PFP lives at a stable URL that gets overwritten; history blobs are immutable. */
+export function isMutablePfpUrl(url: string): boolean {
+  if (!url.includes('/api/user/pfp/')) return false
+  // /api/user/pfp/{userId}/hist/{id} — immutable history
+  if (url.includes('/hist/')) return false
+  // /api/user/pfp/{userId} — mutable current slot
+  return /^\/api\/user\/pfp\/[^/?#]+$/.test(url.split('?')[0]!)
+}
+
 export function withPfpCacheBust(url: string | null | undefined, version?: number | string): string {
   if (!url) return ''
-  if (!url.includes('/api/user/pfp/')) return url
-  const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}v=${version ?? Date.now()}`
+  if (!isMutablePfpUrl(url)) return url
+  const base = url.split('?')[0]!
+  return `${base}?v=${version ?? Date.now()}`
 }
 
 export function formatRelativeTime(unixSeconds: number): string {

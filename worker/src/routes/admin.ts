@@ -6,8 +6,9 @@ import {
   getMaxAdminLevel,
 } from "../lib/auth";
 import { sendPasswordResetEmail } from "../lib/email";
-import { recordAdminAction } from "../lib/adminAudit";
+import { recordAdminAction, AUDIT_HIDE_NOOP_UPDATES, isDisplayableAuditEntry } from "../lib/adminAudit";
 import { buildPfpAuditContext, resolvePfpAuditRefs, type PfpAuditRef } from "../lib/auditPfpResolve";
+import { auditTargetForUser, resolveAuditTargets } from "../lib/auditTarget";
 import {
   clearUserPfp,
   getPfpHistoryForUser,
@@ -143,9 +144,11 @@ export async function handleAdminPromote({ env, request, jwtSecret }: RequestCon
     );
   }
 
-  const targetUser = await env.DB.prepare("SELECT admin_level, username FROM users WHERE id = ?").bind(userId).first() as {
+  const targetUser = await env.DB.prepare("SELECT admin_level, username, displayName, email FROM users WHERE id = ?").bind(userId).first() as {
     admin_level: number;
     username: string;
+    displayName: string | null;
+    email: string;
   } | null;
   if (!targetUser) {
     return new Response(JSON.stringify({ error: "User not found" }), {
@@ -207,7 +210,10 @@ export async function handleAdminPromote({ env, request, jwtSecret }: RequestCon
     action,
     targetType: "user",
     targetId: userId!,
-    details: { context: { fromLevel: currentTargetLevel, toLevel: adminLevel, targetUsername: targetUser.username } },
+    details: {
+      ...auditTargetForUser({ id: userId!, username: targetUser.username, displayName: targetUser.displayName, email: targetUser.email }),
+      context: { fromLevel: currentTargetLevel, toLevel: adminLevel, targetUsername: targetUser.username },
+    },
     success: true,
   });
 
@@ -228,9 +234,10 @@ export async function handleAdminSendPasswordReset({ env, request, jwtSecret }: 
     });
   }
 
-  const user = (await env.DB.prepare("SELECT id, email, displayName FROM users WHERE id = ?").bind(userId).first()) as {
+  const user = (await env.DB.prepare("SELECT id, email, username, displayName FROM users WHERE id = ?").bind(userId).first()) as {
     id: string;
     email: string;
+    username: string;
     displayName?: string;
   } | null;
   if (!user) {
@@ -255,7 +262,7 @@ export async function handleAdminSendPasswordReset({ env, request, jwtSecret }: 
       action: "user.password_reset",
       targetType: "user",
       targetId: user.id,
-      details: { context: { email: user.email, username: user.displayName || user.id }, error: "Failed to send reset email" },
+      details: { context: { email: user.email, username: user.username, displayName: user.displayName || null }, error: "Failed to send reset email" },
       success: false,
     });
     return new Response(JSON.stringify({ error: "Failed to send reset email" }), {
@@ -268,7 +275,10 @@ export async function handleAdminSendPasswordReset({ env, request, jwtSecret }: 
     action: "user.password_reset",
     targetType: "user",
     targetId: user.id,
-    details: { context: { email: user.email, username: user.displayName || user.id } },
+    details: {
+      ...auditTargetForUser(user),
+      context: { email: user.email, username: user.username, displayName: user.displayName || null },
+    },
     success: true,
   });
 
@@ -367,7 +377,10 @@ export async function handleAdminDeleteUser({ env, request, jwtSecret }: Request
     action: "user.delete",
     targetType: "user",
     targetId: userId,
-    details: { context: { email: targetUser.email, username: targetUser.username, displayName: targetUser.displayName } },
+    details: {
+      ...auditTargetForUser({ id: userId, username: targetUser.username, displayName: targetUser.displayName ?? null, email: targetUser.email }),
+      context: { email: targetUser.email, username: targetUser.username, displayName: targetUser.displayName },
+    },
     success: true,
   });
 
@@ -648,14 +661,13 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
     const prev = targetUser.displayName ?? "";
     if (displayName !== prev) {
       changes.displayName = { from: prev, to: displayName };
+      updates.push("displayName = ?");
+      values.push(displayName);
     }
-    updates.push("displayName = ?");
-    values.push(displayName);
   }
 
   if (updates.length === 0) {
-    return new Response(JSON.stringify({ error: "No fields to update" }), {
-      status: 400,
+    return new Response(JSON.stringify({ success: true, unchanged: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -667,7 +679,10 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
     action: "user.update",
     targetType: "user",
     targetId: userId,
-    details: { context: { changes, targetUsername: targetUser.username } },
+    details: {
+      ...auditTargetForUser({ id: userId, username: targetUser.username, displayName: targetUser.displayName ?? null, email: targetUser.email }),
+      context: { changes, targetUsername: targetUser.username },
+    },
     success: true,
   });
 
@@ -703,7 +718,12 @@ export async function handleAdminUserPfpUpload({ env, request, jwtSecret }: Requ
       return new Response("File too large (max 5MB)", { status: 400, headers: corsHeaders });
     }
 
-    const targetUser = await env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(userId).first();
+    const targetUser = await env.DB.prepare("SELECT id, username, displayName, email FROM users WHERE id = ?").bind(userId).first() as {
+      id: string;
+      username: string;
+      displayName: string | null;
+      email: string;
+    } | null;
     if (!targetUser) {
       return new Response(JSON.stringify({ error: "User not found" }), {
         status: 404,
@@ -732,6 +752,7 @@ export async function handleAdminUserPfpUpload({ env, request, jwtSecret }: Requ
       targetType: "user",
       targetId: userId,
       details: {
+        ...(targetUser ? auditTargetForUser(targetUser) : {}),
         context: buildPfpAuditContext(fromRef, { slot: "current" }),
       },
       success: true,
@@ -777,12 +798,19 @@ export async function handleAdminUserPfpClear({ env, request, jwtSecret }: Reque
   const pfpHistory = await getPfpHistoryForUser(env, userId);
 
   const fromRef = pfpRefFromArchivedHistory(archivedHistoryId, hadBlob || hadPfp);
+  const targetUser = await env.DB.prepare("SELECT id, username, displayName, email FROM users WHERE id = ?").bind(userId).first() as {
+    id: string;
+    username: string;
+    displayName: string | null;
+    email: string;
+  } | null;
 
   await audit(env, admin, {
     action: "pfp.clear",
     targetType: "user",
     targetId: userId,
     details: {
+      ...(targetUser ? auditTargetForUser(targetUser) : {}),
       context: buildPfpAuditContext(fromRef, { slot: "cleared" }),
     },
     success: true,
@@ -850,12 +878,19 @@ export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: Requ
   await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, userId).run();
 
   const pfpHistory = await getPfpHistoryForUser(env, userId);
+  const targetUser = await env.DB.prepare("SELECT id, username, displayName, email FROM users WHERE id = ?").bind(userId).first() as {
+    id: string;
+    username: string;
+    displayName: string | null;
+    email: string;
+  } | null;
 
   await audit(env, admin, {
     action: "pfp.restore",
     targetType: "user",
     targetId: userId,
     details: {
+      ...(targetUser ? auditTargetForUser(targetUser) : {}),
       context: buildPfpAuditContext(fromRef, { slot: "current" }),
     },
     success: true,
@@ -1054,7 +1089,7 @@ export async function handleAdminAuditLog({ env, request, url, jwtSecret }: Requ
   const actorFilter = url.searchParams.get("actor_id") || "";
   const q = url.searchParams.get("q") || "";
 
-  const conditions: string[] = [];
+  const conditions: string[] = [AUDIT_HIDE_NOOP_UPDATES];
   const params: unknown[] = [];
 
   if (actionFilter) {
@@ -1070,7 +1105,7 @@ export async function handleAdminAuditLog({ env, request, url, jwtSecret }: Requ
     params.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
 
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const where = `WHERE ${conditions.join(" AND ")}`;
 
   const countRow = await env.DB.prepare(`SELECT COUNT(*) as total FROM admin_audit_log ${where}`)
     .bind(...params)
@@ -1114,11 +1149,22 @@ export async function handleAdminAuditLog({ env, request, url, jwtSecret }: Requ
       success: row.success === 1,
       createdAt: row.created_at,
     };
+  }).filter(isDisplayableAuditEntry);
+
+  const targetMap = await resolveAuditTargets(
+    env,
+    entries.map((e) => ({ targetType: e.targetType, targetId: e.targetId, details: e.details })),
+  );
+
+  const entriesWithTarget = entries.map((entry) => {
+    const key = `${entry.targetType ?? ""}:${entry.targetId ?? ""}`;
+    const target = targetMap.get(key);
+    return target ? { ...entry, target } : entry;
   });
 
   const pfpUserIds = [
     ...new Set(
-      entries
+      entriesWithTarget
         .filter((e) => e.action.startsWith("pfp.") && e.targetType === "user" && e.targetId)
         .map((e) => e.targetId as string),
     ),
@@ -1133,7 +1179,7 @@ export async function handleAdminAuditLog({ env, request, url, jwtSecret }: Requ
     };
   }
 
-  const entriesWithResolved = entries.map((entry) => {
+  const entriesWithResolved = entriesWithTarget.map((entry) => {
     if (!entry.action.startsWith("pfp.") || entry.targetType !== "user" || !entry.targetId) {
       return entry;
     }

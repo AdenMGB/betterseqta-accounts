@@ -78,8 +78,8 @@
         </div>
 
         <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
-            <div ref="usersScrollContainer" class="max-h-[600px] overflow-y-auto">
-                <table class="w-full text-left">
+            <div ref="usersScrollContainer" class="max-h-[600px] scroll-stable">
+                <table class="w-full table-fixed text-left">
                     <thead class="sticky top-0 bg-zinc-50 dark:bg-zinc-800/95 backdrop-blur-sm z-10">
                         <tr class="border-b border-zinc-200 dark:border-zinc-700">
                             <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">User</th>
@@ -398,8 +398,16 @@
         </div>
 
         <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
-          <div ref="auditScrollContainer" class="max-h-[600px] overflow-y-auto">
-            <table class="w-full text-left">
+          <div ref="auditScrollContainer" class="max-h-[600px] scroll-stable">
+            <table class="w-full table-fixed text-left">
+              <colgroup>
+                <col class="w-[148px]" />
+                <col class="w-[100px]" />
+                <col class="w-[120px]" />
+                <col class="w-[168px]" />
+                <col />
+                <col class="w-[64px]" />
+              </colgroup>
               <thead class="sticky top-0 bg-zinc-50 dark:bg-zinc-800/95 backdrop-blur-sm z-10">
                 <tr class="border-b border-zinc-200 dark:border-zinc-700">
                   <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Time</th>
@@ -415,9 +423,17 @@
                   <td class="py-3 px-4 text-xs text-zinc-500 whitespace-nowrap">{{ formatAuditTime(entry.createdAt) }}</td>
                   <td class="py-3 px-4 text-sm text-zinc-900 dark:text-white">{{ entry.actorUsername || entry.actorId }}</td>
                   <td class="py-3 px-4 text-sm">{{ auditActionLabel(entry.action) }}</td>
-                  <td class="py-3 px-4 text-xs font-mono text-zinc-500 truncate max-w-[120px]" :title="entry.targetId || ''">{{ entry.targetId || '—' }}</td>
                   <td class="py-3 px-4">
-                    <AuditContextCell :entry="entry" :max-admin-level="maxAdminLevel" @view="openPfpView" />
+                    <div v-if="entry.target" class="min-w-0">
+                      <span class="text-[10px] uppercase tracking-wide text-zinc-400">{{ auditTargetTypeLabel(entry.target.type) }}</span>
+                      <div class="text-sm text-zinc-900 dark:text-white truncate max-w-[160px]" :title="entry.target.label">{{ entry.target.label }}</div>
+                      <div v-if="entry.target.sublabel" class="text-xs text-zinc-500 truncate max-w-[160px]" :title="entry.target.sublabel">{{ entry.target.sublabel }}</div>
+                    </div>
+                    <span v-else-if="entry.targetId" class="text-xs font-mono text-zinc-500 truncate max-w-[120px]" :title="entry.targetId">{{ entry.targetId }}</span>
+                    <span v-else class="text-xs text-zinc-400">—</span>
+                  </td>
+                  <td class="py-3 px-4">
+                    <AuditContextCell :entry="entry" :max-admin-level="maxAdminLevel" :cache-version="pfpCacheVersion" @view="openPfpView" />
                   </td>
                   <td class="py-3 px-4">
                     <span :class="entry.success ? 'text-green-600 dark:text-green-400' : 'text-red-500'" class="text-xs font-medium">
@@ -590,7 +606,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
@@ -600,6 +616,7 @@ import PfpStack from '~/components/PfpStack.vue'
 import PfpEditorModal from '~/components/PfpEditorModal.vue'
 import AuditContextCell from '~/components/admin/AuditContextCell.vue'
 import { useInfiniteScroll, watchDebounced } from '@vueuse/core'
+import { withPfpCacheBust } from '~/utils/pfp'
 
 const SCROLL_BUFFER = 400
 const CHAIN_CAP = 3
@@ -660,7 +677,9 @@ const pfpViewerSrc = ref<string | null>(null)
 const pfpEditorOpen = ref(false)
 const pfpEditorUser = ref<any>(null)
 
-const openPfpView = (src: string) => { pfpViewerSrc.value = src }
+const openPfpView = (src: string) => {
+  pfpViewerSrc.value = withPfpCacheBust(src, pfpCacheVersion.value)
+}
 
 const openPfpEditor = (user: any) => {
   pfpEditorUser.value = user
@@ -706,10 +725,13 @@ const auditTotalPages = ref(1)
 const auditTotal = ref(0)
 const auditLoaded = ref(false)
 const auditLoadingMore = ref(false)
+const auditRefreshing = ref(false)
 const auditLoadError = ref(false)
 const auditScrollContainer = ref<HTMLElement | null>(null)
 const auditSearchQuery = ref('')
 const auditActionFilter = ref('')
+const AUDIT_POLL_MS = 15_000
+let auditPollTimer: ReturnType<typeof setInterval> | null = null
 
 const auditActionOptions = [
   { value: 'user.promote', label: 'Promote user' },
@@ -731,6 +753,12 @@ const auditActionOptions = [
 
 const auditActionLabel = (action: string) =>
   auditActionOptions.find(o => o.value === action)?.label ?? action
+
+const auditTargetTypeLabel = (type: string | null | undefined) => {
+  if (!type) return 'Target'
+  if (type === 'api_key') return 'API key'
+  return type.charAt(0).toUpperCase() + type.slice(1)
+}
 
 const formatAuditTime = (ts: number) =>
   new Date(ts * 1000).toLocaleString()
@@ -757,6 +785,64 @@ const loadAuditLog = async (page = 1, append = false) => {
   }
 }
 
+/** Poll refresh: replace page 1 when nothing else loaded; otherwise prepend new rows only. */
+const refreshAuditLog = async () => {
+  if (!auditLoaded.value || auditLoadingMore.value || auditRefreshing.value) return
+  auditRefreshing.value = true
+  try {
+    const res = await $fetch<{ entries: any[]; total: number; page: number; totalPages: number }>('/api/admin/audit-log', {
+      params: {
+        page: 1,
+        q: auditSearchQuery.value || undefined,
+        action: auditActionFilter.value || undefined,
+      },
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    })
+    auditTotal.value = res.total
+    auditTotalPages.value = res.totalPages
+    auditLoadError.value = false
+
+    if (auditPage.value <= 1) {
+      auditEntries.value = res.entries
+      auditPage.value = 1
+      return
+    }
+
+    const existingIds = new Set(auditEntries.value.map(e => e.id))
+    const brandNew = res.entries.filter(e => !existingIds.has(e.id))
+    if (brandNew.length) {
+      auditEntries.value = [...brandNew, ...auditEntries.value]
+    }
+  } catch (e) {
+    console.error('Failed to refresh audit log', e)
+  } finally {
+    auditRefreshing.value = false
+  }
+}
+
+const stopAuditAutoRefresh = () => {
+  if (auditPollTimer !== null) {
+    clearInterval(auditPollTimer)
+    auditPollTimer = null
+  }
+}
+
+const startAuditAutoRefresh = () => {
+  stopAuditAutoRefresh()
+  auditPollTimer = setInterval(() => {
+    if (activeTab.value === 'activity-log') refreshAuditLog()
+  }, AUDIT_POLL_MS)
+}
+
+const onActivityLogTabActivated = async () => {
+  await loadAuditLog(1, false)
+  startAuditAutoRefresh()
+}
+
+const onActivityLogTabDeactivated = () => {
+  stopAuditAutoRefresh()
+}
+
 const loadMoreAudit = async () => {
   if (auditLoadingMore.value || auditPage.value >= auditTotalPages.value || !auditLoaded.value) return
   auditLoadingMore.value = true
@@ -773,9 +859,12 @@ useInfiniteScroll(auditScrollContainer, () => {
   if (activeTab.value === 'activity-log') loadMoreAudit()
 }, { distance: SCROLL_BUFFER, canLoadMore: () => !auditLoadingMore.value && auditPage.value < auditTotalPages.value })
 
-watch(activeTab, (tab) => {
-  if (tab === 'activity-log' && !auditLoaded.value) loadAuditLog(1, false)
+watch(activeTab, (tab, prevTab) => {
+  if (prevTab === 'activity-log') onActivityLogTabDeactivated()
+  if (tab === 'activity-log') onActivityLogTabActivated()
 })
+
+onUnmounted(() => stopAuditAutoRefresh())
 
 watchDebounced([auditSearchQuery, auditActionFilter], () => {
   if (activeTab.value === 'activity-log') loadAuditLog(1, false)
@@ -1012,6 +1101,16 @@ const cancelUserEdit = () => {
 
 const saveUserEdit = async (user: any) => {
     if (!editingUser.value) return
+
+    const unchanged =
+        editingUser.value.username === user.username &&
+        editingUser.value.email === user.email &&
+        (editingUser.value.displayName ?? '') === (user.displayName ?? '')
+
+    if (unchanged) {
+        editingUser.value = null
+        return
+    }
     
     const originalUser = { ...user }
     const userIndex = users.value.findIndex(u => u.id === user.id)

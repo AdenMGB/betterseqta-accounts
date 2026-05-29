@@ -45,7 +45,7 @@
               <button
                 type="button"
                 class="rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
-                @click="$emit('view', currentSrc)"
+                @click="$emit('view', bust(currentSrc))"
               >
                 <img
                   :src="bust(currentSrc)"
@@ -72,7 +72,7 @@
               <button
                 type="button"
                 class="rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
-                @click="$emit('view', h.r2Key)"
+                @click="$emit('view', bust(h.r2Key))"
               >
                 <img
                   :src="bust(h.r2Key)"
@@ -184,6 +184,7 @@ const restoringId = ref<string | null>(null)
 const clearing = ref(false)
 const localHistory = ref<PfpHistoryItem[]>([])
 const localPfpUrl = ref<string | null>(null)
+const localViewVersion = ref(0)
 
 const currentSrc = computed(() => {
   if (!props.user) return ''
@@ -192,7 +193,12 @@ const currentSrc = computed(() => {
 
 const canClear = computed(() => !!(localPfpUrl.value || props.user?.pfpUrl))
 const emptySlots = computed(() => Math.max(0, 3 - localHistory.value.length))
-const bust = (url: string) => withPfpCacheBust(url, props.cacheVersion)
+const bustVersion = computed(() => {
+  const parent = Number(props.cacheVersion) || 0
+  return Math.max(parent, localViewVersion.value) || Date.now()
+})
+const bust = (url: string) => withPfpCacheBust(url, bustVersion.value)
+const bumpView = () => { localViewVersion.value = Date.now() }
 
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` })
 
@@ -257,6 +263,7 @@ const onCropConfirm = async (file: File) => {
     })
     localHistory.value = res.pfpHistory
     localPfpUrl.value = res.pfpUrl
+    bumpView()
     emit('updated', { pfpUrl: res.pfpUrl, pfpHistory: res.pfpHistory })
     showToast('Profile picture updated', 'success')
   } catch (e: any) {
@@ -282,6 +289,7 @@ const restore = async (history: PfpHistoryItem) => {
     })
     localHistory.value = res.pfpHistory
     localPfpUrl.value = res.pfpUrl
+    bumpView()
     emit('updated', { pfpUrl: res.pfpUrl, pfpHistory: res.pfpHistory })
     showToast('Profile picture restored', 'success')
   } catch (e: any) {
@@ -305,6 +313,7 @@ const clearPfp = async () => {
     })
     localHistory.value = res.pfpHistory
     localPfpUrl.value = null
+    bumpView()
     emit('updated', { pfpUrl: null, pfpHistory: res.pfpHistory })
     showToast('Profile picture cleared', 'success')
   } catch (e: any) {
