@@ -676,6 +676,8 @@ const handleSearch = () => {
 
 const loadMore = async () => {
     if (loadingMore.value || currentPage.value >= totalPages.value) return
+    const scrollBottom = document.documentElement.scrollHeight - window.scrollY - window.innerHeight
+    if (scrollBottom > 10 || scrollBottom < 0) return
     loadingMore.value = true
     await searchUsers(currentPage.value + 1, true)
     loadingMore.value = false
@@ -683,7 +685,7 @@ const loadMore = async () => {
 
 useInfiniteScroll(window, () => {
     if (searched.value) loadMore()
-}, { distance: 200 })
+}, { distance: 10 })
 
 watch([sortOption, hasPfpFilter], () => {
     if (searched.value) searchUsers(1, false)
