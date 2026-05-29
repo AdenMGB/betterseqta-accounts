@@ -527,7 +527,7 @@ import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
 import { ShieldExclamationIcon, EnvelopeIcon, TrashIcon, ArrowPathIcon, ArrowUturnLeftIcon, CameraIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
-import { useIntersectionObserver } from '@vueuse/core'
+import { useInfiniteScroll } from '@vueuse/core'
 
 const auth = useAuth()
 const { showToast } = useToast()
@@ -681,11 +681,9 @@ const loadMore = async () => {
     loadingMore.value = false
 }
 
-useIntersectionObserver(scrollSentinel, ([entry]) => {
-    if (entry.isIntersecting && searched.value) {
-        loadMore()
-    }
-}, { rootMargin: '200px' })
+useInfiniteScroll(window, () => {
+    if (searched.value) loadMore()
+}, { distance: 200 })
 
 watch([sortOption, hasPfpFilter], () => {
     if (searched.value) searchUsers(1, false)
