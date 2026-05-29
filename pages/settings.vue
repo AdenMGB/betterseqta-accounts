@@ -253,6 +253,7 @@ import { useSettings } from '~/composables/useSettings'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import PfpStack from '~/components/PfpStack.vue'
 import PfpEditorModal from '~/components/PfpEditorModal.vue'
+import { withPfpCacheBust } from '~/utils/pfp'
 import { UserCircleIcon, ShieldCheckIcon, CogIcon, SparklesIcon } from '@heroicons/vue/24/outline'
 
 const auth = useAuth()
@@ -279,7 +280,9 @@ const settingsPfpUser = computed(() => {
   }
 })
 
-const openPfpView = (src: string) => { pfpViewerSrc.value = src }
+const openPfpView = (src: string) => {
+  pfpViewerSrc.value = withPfpCacheBust(src, pfpCacheVersion.value)
+}
 
 const loadPfpHistory = async () => {
   try {

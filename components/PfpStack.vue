@@ -10,14 +10,14 @@
       alt=""
       class="absolute top-0 w-9 h-9 rounded-full object-cover border-2 border-white dark:border-zinc-800 cursor-pointer shadow-sm transition-[left] duration-200"
       :style="{ left: `${(i + 1) * fanOffset}px`, zIndex: 3 - i }"
-      @click="$emit('view', h.r2Key)"
+      @click="$emit('view', bust(h.r2Key))"
     />
     <div class="absolute top-0 left-0" style="z-index: 4">
       <img
         :src="bust(currentSrc)"
         alt=""
         class="w-9 h-9 rounded-full object-cover border-2 border-white dark:border-zinc-800 cursor-pointer shadow-sm"
-        @click="$emit('view', currentSrc)"
+        @click="$emit('view', bust(currentSrc))"
       />
       <button
         v-if="canEdit"
