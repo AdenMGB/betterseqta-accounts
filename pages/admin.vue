@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-6xl mx-auto space-y-8 pb-20">
+  <div class="max-w-7xl mx-auto space-y-8 pb-20">
     <div class="text-center animate-slide-down">
       <h1 class="text-3xl font-bold text-zinc-900 dark:text-white font-display mb-2">Admin Dashboard</h1>
       <p class="text-zinc-600 dark:text-zinc-400">Manage users and OAuth clients</p>
@@ -111,7 +111,8 @@
                                     <img
                                         :src="user.pfpUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`"
                                         alt=""
-                                        class="w-9 h-9 rounded-full object-cover border border-zinc-300 dark:border-zinc-600 shrink-0"
+                                        class="w-9 h-9 rounded-full object-cover border border-zinc-300 dark:border-zinc-600 shrink-0 cursor-pointer"
+                                        @click="openPfpView(user.pfpUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`)"
                                     />
                                     <div v-if="canModerateUsers() && user.pfpHistory?.length" class="flex -space-x-1">
                                         <div
@@ -463,13 +464,33 @@
       </div>
     </div>
   </div>
+
+  <!-- Fullscreen PFP viewer -->
+  <div
+    v-if="pfpViewerSrc"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+    @click="pfpViewerSrc = null"
+  >
+    <button
+      class="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors"
+      @click="pfpViewerSrc = null"
+    >
+      <XMarkIcon class="w-8 h-8" />
+    </button>
+    <img
+      :src="pfpViewerSrc"
+      alt=""
+      class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
+      @click.stop
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
-import { ShieldExclamationIcon, EnvelopeIcon, TrashIcon, ArrowPathIcon, ArrowUturnLeftIcon, CameraIcon } from '@heroicons/vue/24/outline'
+import { ShieldExclamationIcon, EnvelopeIcon, TrashIcon, ArrowPathIcon, ArrowUturnLeftIcon, CameraIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import { useIntersectionObserver } from '@vueuse/core'
 
@@ -585,6 +606,9 @@ const migrationResult = ref<{ total: number; migrated: number; failed: number; r
 const failedResults = computed(() => migrationResult.value?.results?.filter(r => !r.success) || [])
 const isTab = (tab: string) => activeTab.value === tab
 
+const pfpViewerSrc = ref<string | null>(null)
+const openPfpView = (src: string) => { pfpViewerSrc.value = src }
+
 // Actions
 const searchUsers = async (page: number = 1, append: boolean = false) => {
     try {
@@ -626,7 +650,7 @@ useIntersectionObserver(scrollSentinel, ([entry]) => {
     if (entry.isIntersecting && searched.value) {
         loadMore()
     }
-})
+}, { rootMargin: '200px' })
 
 watch([sortOption, hasPfpFilter], () => {
     if (searched.value) searchUsers(1, false)
