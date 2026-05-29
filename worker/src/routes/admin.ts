@@ -28,7 +28,7 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
     email: "email",
     displayName: "displayName",
     admin_level: "admin_level",
-    created_at: "created_at",
+    created_at: "createdAt",
   };
 
   const orderBy = allowedSorts[sortColumn] || "username";
@@ -54,7 +54,7 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
   const total = (countResult as { total: number }).total || 0;
 
   const users = await env.DB.prepare(
-    `SELECT id, email, username, displayName, pfpUrl, admin_level, created_at FROM users WHERE ${whereClause} ORDER BY ${orderBy} ${orderDir} LIMIT ? OFFSET ?`,
+    `SELECT id, email, username, displayName, pfpUrl, admin_level, createdAt FROM users WHERE ${whereClause} ORDER BY ${orderBy} ${orderDir} LIMIT ? OFFSET ?`,
   )
     .bind(...params, pageSize, offset)
     .all();
