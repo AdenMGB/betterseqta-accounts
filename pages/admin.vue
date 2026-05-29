@@ -79,7 +79,13 @@
 
         <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
             <div ref="usersScrollContainer" class="max-h-[600px] scroll-stable">
-                <table class="w-full table-fixed text-left">
+                <table class="admin-data-table w-full text-left">
+                    <colgroup>
+                        <col style="width: 28%" />
+                        <col style="width: 26%" />
+                        <col style="width: 16%" />
+                        <col style="width: 30%" />
+                    </colgroup>
                     <thead class="sticky top-0 bg-zinc-50 dark:bg-zinc-800/95 backdrop-blur-sm z-10">
                         <tr class="border-b border-zinc-200 dark:border-zinc-700">
                             <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">User</th>
@@ -91,8 +97,8 @@
                     <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                         <tr v-if="paddingTop > 0" aria-hidden="true"><td colspan="4" :style="{ height: `${paddingTop}px`, padding: 0, border: 'none' }" /></tr>
                         <tr v-for="virtualRow in virtualRows" :key="users[virtualRow.index].id" class="group hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors duration-200">
-                            <td class="py-4 px-4">
-                                <div class="flex items-center gap-3">
+                            <td class="py-4 px-4 min-w-0">
+                                <div class="flex items-center gap-3 min-w-0">
                                     <PfpStack
                                         :user-id="users[virtualRow.index].id"
                                         :pfp-url="users[virtualRow.index].pfpUrl"
@@ -102,7 +108,7 @@
                                         @edit="openPfpEditor(users[virtualRow.index])"
                                         @view="openPfpView"
                                     />
-                                    <div v-if="editingUser?.id !== users[virtualRow.index].id" class="text-zinc-900 dark:text-white font-medium min-w-0">
+                                    <div v-if="editingUser?.id !== users[virtualRow.index].id" class="text-zinc-900 dark:text-white font-medium min-w-0 truncate">
                                         {{ users[virtualRow.index].displayName || users[virtualRow.index].username }}
                                         <span v-if="users[virtualRow.index].displayName && users[virtualRow.index].displayName !== users[virtualRow.index].username" class="text-xs text-zinc-500 dark:text-zinc-400 ml-1">({{ users[virtualRow.index].username }})</span>
                                     </div>
@@ -114,8 +120,8 @@
                                     />
                                 </div>
                             </td>
-                            <td class="py-4 px-4 text-zinc-600 dark:text-zinc-400">
-                                <span v-if="editingUser?.id !== users[virtualRow.index].id">{{ users[virtualRow.index].email }}</span>
+                            <td class="py-4 px-4 text-zinc-600 dark:text-zinc-400 min-w-0">
+                                <span v-if="editingUser?.id !== users[virtualRow.index].id" class="block truncate">{{ users[virtualRow.index].email }}</span>
                                 <input 
                                     v-else
                                     v-model="editingUser.email"
@@ -123,11 +129,11 @@
                                     class="w-full px-2 py-1 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
                                 />
                             </td>
-                            <td class="py-4 px-4">
+                            <td class="py-4 px-4 min-w-0">
                                 <span v-if="editingUser?.id !== users[virtualRow.index].id" :class="getRoleBadgeClass(users[virtualRow.index].admin_level || 0)">
                                     {{ getRoleLabel(users[virtualRow.index].admin_level || 0) }}
                                 </span>
-                                <div v-else class="flex items-center gap-2">
+                                <div v-else class="flex items-center gap-2 min-w-0">
                                     <input 
                                         v-model="editingUser.displayName"
                                         type="text"
@@ -139,8 +145,8 @@
                                     </span>
                                 </div>
                             </td>
-                            <td class="py-4 px-4 text-right">
-                                <div class="flex items-center gap-2 justify-end">
+                            <td class="py-4 px-4 text-right min-w-0">
+                                <div class="flex items-center gap-2 justify-end overflow-x-auto max-w-full">
                                     <template v-if="editingUser?.id === users[virtualRow.index].id">
                                         <button 
                                             @click="saveUserEdit(users[virtualRow.index])"
@@ -399,14 +405,14 @@
 
         <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
           <div ref="auditScrollContainer" class="max-h-[600px] scroll-stable">
-            <table class="w-full table-fixed text-left">
+            <table class="admin-data-table w-full text-left">
               <colgroup>
-                <col class="w-[148px]" />
-                <col class="w-[100px]" />
-                <col class="w-[120px]" />
-                <col class="w-[168px]" />
-                <col />
-                <col class="w-[64px]" />
+                <col style="width: 15%" />
+                <col style="width: 11%" />
+                <col style="width: 12%" />
+                <col style="width: 14%" />
+                <col style="width: 42%" />
+                <col style="width: 6%" />
               </colgroup>
               <thead class="sticky top-0 bg-zinc-50 dark:bg-zinc-800/95 backdrop-blur-sm z-10">
                 <tr class="border-b border-zinc-200 dark:border-zinc-700">
@@ -420,22 +426,22 @@
               </thead>
               <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                 <tr v-for="entry in auditEntries" :key="entry.id" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-                  <td class="py-3 px-4 text-xs text-zinc-500 whitespace-nowrap">{{ formatAuditTime(entry.createdAt) }}</td>
-                  <td class="py-3 px-4 text-sm text-zinc-900 dark:text-white">{{ entry.actorUsername || entry.actorId }}</td>
-                  <td class="py-3 px-4 text-sm">{{ auditActionLabel(entry.action) }}</td>
-                  <td class="py-3 px-4">
-                    <div v-if="entry.target" class="min-w-0">
+                  <td class="py-3 px-4 text-xs text-zinc-500 whitespace-nowrap truncate">{{ formatAuditTime(entry.createdAt) }}</td>
+                  <td class="py-3 px-4 text-sm text-zinc-900 dark:text-white truncate">{{ entry.actorUsername || entry.actorId }}</td>
+                  <td class="py-3 px-4 text-sm truncate">{{ auditActionLabel(entry.action) }}</td>
+                  <td class="py-3 px-4 min-w-0">
+                    <div v-if="entry.target" class="min-w-0 overflow-hidden">
                       <span class="text-[10px] uppercase tracking-wide text-zinc-400">{{ auditTargetTypeLabel(entry.target.type) }}</span>
-                      <div class="text-sm text-zinc-900 dark:text-white truncate max-w-[160px]" :title="entry.target.label">{{ entry.target.label }}</div>
-                      <div v-if="entry.target.sublabel" class="text-xs text-zinc-500 truncate max-w-[160px]" :title="entry.target.sublabel">{{ entry.target.sublabel }}</div>
+                      <div class="text-sm text-zinc-900 dark:text-white truncate" :title="entry.target.label">{{ entry.target.label }}</div>
+                      <div v-if="entry.target.sublabel" class="text-xs text-zinc-500 truncate" :title="entry.target.sublabel">{{ entry.target.sublabel }}</div>
                     </div>
-                    <span v-else-if="entry.targetId" class="text-xs font-mono text-zinc-500 truncate max-w-[120px]" :title="entry.targetId">{{ entry.targetId }}</span>
+                    <span v-else-if="entry.targetId" class="text-xs font-mono text-zinc-500 truncate block" :title="entry.targetId">{{ entry.targetId }}</span>
                     <span v-else class="text-xs text-zinc-400">—</span>
                   </td>
-                  <td class="py-3 px-4">
+                  <td class="py-3 px-4 min-w-0 overflow-hidden">
                     <AuditContextCell :entry="entry" :max-admin-level="maxAdminLevel" :cache-version="pfpCacheVersion" @view="openPfpView" />
                   </td>
-                  <td class="py-3 px-4">
+                  <td class="py-3 px-4 whitespace-nowrap">
                     <span :class="entry.success ? 'text-green-600 dark:text-green-400' : 'text-red-500'" class="text-xs font-medium">
                       {{ entry.success ? 'OK' : 'Failed' }}
                     </span>
