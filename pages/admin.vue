@@ -37,6 +37,12 @@
             API Keys
         </button>
         <button 
+            @click="activeTab = 'activity-log'" 
+            :class="['pb-2 px-1 font-medium transition-colors duration-200 border-b-2', activeTab === 'activity-log' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
+        >
+            Activity Log
+        </button>
+        <button 
             @click="activeTab = 'pfp-migration'" 
             :class="['pb-2 px-1 font-medium transition-colors duration-200 border-b-2', isTab('pfp-migration') ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
         >
@@ -83,20 +89,22 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
-                        <tr v-for="user in users" :key="user.id" class="group hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors duration-200">
+                        <tr v-if="paddingTop > 0" aria-hidden="true"><td colspan="4" :style="{ height: `${paddingTop}px`, padding: 0, border: 'none' }" /></tr>
+                        <tr v-for="virtualRow in virtualRows" :key="users[virtualRow.index].id" class="group hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors duration-200">
                             <td class="py-4 px-4">
                                 <div class="flex items-center gap-3">
-                                    <AdminPfpStack
-                                        :user-id="user.id"
-                                        :pfp-url="user.pfpUrl"
-                                        :pfp-history="user.pfpHistory"
+                                    <PfpStack
+                                        :user-id="users[virtualRow.index].id"
+                                        :pfp-url="users[virtualRow.index].pfpUrl"
+                                        :pfp-history="users[virtualRow.index].pfpHistory"
+                                        :cache-version="pfpCacheVersion"
                                         :can-edit="canModerateUsers()"
-                                        @edit="openPfpEditor(user)"
+                                        @edit="openPfpEditor(users[virtualRow.index])"
                                         @view="openPfpView"
                                     />
-                                    <div v-if="editingUser?.id !== user.id" class="text-zinc-900 dark:text-white font-medium min-w-0">
-                                        {{ user.displayName || user.username }}
-                                        <span v-if="user.displayName && user.displayName !== user.username" class="text-xs text-zinc-500 dark:text-zinc-400 ml-1">({{ user.username }})</span>
+                                    <div v-if="editingUser?.id !== users[virtualRow.index].id" class="text-zinc-900 dark:text-white font-medium min-w-0">
+                                        {{ users[virtualRow.index].displayName || users[virtualRow.index].username }}
+                                        <span v-if="users[virtualRow.index].displayName && users[virtualRow.index].displayName !== users[virtualRow.index].username" class="text-xs text-zinc-500 dark:text-zinc-400 ml-1">({{ users[virtualRow.index].username }})</span>
                                     </div>
                                     <input
                                         v-else
@@ -107,7 +115,7 @@
                                 </div>
                             </td>
                             <td class="py-4 px-4 text-zinc-600 dark:text-zinc-400">
-                                <span v-if="editingUser?.id !== user.id">{{ user.email }}</span>
+                                <span v-if="editingUser?.id !== users[virtualRow.index].id">{{ users[virtualRow.index].email }}</span>
                                 <input 
                                     v-else
                                     v-model="editingUser.email"
@@ -116,8 +124,8 @@
                                 />
                             </td>
                             <td class="py-4 px-4">
-                                <span v-if="editingUser?.id !== user.id" :class="getRoleBadgeClass(user.admin_level || 0)">
-                                    {{ getRoleLabel(user.admin_level || 0) }}
+                                <span v-if="editingUser?.id !== users[virtualRow.index].id" :class="getRoleBadgeClass(users[virtualRow.index].admin_level || 0)">
+                                    {{ getRoleLabel(users[virtualRow.index].admin_level || 0) }}
                                 </span>
                                 <div v-else class="flex items-center gap-2">
                                     <input 
@@ -126,16 +134,16 @@
                                         placeholder="Display Name"
                                         class="flex-1 px-2 py-1 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
                                     />
-                                    <span :class="getRoleBadgeClass(user.admin_level || 0)">
-                                        {{ getRoleLabel(user.admin_level || 0) }}
+                                    <span :class="getRoleBadgeClass(users[virtualRow.index].admin_level || 0)">
+                                        {{ getRoleLabel(users[virtualRow.index].admin_level || 0) }}
                                     </span>
                                 </div>
                             </td>
                             <td class="py-4 px-4 text-right">
                                 <div class="flex items-center gap-2 justify-end">
-                                    <template v-if="editingUser?.id === user.id">
+                                    <template v-if="editingUser?.id === users[virtualRow.index].id">
                                         <button 
-                                            @click="saveUserEdit(user)"
+                                            @click="saveUserEdit(users[virtualRow.index])"
                                             class="text-sm px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors duration-200"
                                         >
                                             Save
@@ -150,63 +158,67 @@
                                     <template v-else>
                                         <button 
                                             v-if="canModerateUsers()"
-                                            @click="startUserEdit(user)"
+                                            @click="startUserEdit(users[virtualRow.index])"
                                             class="text-sm px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200"
                                         >
                                             Edit
                                         </button>
                                         <button 
-                                            v-if="canPromoteUser(user.admin_level || 0)"
-                                            @click="promoteUser(user)"
+                                            v-if="canPromoteUser(users[virtualRow.index].admin_level || 0)"
+                                            @click="promoteUser(users[virtualRow.index])"
                                             class="text-sm px-3 py-1 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200"
                                         >
                                             Promote
                                         </button>
                                         <button 
-                                            v-if="canDemoteUser(user.admin_level || 0)"
-                                            @click="demoteUser(user)"
+                                            v-if="canDemoteUser(users[virtualRow.index].admin_level || 0)"
+                                            @click="demoteUser(users[virtualRow.index])"
                                             class="text-sm px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200"
                                         >
                                             Demote
                                         </button>
                                         <button 
-                                            v-if="getCurrentAdminLevel() > 0 && user.id !== auth.user.value?.id"
-                                            @click="sendPasswordReset(user)"
-                                            :disabled="sendingResetUserId === user.id"
-                                            :title="'Send password reset email to ' + (user.displayName || user.username)"
+                                            v-if="getCurrentAdminLevel() > 0 && users[virtualRow.index].id !== auth.user.value?.id"
+                                            @click="sendPasswordReset(users[virtualRow.index])"
+                                            :disabled="sendingResetUserId === users[virtualRow.index].id"
+                                            :title="'Send password reset email to ' + (users[virtualRow.index].displayName || users[virtualRow.index].username)"
                                             class="text-sm px-3 py-1 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
                                         >
-                                            <EnvelopeIcon v-if="sendingResetUserId !== user.id" class="w-4 h-4 inline" />
+                                            <EnvelopeIcon v-if="sendingResetUserId !== users[virtualRow.index].id" class="w-4 h-4 inline" />
                                             <LoadingSpinner v-else size="sm" container-class="inline-flex" />
                                             <span class="ml-1">Reset</span>
                                         </button>
                                         <button 
-                                            v-if="canDeleteUser(user)"
-                                            @click="deleteUser(user)"
-                                            :disabled="deletingUserId === user.id"
-                                            :title="'Delete user ' + (user.displayName || user.username)"
+                                            v-if="canDeleteUser(users[virtualRow.index])"
+                                            @click="deleteUser(users[virtualRow.index])"
+                                            :disabled="deletingUserId === users[virtualRow.index].id"
+                                            :title="'Delete user ' + (users[virtualRow.index].displayName || users[virtualRow.index].username)"
                                             class="text-sm px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
                                         >
-                                            <TrashIcon v-if="deletingUserId !== user.id" class="w-4 h-4 inline" />
+                                            <TrashIcon v-if="deletingUserId !== users[virtualRow.index].id" class="w-4 h-4 inline" />
                                             <LoadingSpinner v-else size="sm" container-class="inline-flex" />
                                             <span class="ml-1">Delete</span>
                                         </button>
-                                        <span v-if="!canPromoteUser(user.admin_level || 0) && !canDemoteUser(user.admin_level || 0) && !(canModerateUsers() && canModifyUser(user.admin_level || 0)) && !(getCurrentAdminLevel() > 0 && user.id !== auth.user.value?.id) && !canDeleteUser(user)" class="text-xs text-zinc-400 dark:text-zinc-500">
-                                            Cannot modify
-                                        </span>
                                     </template>
                                 </div>
                             </td>
                         </tr>
+                        <tr v-if="paddingBottom > 0" aria-hidden="true"><td colspan="4" :style="{ height: `${paddingBottom}px`, padding: 0, border: 'none' }" /></tr>
                     </tbody>
                 </table>
                 <div v-if="users.length === 0 && searched" class="text-center py-8 text-zinc-500 dark:text-zinc-400">
                     No users found.
                 </div>
-                <div ref="scrollSentinel" class="flex justify-center py-4">
+                <div ref="scrollSentinel" class="flex justify-center py-4 gap-3">
                     <LoadingSpinner v-if="loadingMore" size="md" />
-                    <span v-else-if="searched && currentPage < totalPages" class="text-xs text-zinc-400">Scroll for more</span>
-                    <span v-else-if="searched && users.length > 0" class="text-xs text-zinc-500">All users loaded</span>
+                    <span v-else-if="loadMoreError" class="text-xs text-red-500">
+                        Failed to load users.
+                        <button class="underline ml-1" @click="retryLoadMore">Retry</button>
+                    </span>
+                    <span v-else-if="searched && currentPage < totalPages" class="text-xs text-zinc-400">
+                        Showing {{ users.length }} of {{ totalUsers }} users — scroll for more
+                    </span>
+                    <span v-else-if="searched && users.length > 0" class="text-xs text-zinc-500">All {{ totalUsers }} users loaded</span>
                 </div>
             </div>
         </div>
@@ -366,6 +378,71 @@
             <p v-if="apiKeys.length === 0" class="text-center py-6 text-zinc-500 dark:text-zinc-400">No API keys yet.</p>
         </div>
       </div>
+      <!-- Activity Log Tab -->
+      <div v-if="activeTab === 'activity-log'" class="space-y-6">
+        <div class="flex gap-4 items-center">
+          <input
+            v-model="auditSearchQuery"
+            type="text"
+            placeholder="Search actor, target, details..."
+            class="flex-1 px-4 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+          />
+          <select
+            v-model="auditActionFilter"
+            class="px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+          >
+            <option value="">All actions</option>
+            <option v-for="opt in auditActionOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </select>
+          <button @click="loadAuditLog(1, false)" class="px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors">Refresh</button>
+        </div>
+
+        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+          <div ref="auditScrollContainer" class="max-h-[600px] overflow-y-auto">
+            <table class="w-full text-left">
+              <thead class="sticky top-0 bg-zinc-50 dark:bg-zinc-800/95 backdrop-blur-sm z-10">
+                <tr class="border-b border-zinc-200 dark:border-zinc-700">
+                  <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Time</th>
+                  <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Admin</th>
+                  <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Action</th>
+                  <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Target</th>
+                  <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Context</th>
+                  <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Status</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
+                <tr v-for="entry in auditEntries" :key="entry.id" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                  <td class="py-3 px-4 text-xs text-zinc-500 whitespace-nowrap">{{ formatAuditTime(entry.createdAt) }}</td>
+                  <td class="py-3 px-4 text-sm text-zinc-900 dark:text-white">{{ entry.actorUsername || entry.actorId }}</td>
+                  <td class="py-3 px-4 text-sm">{{ auditActionLabel(entry.action) }}</td>
+                  <td class="py-3 px-4 text-xs font-mono text-zinc-500 truncate max-w-[120px]" :title="entry.targetId || ''">{{ entry.targetId || '—' }}</td>
+                  <td class="py-3 px-4">
+                    <AuditContextCell :entry="entry" :max-admin-level="maxAdminLevel" @view="openPfpView" />
+                  </td>
+                  <td class="py-3 px-4">
+                    <span :class="entry.success ? 'text-green-600 dark:text-green-400' : 'text-red-500'" class="text-xs font-medium">
+                      {{ entry.success ? 'OK' : 'Failed' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-if="auditEntries.length === 0 && auditLoaded" class="text-center py-8 text-zinc-500">No activity logged yet.</div>
+            <div class="flex justify-center py-4 gap-3">
+              <LoadingSpinner v-if="auditLoadingMore" size="md" />
+              <span v-else-if="auditLoadError" class="text-xs text-red-500">
+                Failed to load.
+                <button class="underline ml-1" @click="retryAuditLoad">Retry</button>
+              </span>
+              <span v-else-if="auditPage < auditTotalPages" class="text-xs text-zinc-400">
+                Showing {{ auditEntries.length }} of {{ auditTotal }} — scroll for more
+              </span>
+              <span v-else-if="auditEntries.length > 0" class="text-xs text-zinc-500">All entries loaded</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- PFP Migration Tab -->
       <div v-if="isTab('pfp-migration')" class="space-y-6">
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
@@ -402,6 +479,27 @@
             </template>
             {{ fixingPfpUrls ? 'Fixing...' : 'Fix URLs' }}
           </button>
+        </div>
+
+        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Prune PFP History</h3>
+          <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+            Trims all users down to 3 saved past profile pictures (plus current). Removes excess history rows and R2 objects.
+          </p>
+          <button
+            @click="prunePfpHistory"
+            :disabled="pruningPfpHistory"
+            class="px-6 py-3 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center gap-2"
+          >
+            <LoadingSpinner v-if="pruningPfpHistory" size="sm" />
+            <template v-else>
+              <ArrowPathIcon class="w-5 h-5" />
+            </template>
+            {{ pruningPfpHistory ? 'Pruning...' : 'Prune History' }}
+          </button>
+          <div v-if="pruneResult" class="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
+            Processed {{ pruneResult.usersProcessed }} users, deleted {{ pruneResult.rowsDeleted }} excess history rows.
+          </div>
         </div>
 
         <div v-if="urlFixResult" class="space-y-4">
@@ -480,9 +578,11 @@
     />
   </div>
 
-  <AdminPfpEditorModal
+  <PfpEditorModal
     :is-open="pfpEditorOpen"
     :user="pfpEditorUser"
+    mode="admin"
+    :cache-version="pfpCacheVersion"
     @close="closePfpEditor"
     @view="openPfpView"
     @updated="onPfpUpdated"
@@ -491,13 +591,15 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
 import { ShieldExclamationIcon, EnvelopeIcon, TrashIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
-import AdminPfpStack from '~/components/admin/PfpStack.vue'
-import AdminPfpEditorModal from '~/components/admin/PfpEditorModal.vue'
-import { useInfiniteScroll } from '@vueuse/core'
+import PfpStack from '~/components/PfpStack.vue'
+import PfpEditorModal from '~/components/PfpEditorModal.vue'
+import AuditContextCell from '~/components/admin/AuditContextCell.vue'
+import { useInfiniteScroll, watchDebounced } from '@vueuse/core'
 
 const SCROLL_BUFFER = 400
 const CHAIN_CAP = 3
@@ -518,8 +620,10 @@ const editingUser = ref<any>(null)
 const sendingResetUserId = ref<string | null>(null)
 const deletingUserId = ref<string | null>(null)
 const loadingMore = ref(false)
+const loadMoreError = ref(false)
 const usersScrollContainer = ref<HTMLElement | null>(null)
 const scrollSentinel = ref<HTMLElement | null>(null)
+const pfpCacheVersion = ref(Date.now())
 const sortOption = ref('username:asc')
 const hasPfpFilter = ref(false)
 
@@ -568,7 +672,8 @@ const closePfpEditor = () => {
   pfpEditorUser.value = null
 }
 
-const onPfpUpdated = (payload: { pfpUrl: string; pfpHistory: any[] }) => {
+const onPfpUpdated = (payload: { pfpUrl: string | null; pfpHistory: any[] }) => {
+  pfpCacheVersion.value = Date.now()
   if (!pfpEditorUser.value) return
   const idx = users.value.findIndex(u => u.id === pfpEditorUser.value.id)
   if (idx !== -1) {
@@ -577,6 +682,124 @@ const onPfpUpdated = (payload: { pfpUrl: string; pfpHistory: any[] }) => {
   }
   pfpEditorUser.value.pfpUrl = payload.pfpUrl
   pfpEditorUser.value.pfpHistory = payload.pfpHistory
+}
+
+const rowVirtualizer = useVirtualizer(computed(() => ({
+  count: users.value.length,
+  getScrollElement: () => usersScrollContainer.value,
+  estimateSize: () => 72,
+  overscan: 8,
+})))
+
+const virtualRows = computed(() => rowVirtualizer.value.getVirtualItems())
+const paddingTop = computed(() => virtualRows.value[0]?.start ?? 0)
+const paddingBottom = computed(() => {
+  const items = virtualRows.value
+  if (!items.length) return 0
+  return rowVirtualizer.value.getTotalSize() - items[items.length - 1].end
+})
+
+// Audit log state
+const auditEntries = ref<any[]>([])
+const auditPage = ref(1)
+const auditTotalPages = ref(1)
+const auditTotal = ref(0)
+const auditLoaded = ref(false)
+const auditLoadingMore = ref(false)
+const auditLoadError = ref(false)
+const auditScrollContainer = ref<HTMLElement | null>(null)
+const auditSearchQuery = ref('')
+const auditActionFilter = ref('')
+
+const auditActionOptions = [
+  { value: 'user.promote', label: 'Promote user' },
+  { value: 'user.demote', label: 'Demote user' },
+  { value: 'user.update', label: 'Update user' },
+  { value: 'user.delete', label: 'Delete user' },
+  { value: 'user.password_reset', label: 'Password reset' },
+  { value: 'pfp.upload', label: 'PFP upload' },
+  { value: 'pfp.restore', label: 'PFP restore' },
+  { value: 'pfp.clear', label: 'PFP clear' },
+  { value: 'client.create', label: 'Create client' },
+  { value: 'client.delete', label: 'Delete client' },
+  { value: 'api_key.create', label: 'Create API key' },
+  { value: 'api_key.delete', label: 'Delete API key' },
+  { value: 'pfp.migrate', label: 'PFP migrate' },
+  { value: 'pfp.fix_urls', label: 'PFP fix URLs' },
+  { value: 'pfp.prune_history', label: 'PFP prune history' },
+]
+
+const auditActionLabel = (action: string) =>
+  auditActionOptions.find(o => o.value === action)?.label ?? action
+
+const formatAuditTime = (ts: number) =>
+  new Date(ts * 1000).toLocaleString()
+
+const loadAuditLog = async (page = 1, append = false) => {
+  auditLoadError.value = false
+  try {
+    const res = await $fetch<{ entries: any[]; total: number; page: number; totalPages: number }>('/api/admin/audit-log', {
+      params: {
+        page,
+        q: auditSearchQuery.value || undefined,
+        action: auditActionFilter.value || undefined,
+      },
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    })
+    auditEntries.value = append ? [...auditEntries.value, ...res.entries] : res.entries
+    auditPage.value = res.page
+    auditTotalPages.value = res.totalPages
+    auditTotal.value = res.total
+    auditLoaded.value = true
+  } catch (e) {
+    console.error('Failed to load audit log', e)
+    auditLoadError.value = true
+  }
+}
+
+const loadMoreAudit = async () => {
+  if (auditLoadingMore.value || auditPage.value >= auditTotalPages.value || !auditLoaded.value) return
+  auditLoadingMore.value = true
+  try {
+    await loadAuditLog(auditPage.value + 1, true)
+  } finally {
+    auditLoadingMore.value = false
+  }
+}
+
+const retryAuditLoad = () => loadAuditLog(auditPage.value >= auditTotalPages.value ? auditPage.value : auditPage.value + 1, auditPage.value > 1)
+
+useInfiniteScroll(auditScrollContainer, () => {
+  if (activeTab.value === 'activity-log') loadMoreAudit()
+}, { distance: SCROLL_BUFFER, canLoadMore: () => !auditLoadingMore.value && auditPage.value < auditTotalPages.value })
+
+watch(activeTab, (tab) => {
+  if (tab === 'activity-log' && !auditLoaded.value) loadAuditLog(1, false)
+})
+
+watchDebounced([auditSearchQuery, auditActionFilter], () => {
+  if (activeTab.value === 'activity-log') loadAuditLog(1, false)
+}, { debounce: 300 })
+
+const pruningPfpHistory = ref(false)
+const pruneResult = ref<{ usersProcessed: number; rowsDeleted: number } | null>(null)
+
+const prunePfpHistory = async () => {
+  if (!confirm('Prune excess PFP history for all users?')) return
+  pruningPfpHistory.value = true
+  pruneResult.value = null
+  try {
+    const res = await $fetch<{ usersProcessed: number; rowsDeleted: number }>('/api/admin/prune-pfp-history', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    })
+    pruneResult.value = res
+    showToast('PFP history pruned', 'success')
+  } catch (e: any) {
+    showToast(e?.data?.error || 'Prune failed', 'error')
+  } finally {
+    pruningPfpHistory.value = false
+  }
 }
 const migratingPfps = ref(false)
 const migrationResult = ref<{ total: number; migrated: number; failed: number; results: any[] } | null>(null)
@@ -592,6 +815,7 @@ const getScrollRemaining = () => {
 }
 
 const searchUsers = async (page: number = 1, append: boolean = false) => {
+    loadMoreError.value = false
     try {
         const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number, maxAdminLevel: number }>('/api/admin/users', {
             params: { q: searchQuery.value, page, sort: sortOption.value, has_pfp: hasPfpFilter.value || undefined },
@@ -613,6 +837,7 @@ const searchUsers = async (page: number = 1, append: boolean = false) => {
         searched.value = true
     } catch (e) {
         console.error('Failed to search users', e)
+        loadMoreError.value = true
     }
 }
 
@@ -644,10 +869,24 @@ const loadMore = async () => {
     loadingMore.value = true
     try {
         await searchUsers(currentPage.value + 1, true)
+        await nextTick()
+        await ensureScrollBuffer()
     } finally {
         loadingMore.value = false
     }
 }
+
+const retryLoadMore = () => {
+  if (loadMoreError.value && currentPage.value < totalPages.value) {
+    loadMore()
+  } else {
+    handleSearch()
+  }
+}
+
+watchDebounced([searchQuery, sortOption, hasPfpFilter], () => {
+    if (searched.value) handleSearch()
+}, { debounce: 300 })
 
 useInfiniteScroll(
   usersScrollContainer,
@@ -659,15 +898,6 @@ useInfiniteScroll(
     canLoadMore: () => !loadingMore.value && currentPage.value < totalPages.value && searched.value,
   },
 )
-
-watch([sortOption, hasPfpFilter], async () => {
-    if (searched.value) {
-        await searchUsers(1, false)
-        await nextTick()
-        usersScrollContainer.value?.scrollTo(0, 0)
-        await ensureScrollBuffer()
-    }
-})
 
 const getRoleLabel = (level: number): string => {
     if (level === 0) return 'User'

@@ -25,6 +25,7 @@
     "@headlessui/vue": "^1.7.23",
     "@heroicons/vue": "^2.2.0",
     "@nuxt/image": "^1.10.0",
+    "@tanstack/vue-virtual": "^3.13.26",
     "@types/bcryptjs": "^3.0.0",
     "@types/formidable": "^3.4.5",
     "@types/uuid": "^10.0.0",
@@ -48,9 +49,8 @@
     "vue-router": "latest"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250424.0",
     "@cloudflare/vite-plugin": "^1.15.3",
-    "vite": "^8.0.0",
+    "@cloudflare/workers-types": "^4.20250424.0",
     "@nuxt/types": "^2.18.1",
     "@nuxtjs/tailwindcss": "^6.12.2",
     "@tailwindcss/forms": "^0.5.9",
@@ -67,6 +67,7 @@
     "sass": "^1.71.1",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.8.2",
+    "vite": "^8.0.0",
     "vue-tsc": "^2.2.8",
     "wrangler": "^4.51.0"
   }

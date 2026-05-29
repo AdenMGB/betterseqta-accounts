@@ -6,13 +6,30 @@ import {
   getMaxAdminLevel,
 } from "../lib/auth";
 import { sendPasswordResetEmail } from "../lib/email";
+import { recordAdminAction } from "../lib/adminAudit";
+import { buildPfpAuditContext, resolvePfpAuditRefs, type PfpAuditRef } from "../lib/auditPfpResolve";
 import {
+  clearUserPfp,
   getPfpHistoryForUser,
+  hasCurrentPfpBlob,
   prunePfpHistory,
+  pfpRefFromArchivedHistory,
   r2KeyToPfpUrl,
   saveCurrentPfpToHistory,
 } from "../lib/pfpHistory";
 import type { RequestContext } from "../types/context";
+
+async function audit(
+  env: RequestContext["env"],
+  admin: { id?: string; username?: string },
+  input: Omit<Parameters<typeof recordAdminAction>[1], "actorId" | "actorUsername">,
+) {
+  await recordAdminAction(env, {
+    actorId: admin.id!,
+    actorUsername: admin.username ?? null,
+    ...input,
+  });
+}
 
 export async function handleAdminUsers({ env, request, url, jwtSecret }: RequestContext): Promise<Response> {
   const admin = await getAdminUser(env, request, jwtSecret);
@@ -126,7 +143,10 @@ export async function handleAdminPromote({ env, request, jwtSecret }: RequestCon
     );
   }
 
-  const targetUser = await env.DB.prepare("SELECT admin_level FROM users WHERE id = ?").bind(userId).first();
+  const targetUser = await env.DB.prepare("SELECT admin_level, username FROM users WHERE id = ?").bind(userId).first() as {
+    admin_level: number;
+    username: string;
+  } | null;
   if (!targetUser) {
     return new Response(JSON.stringify({ error: "User not found" }), {
       status: 404,
@@ -139,12 +159,26 @@ export async function handleAdminPromote({ env, request, jwtSecret }: RequestCon
 
   if (adminLevel! > currentTargetLevel) {
     if (currentTargetLevel === 0 && adminLevelNum < maxAdminLevel) {
+      await audit(env, admin, {
+        action: "user.promote",
+        targetType: "user",
+        targetId: userId!,
+        details: { context: { fromLevel: currentTargetLevel, toLevel: adminLevel, targetUsername: targetUser.username }, error: "Only Senior Admins can promote regular users to admin" },
+        success: false,
+      });
       return new Response(JSON.stringify({ error: "Only Senior Admins can promote regular users to admin" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (adminLevel! > adminLevelNum) {
+      await audit(env, admin, {
+        action: "user.promote",
+        targetType: "user",
+        targetId: userId!,
+        details: { context: { fromLevel: currentTargetLevel, toLevel: adminLevel, targetUsername: targetUser.username }, error: "Cannot promote user to a level higher than your own" },
+        success: false,
+      });
       return new Response(JSON.stringify({ error: "Cannot promote user to a level higher than your own" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -152,6 +186,13 @@ export async function handleAdminPromote({ env, request, jwtSecret }: RequestCon
     }
   } else if (adminLevel! < currentTargetLevel) {
     if (currentTargetLevel >= adminLevelNum) {
+      await audit(env, admin, {
+        action: "user.demote",
+        targetType: "user",
+        targetId: userId!,
+        details: { context: { fromLevel: currentTargetLevel, toLevel: adminLevel, targetUsername: targetUser.username }, error: "Cannot demote users at your level or higher" },
+        success: false,
+      });
       return new Response(JSON.stringify({ error: "Cannot demote users at your level or higher" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -160,6 +201,15 @@ export async function handleAdminPromote({ env, request, jwtSecret }: RequestCon
   }
 
   await env.DB.prepare("UPDATE users SET admin_level = ? WHERE id = ?").bind(adminLevel, userId).run();
+
+  const action = adminLevel! < currentTargetLevel ? "user.demote" : "user.promote";
+  await audit(env, admin, {
+    action,
+    targetType: "user",
+    targetId: userId!,
+    details: { context: { fromLevel: currentTargetLevel, toLevel: adminLevel, targetUsername: targetUser.username } },
+    success: true,
+  });
 
   return new Response(JSON.stringify({ success: true }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -201,11 +251,26 @@ export async function handleAdminSendPasswordReset({ env, request, jwtSecret }: 
     await sendPasswordResetEmail(user.email, token, env, user.displayName || null);
   } catch (emailError) {
     console.error("Admin send password reset email error:", emailError);
+    await audit(env, admin, {
+      action: "user.password_reset",
+      targetType: "user",
+      targetId: user.id,
+      details: { context: { email: user.email, username: user.displayName || user.id }, error: "Failed to send reset email" },
+      success: false,
+    });
     return new Response(JSON.stringify({ error: "Failed to send reset email" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
+  await audit(env, admin, {
+    action: "user.password_reset",
+    targetType: "user",
+    targetId: user.id,
+    details: { context: { email: user.email, username: user.displayName || user.id } },
+    success: true,
+  });
 
   return new Response(JSON.stringify({ success: true, message: "Password reset email sent" }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -239,7 +304,13 @@ export async function handleAdminDeleteUser({ env, request, jwtSecret }: Request
     });
   }
 
-  const targetUser = await env.DB.prepare("SELECT id, admin_level FROM users WHERE id = ?").bind(userId).first();
+  const targetUser = await env.DB.prepare("SELECT id, admin_level, email, username, displayName FROM users WHERE id = ?").bind(userId).first() as {
+    id: string;
+    admin_level: number;
+    email: string;
+    username: string;
+    displayName?: string;
+  } | null;
   if (!targetUser) {
     return new Response(JSON.stringify({ error: "User not found" }), {
       status: 404,
@@ -279,11 +350,26 @@ export async function handleAdminDeleteUser({ env, request, jwtSecret }: Request
     await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
   } catch (err) {
     console.error("Delete user error:", err);
+    await audit(env, admin, {
+      action: "user.delete",
+      targetType: "user",
+      targetId: userId,
+      details: { context: { email: targetUser.email, username: targetUser.username, displayName: targetUser.displayName }, error: "Failed to delete user" },
+      success: false,
+    });
     return new Response(JSON.stringify({ error: "Failed to delete user" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
+  await audit(env, admin, {
+    action: "user.delete",
+    targetType: "user",
+    targetId: userId,
+    details: { context: { email: targetUser.email, username: targetUser.username, displayName: targetUser.displayName } },
+    success: true,
+  });
 
   return new Response(JSON.stringify({ success: true }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -322,6 +408,14 @@ export async function handleAdminClientsPost({ env, request, jwtSecret }: Reques
     .bind(id, name, secret, redirect_uri, admin.id)
     .run();
 
+  await audit(env, admin, {
+    action: "client.create",
+    targetType: "client",
+    targetId: id,
+    details: { context: { clientId: id, name, redirectUri: redirect_uri } },
+    success: true,
+  });
+
   return new Response(JSON.stringify({ id, name, secret, redirect_uri, created_by: admin.id }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
@@ -339,8 +433,9 @@ export async function handleAdminClientsDelete({ env, request, jwtSecret }: Requ
     });
   }
 
-  const client = await env.DB.prepare("SELECT id, created_by FROM oauth_clients WHERE id = ?").bind(clientId).first() as {
+  const client = await env.DB.prepare("SELECT id, name, created_by FROM oauth_clients WHERE id = ?").bind(clientId).first() as {
     id: string;
+    name: string;
     created_by?: string | null;
   } | null;
 
@@ -369,6 +464,14 @@ export async function handleAdminClientsDelete({ env, request, jwtSecret }: Requ
 
   await env.DB.prepare("DELETE FROM oauth_codes WHERE client_id = ?").bind(clientId).run();
   await env.DB.prepare("DELETE FROM oauth_clients WHERE id = ?").bind(clientId).run();
+
+  await audit(env, admin, {
+    action: "client.delete",
+    targetType: "client",
+    targetId: clientId,
+    details: { context: { clientId, name: client.name } },
+    success: true,
+  });
 
   return new Response(JSON.stringify({ success: true }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -406,6 +509,15 @@ export async function handleAdminApiKeysPost({ env, request, jwtSecret }: Reques
   const id = crypto.randomUUID();
   const token = "bs_" + crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
   await env.DB.prepare("INSERT INTO api_keys (id, name, token) VALUES (?, ?, ?)").bind(id, name.trim(), token).run();
+
+  await audit(env, admin, {
+    action: "api_key.create",
+    targetType: "api_key",
+    targetId: id,
+    details: { context: { keyId: id, name: name.trim() } },
+    success: true,
+  });
+
   return new Response(JSON.stringify({ id, name: name.trim(), token, createdAt: Math.floor(Date.now() / 1000) }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
@@ -422,6 +534,11 @@ export async function handleAdminApiKeysDelete({ env, request, jwtSecret }: Requ
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+  const keyRow = await env.DB.prepare("SELECT id, name FROM api_keys WHERE id = ?").bind(id).first() as {
+    id: string;
+    name: string;
+  } | null;
+
   const result = await env.DB.prepare("DELETE FROM api_keys WHERE id = ?").bind(id).run();
   if (result.meta.changes === 0) {
     return new Response(JSON.stringify({ error: "API key not found" }), {
@@ -429,6 +546,15 @@ export async function handleAdminApiKeysDelete({ env, request, jwtSecret }: Requ
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
+  await audit(env, admin, {
+    action: "api_key.delete",
+    targetType: "api_key",
+    targetId: id,
+    details: { context: { keyId: id, name: keyRow?.name ?? id } },
+    success: true,
+  });
+
   return new Response(JSON.stringify({ success: true }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
@@ -459,10 +585,11 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
     });
   }
 
-  const targetUser = (await env.DB.prepare("SELECT id, email, username FROM users WHERE id = ?").bind(userId).first()) as {
+  const targetUser = (await env.DB.prepare("SELECT id, email, username, displayName FROM users WHERE id = ?").bind(userId).first()) as {
     id: string;
     email: string;
     username: string;
+    displayName?: string | null;
   } | null;
   if (!targetUser) {
     return new Response(JSON.stringify({ error: "User not found" }), {
@@ -473,6 +600,7 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
 
   const updates: string[] = [];
   const values: unknown[] = [];
+  const changes: Record<string, { from: string; to: string }> = {};
 
   if (email !== undefined && email !== null) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -495,6 +623,7 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
       }
       updates.push("email = ?");
       values.push(normalizedEmail);
+      changes.email = { from: targetUser.email, to: normalizedEmail };
     }
   }
 
@@ -511,10 +640,15 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
       }
       updates.push("username = ?");
       values.push(username);
+      changes.username = { from: targetUser.username, to: username };
     }
   }
 
   if (displayName !== undefined && displayName !== null) {
+    const prev = targetUser.displayName ?? "";
+    if (displayName !== prev) {
+      changes.displayName = { from: prev, to: displayName };
+    }
     updates.push("displayName = ?");
     values.push(displayName);
   }
@@ -528,6 +662,14 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
 
   values.push(userId);
   await env.DB.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).bind(...values).run();
+
+  await audit(env, admin, {
+    action: "user.update",
+    targetType: "user",
+    targetId: userId,
+    details: { context: { changes, targetUsername: targetUser.username } },
+    success: true,
+  });
 
   return new Response(JSON.stringify({ success: true }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -571,7 +713,8 @@ export async function handleAdminUserPfpUpload({ env, request, jwtSecret }: Requ
 
     const key = `pfp/${userId}`;
 
-    await saveCurrentPfpToHistory(env, userId);
+    const archivedHistoryId = await saveCurrentPfpToHistory(env, userId);
+    const fromRef = pfpRefFromArchivedHistory(archivedHistoryId, archivedHistoryId !== null);
 
     await env.PFP_BUCKET.put(key, await file.arrayBuffer(), {
       httpMetadata: { contentType: file.type },
@@ -584,13 +727,70 @@ export async function handleAdminUserPfpUpload({ env, request, jwtSecret }: Requ
 
     const pfpHistory = await getPfpHistoryForUser(env, userId);
 
+    await audit(env, admin, {
+      action: "pfp.upload",
+      targetType: "user",
+      targetId: userId,
+      details: {
+        context: buildPfpAuditContext(fromRef, { slot: "current" }),
+      },
+      success: true,
+    });
+
     return new Response(JSON.stringify({ pfpUrl, pfpHistory }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    await audit(env, admin, {
+      action: "pfp.upload",
+      targetType: "user",
+      targetId: undefined,
+      details: { error: message },
+      success: false,
+    });
     return new Response(message, { status: 500, headers: corsHeaders });
   }
+}
+
+export async function handleAdminUserPfpClear({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  if ((admin.adminLevel || 0) < 2) {
+    return new Response(JSON.stringify({ error: "Moderator controls require Middle Admin level (2) or higher" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { userId } = (await request.json()) as { userId?: string };
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "userId is required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const hadBlob = await hasCurrentPfpBlob(env, userId);
+  const { archivedHistoryId, hadPfp } = await clearUserPfp(env, userId);
+  const pfpHistory = await getPfpHistoryForUser(env, userId);
+
+  const fromRef = pfpRefFromArchivedHistory(archivedHistoryId, hadBlob || hadPfp);
+
+  await audit(env, admin, {
+    action: "pfp.clear",
+    targetType: "user",
+    targetId: userId,
+    details: {
+      context: buildPfpAuditContext(fromRef, { slot: "cleared" }),
+    },
+    success: true,
+  });
+
+  return new Response(JSON.stringify({ pfpUrl: null, pfpHistory }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
 export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: RequestContext): Promise<Response> {
@@ -634,7 +834,8 @@ export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: Requ
     });
   }
 
-  await saveCurrentPfpToHistory(env, userId);
+  const archivedHistoryId = await saveCurrentPfpToHistory(env, userId);
+  const fromRef = pfpRefFromArchivedHistory(archivedHistoryId, archivedHistoryId !== null);
 
   await env.PFP_BUCKET.put(currentKey, await historyObject.arrayBuffer(), {
     httpMetadata: historyObject.httpMetadata,
@@ -649,6 +850,16 @@ export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: Requ
   await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, userId).run();
 
   const pfpHistory = await getPfpHistoryForUser(env, userId);
+
+  await audit(env, admin, {
+    action: "pfp.restore",
+    targetType: "user",
+    targetId: userId,
+    details: {
+      context: buildPfpAuditContext(fromRef, { slot: "current" }),
+    },
+    success: true,
+  });
 
   return new Response(JSON.stringify({ pfpUrl, pfpHistory }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -692,15 +903,29 @@ export async function handleAdminFixPfpUrls({ env, request, jwtSecret }: Request
     }
   }
 
-  return new Response(
-    JSON.stringify({
-      total: rows.length,
-      fixed: results.filter((r) => r.success).length,
-      failed: results.filter((r) => !r.success).length,
-      results,
-    }),
-    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-  );
+  const payload = {
+    total: rows.length,
+    fixed: results.filter((r) => r.success).length,
+    failed: results.filter((r) => !r.success).length,
+    results,
+  };
+
+  await audit(env, admin, {
+    action: "pfp.fix_urls",
+    targetType: "system",
+    targetId: null,
+    details: {
+      context: {
+        total: payload.total,
+        fixed: payload.fixed,
+        failed: payload.failed,
+        succeeded: payload.fixed,
+      },
+    },
+    success: true,
+  });
+
+  return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
 export async function handleAdminMigratePfps({ env, request, jwtSecret }: RequestContext): Promise<Response> {
@@ -752,12 +977,185 @@ export async function handleAdminMigratePfps({ env, request, jwtSecret }: Reques
     }
   }
 
+  const payload = {
+    total: rows.length,
+    migrated: results.filter((r) => r.success).length,
+    failed: results.filter((r) => !r.success).length,
+    results,
+  };
+
+  await audit(env, admin, {
+    action: "pfp.migrate",
+    targetType: "system",
+    targetId: null,
+    details: {
+      context: {
+        total: payload.total,
+        migrated: payload.migrated,
+        failed: payload.failed,
+        succeeded: payload.migrated,
+      },
+    },
+    success: true,
+  });
+
+  return new Response(JSON.stringify(payload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
+
+export async function handleAdminPrunePfpHistory({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const maxAdminLevel = await getMaxAdminLevel(env);
+  if ((admin.adminLevel || 0) < maxAdminLevel) {
+    return new Response(JSON.stringify({ error: "Only Senior Admins can prune PFP history" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const userRows = await env.DB.prepare("SELECT DISTINCT user_id FROM pfp_history").all();
+  const userIds = ((userRows.results || []) as { user_id: string }[]).map((r) => r.user_id);
+  let rowsDeleted = 0;
+
+  for (const userId of userIds) {
+    rowsDeleted += await prunePfpHistory(env, userId);
+  }
+
+  await audit(env, admin, {
+    action: "pfp.prune_history",
+    targetType: "system",
+    targetId: null,
+    details: {
+      context: {
+        usersProcessed: userIds.length,
+        rowsDeleted,
+        total: userIds.length,
+        succeeded: userIds.length,
+        failed: 0,
+      },
+    },
+    success: true,
+  });
+
+  return new Response(JSON.stringify({ usersProcessed: userIds.length, rowsDeleted }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export async function handleAdminAuditLog({ env, request, url, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUser(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const page = parseInt(url.searchParams.get("page") || "1", 10);
+  const pageSize = 50;
+  const offset = (page - 1) * pageSize;
+  const actionFilter = url.searchParams.get("action") || "";
+  const actorFilter = url.searchParams.get("actor_id") || "";
+  const q = url.searchParams.get("q") || "";
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (actionFilter) {
+    conditions.push("action = ?");
+    params.push(actionFilter);
+  }
+  if (actorFilter) {
+    conditions.push("actor_id = ?");
+    params.push(actorFilter);
+  }
+  if (q) {
+    conditions.push("(actor_username LIKE ? OR target_id LIKE ? OR details LIKE ?)");
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const countRow = await env.DB.prepare(`SELECT COUNT(*) as total FROM admin_audit_log ${where}`)
+    .bind(...params)
+    .first();
+  const total = (countRow as { total: number })?.total || 0;
+
+  const rows = await env.DB.prepare(
+    `SELECT id, actor_id, actor_username, action, target_type, target_id, details, success, created_at
+     FROM admin_audit_log ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+  )
+    .bind(...params, pageSize, offset)
+    .all();
+
+  const entries = ((rows.results || []) as {
+    id: string;
+    actor_id: string;
+    actor_username: string | null;
+    action: string;
+    target_type: string | null;
+    target_id: string | null;
+    details: string | null;
+    success: number;
+    created_at: number;
+  }[]).map((row) => {
+    let details: Record<string, unknown> = {};
+    if (row.details) {
+      try {
+        details = JSON.parse(row.details);
+      } catch {
+        details = {};
+      }
+    }
+    return {
+      id: row.id,
+      actorId: row.actor_id,
+      actorUsername: row.actor_username,
+      action: row.action,
+      targetType: row.target_type,
+      targetId: row.target_id,
+      details,
+      success: row.success === 1,
+      createdAt: row.created_at,
+    };
+  });
+
+  const pfpUserIds = [
+    ...new Set(
+      entries
+        .filter((e) => e.action.startsWith("pfp.") && e.targetType === "user" && e.targetId)
+        .map((e) => e.targetId as string),
+    ),
+  ];
+
+  const stackMap: Record<string, { pfpUrl: string | null; pfpHistory: Awaited<ReturnType<typeof getPfpHistoryForUser>> }> = {};
+  for (const uid of pfpUserIds) {
+    const userRow = await env.DB.prepare("SELECT pfpUrl FROM users WHERE id = ?").bind(uid).first() as { pfpUrl: string | null } | null;
+    stackMap[uid] = {
+      pfpUrl: userRow?.pfpUrl ?? null,
+      pfpHistory: await getPfpHistoryForUser(env, uid),
+    };
+  }
+
+  const entriesWithResolved = entries.map((entry) => {
+    if (!entry.action.startsWith("pfp.") || entry.targetType !== "user" || !entry.targetId) {
+      return entry;
+    }
+    const ctx = entry.details?.context as { from?: unknown; to?: unknown } | undefined;
+    if (!ctx?.from || !ctx?.to) return entry;
+    const stack = stackMap[entry.targetId];
+    if (!stack) return entry;
+    const contextResolved = resolvePfpAuditRefs(entry.targetId, ctx as { from: PfpAuditRef; to: PfpAuditRef }, {
+      userId: entry.targetId,
+      pfpUrl: stack.pfpUrl,
+      pfpHistory: stack.pfpHistory,
+    });
+    return { ...entry, contextResolved };
+  });
+
   return new Response(
     JSON.stringify({
-      total: rows.length,
-      migrated: results.filter((r) => r.success).length,
-      failed: results.filter((r) => !r.success).length,
-      results,
+      entries: entriesWithResolved,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
