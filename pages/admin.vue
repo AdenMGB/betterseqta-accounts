@@ -426,6 +426,41 @@
           </button>
         </div>
 
+        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Fix PFP URLs</h3>
+          <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+            Prepends <code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded">https://accounts.betterseqta.org</code> to any PFP URLs stored as relative paths (e.g. <code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded">/api/user/pfp/...</code>).
+          </p>
+          <button
+            @click="fixPfpUrls"
+            :disabled="fixingPfpUrls"
+            class="px-6 py-3 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center gap-2"
+          >
+            <LoadingSpinner v-if="fixingPfpUrls" size="sm" />
+            <template v-else>
+              <ArrowPathIcon class="w-5 h-5" />
+            </template>
+            {{ fixingPfpUrls ? 'Fixing...' : 'Fix URLs' }}
+          </button>
+        </div>
+
+        <div v-if="urlFixResult" class="space-y-4">
+          <div class="grid grid-cols-3 gap-4">
+            <div class="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/30 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-2xl font-bold text-zinc-900 dark:text-white">{{ urlFixResult.total }}</p>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400">Total Found</p>
+            </div>
+            <div class="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-center">
+              <p class="text-2xl font-bold text-green-600 dark:text-green-400">{{ urlFixResult.fixed }}</p>
+              <p class="text-sm text-green-600 dark:text-green-400">Fixed</p>
+            </div>
+            <div class="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-center">
+              <p class="text-2xl font-bold text-red-600 dark:text-red-400">{{ urlFixResult.failed }}</p>
+              <p class="text-sm text-red-600 dark:text-red-400">Failed</p>
+            </div>
+          </div>
+        </div>
+
         <div v-if="migrationResult" class="space-y-4">
           <div class="grid grid-cols-3 gap-4">
             <div class="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-900/30 border border-zinc-200 dark:border-zinc-700 text-center">
@@ -992,6 +1027,26 @@ const deleteApiKey = async (key: any) => {
     } finally {
         deletingApiKeyId.value = null
     }
+}
+
+const fixingPfpUrls = ref(false)
+const urlFixResult = ref<{ total: number; fixed: number; failed: number; results: any[] } | null>(null)
+
+const fixPfpUrls = async () => {
+  if (!confirm('This will prepend https://accounts.betterseqta.org to all relative PFP URLs. Continue?')) return
+  fixingPfpUrls.value = true
+  urlFixResult.value = null
+  try {
+    const res = await $fetch<{ total: number; fixed: number; failed: number; results: any[] }>('/api/admin/fix-pfp-urls', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    })
+    urlFixResult.value = res
+  } catch (e: any) {
+    showToast(e?.data?.error || 'Fix failed', 'error')
+  } finally {
+    fixingPfpUrls.value = false
+  }
 }
 
 const migratePfps = async () => {

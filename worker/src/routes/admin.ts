@@ -659,6 +659,54 @@ export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: Requ
   });
 }
 
+export async function handleAdminFixPfpUrls({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const maxAdminLevel = await getMaxAdminLevel(env);
+  if ((admin.adminLevel || 0) < maxAdminLevel) {
+    return new Response(JSON.stringify({ error: "Only Senior Admins can fix PFP URLs" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const baseUrl = "https://accounts.betterseqta.org";
+
+  const users = await env.DB.prepare(
+    "SELECT id, pfpUrl FROM users WHERE pfpUrl LIKE ?",
+  )
+    .bind("/api/user/pfp/%")
+    .all();
+
+  const rows = (users.results || []) as { id: string; pfpUrl: string }[];
+  const results: { userId: string; oldUrl: string; newUrl: string; success: boolean }[] = [];
+
+  for (const user of rows) {
+    try {
+      if (user.pfpUrl.startsWith(baseUrl)) {
+        results.push({ userId: user.id, oldUrl: user.pfpUrl, newUrl: user.pfpUrl, success: true });
+        continue;
+      }
+      const newUrl = `${baseUrl}${user.pfpUrl}`;
+      await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(newUrl, user.id).run();
+      results.push({ userId: user.id, oldUrl: user.pfpUrl, newUrl, success: true });
+    } catch (e) {
+      results.push({ userId: user.id, oldUrl: user.pfpUrl, newUrl: "", success: false });
+    }
+  }
+
+  return new Response(
+    JSON.stringify({
+      total: rows.length,
+      fixed: results.filter((r) => r.success).length,
+      failed: results.filter((r) => !r.success).length,
+      results,
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
+
 export async function handleAdminMigratePfps({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   const admin = await getAdminUserWithLevel(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
