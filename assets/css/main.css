@@ -34,7 +34,23 @@ body {
   scrollbar-gutter: stable;
 }
 
-/* Fixed column widths — content must truncate inside cells, not resize columns */
+/* Fixed column widths on desktop; scroll wrapper sets min-width on small screens */
+.admin-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+@media (max-width: 767px) {
+  .admin-data-table {
+    min-width: 36rem;
+  }
+
+  .admin-audit-table {
+    min-width: 40rem;
+  }
+}
+
 .admin-data-table {
   table-layout: fixed;
   width: 100%;

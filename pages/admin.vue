@@ -1,7 +1,7 @@
 <template>
-  <div class="max-w-7xl mx-auto space-y-8 pb-20">
+  <div class="w-full min-w-0 max-w-7xl mx-auto space-y-6 sm:space-y-8">
     <div class="text-center animate-slide-down">
-      <h1 class="text-3xl font-bold text-zinc-900 dark:text-white font-display mb-2">Admin Dashboard</h1>
+      <h1 class="text-2xl sm:text-3xl font-bold text-zinc-900 dark:text-white font-display mb-2">Admin Dashboard</h1>
       <p class="text-zinc-600 dark:text-zinc-400">Manage users and OAuth clients</p>
     </div>
 
@@ -14,55 +14,58 @@
         <NuxtLink to="/" class="inline-block mt-6 px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors">Return Home</NuxtLink>
     </div>
 
-    <div v-else class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-8 animate-fade-in">
+    <div v-else class="w-full min-w-0 backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 animate-fade-in overflow-hidden">
       
       <!-- Tabs -->
-      <div class="flex space-x-4 border-b border-zinc-200 dark:border-zinc-700 mb-6">
+      <div class="admin-table-scroll -mx-4 px-4 sm:mx-0 sm:px-0 mb-6">
+        <div class="flex gap-4 sm:gap-6 border-b border-zinc-200 dark:border-zinc-700 min-w-max sm:min-w-0">
         <button 
             @click="activeTab = 'users'" 
-            :class="['pb-2 px-1 font-medium transition-colors duration-200 border-b-2', activeTab === 'users' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
+            :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === 'users' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
         >
             Users
         </button>
         <button 
             @click="activeTab = 'clients'" 
-            :class="['pb-2 px-1 font-medium transition-colors duration-200 border-b-2', activeTab === 'clients' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
+            :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === 'clients' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
         >
             OAuth Clients
         </button>
         <button 
             @click="activeTab = 'apikeys'" 
-            :class="['pb-2 px-1 font-medium transition-colors duration-200 border-b-2', activeTab === 'apikeys' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
+            :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === 'apikeys' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
         >
             API Keys
         </button>
         <button 
             @click="activeTab = 'activity-log'" 
-            :class="['pb-2 px-1 font-medium transition-colors duration-200 border-b-2', activeTab === 'activity-log' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
+            :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === 'activity-log' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
         >
             Activity Log
         </button>
         <button 
             @click="activeTab = 'pfp-migration'" 
-            :class="['pb-2 px-1 font-medium transition-colors duration-200 border-b-2', isTab('pfp-migration') ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
+            :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', isTab('pfp-migration') ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
         >
             PFP Migration
         </button>
+        </div>
       </div>
 
       <!-- Users Tab -->
-      <div v-if="activeTab === 'users'" class="space-y-6">
-        <div class="flex gap-4 items-center">
+      <div v-if="activeTab === 'users'" class="space-y-4 sm:space-y-6 min-w-0">
+        <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center">
             <input 
                 v-model="searchQuery" 
                 @keyup.enter="handleSearch" 
                 type="text" 
                 placeholder="Search by username or email..." 
-                class="flex-1 px-4 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+                class="w-full sm:flex-1 min-w-0 px-4 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
             >
+            <div class="flex flex-wrap items-center gap-3">
             <select
                 v-model="sortOption"
-                class="px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+                class="flex-1 sm:flex-none min-w-[10rem] px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
             >
                 <option v-for="opt in sortOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
@@ -70,14 +73,16 @@
                 <input type="checkbox" v-model="hasPfpFilter" class="rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500" />
                 Has PFP
             </label>
-            <button @click="handleSearch" class="px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200">Search</button>
+            <button @click="handleSearch" class="w-full sm:w-auto px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200">Search</button>
+            </div>
         </div>
 
         <div v-if="searched" class="text-sm text-zinc-600 dark:text-zinc-400">
             Total users: <span class="font-semibold text-zinc-900 dark:text-white">{{ totalUsers }}</span>
         </div>
 
-        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden min-w-0">
+            <div class="admin-table-scroll">
             <div ref="usersScrollContainer" class="max-h-[600px] scroll-stable">
                 <table class="admin-data-table w-full text-left">
                     <colgroup>
@@ -227,6 +232,7 @@
                     <span v-else-if="searched && users.length > 0" class="text-xs text-zinc-500">All {{ totalUsers }} users loaded</span>
                 </div>
             </div>
+            </div>
         </div>
       </div>
 
@@ -330,8 +336,8 @@
         <!-- Create API Key -->
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
             <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-4">Create New API Key</h3>
-            <form @submit.prevent="createApiKey" class="flex gap-4 items-end">
-                <div class="flex-1">
+            <form @submit.prevent="createApiKey" class="flex flex-col sm:flex-row gap-4 sm:items-end">
+                <div class="flex-1 min-w-0">
                     <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Name (e.g. Discord Bot)</label>
                     <input v-model="newApiKeyName" type="text" required placeholder="Discord Bot" class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white">
                 </div>
@@ -385,27 +391,30 @@
         </div>
       </div>
       <!-- Activity Log Tab -->
-      <div v-if="activeTab === 'activity-log'" class="space-y-6">
-        <div class="flex gap-4 items-center">
+      <div v-if="activeTab === 'activity-log'" class="space-y-4 sm:space-y-6 min-w-0">
+        <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center">
           <input
             v-model="auditSearchQuery"
             type="text"
             placeholder="Search actor, target, details..."
-            class="flex-1 px-4 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+            class="w-full sm:flex-1 min-w-0 px-4 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
           />
+          <div class="flex flex-wrap items-center gap-3">
           <select
             v-model="auditActionFilter"
-            class="px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+            class="flex-1 sm:flex-none min-w-[10rem] px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
           >
             <option value="">All actions</option>
             <option v-for="opt in auditActionOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
-          <button @click="loadAuditLog(1, false)" class="px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors">Refresh</button>
+          <button @click="loadAuditLog(1, false)" class="w-full sm:w-auto px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors">Refresh</button>
+          </div>
         </div>
 
-        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden min-w-0">
+          <div class="admin-table-scroll">
           <div ref="auditScrollContainer" class="max-h-[600px] scroll-stable">
-            <table class="admin-data-table w-full text-left">
+            <table class="admin-data-table admin-audit-table w-full text-left">
               <colgroup>
                 <col style="width: 15%" />
                 <col style="width: 11%" />
@@ -461,6 +470,7 @@
               </span>
               <span v-else-if="auditEntries.length > 0" class="text-xs text-zinc-500">All entries loaded</span>
             </div>
+          </div>
           </div>
         </div>
       </div>
