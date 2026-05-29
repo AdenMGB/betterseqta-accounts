@@ -6,6 +6,12 @@ import {
   getMaxAdminLevel,
 } from "../lib/auth";
 import { sendPasswordResetEmail } from "../lib/email";
+import {
+  getPfpHistoryForUser,
+  prunePfpHistory,
+  r2KeyToPfpUrl,
+  saveCurrentPfpToHistory,
+} from "../lib/pfpHistory";
 import type { RequestContext } from "../types/context";
 
 export async function handleAdminUsers({ env, request, url, jwtSecret }: RequestContext): Promise<Response> {
@@ -73,9 +79,11 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
       for (const row of (historyRows.results || []) as { id: string; user_id: string; r2_key: string; created_at: number }[]) {
         if (!pfpHistoryMap[row.user_id]) pfpHistoryMap[row.user_id] = [];
         if (pfpHistoryMap[row.user_id].length < 3) {
-          // Convert R2 key back to serving URL
-          const pfpPath = row.r2_key.replace(/^pfp\//, "/api/user/pfp/");
-          pfpHistoryMap[row.user_id].push({ id: row.id, r2Key: pfpPath, createdAt: row.created_at });
+          pfpHistoryMap[row.user_id].push({
+            id: row.id,
+            r2Key: r2KeyToPfpUrl(row.r2_key),
+            createdAt: row.created_at,
+          });
         }
       }
     } catch {
@@ -563,27 +571,20 @@ export async function handleAdminUserPfpUpload({ env, request, jwtSecret }: Requ
 
     const key = `pfp/${userId}`;
 
-    // Save current PFP to history
-    const current = await env.PFP_BUCKET.get(key);
-    if (current) {
-      const historyId = crypto.randomUUID();
-      const historyKey = `pfp/${userId}/hist/${historyId}`;
-      await env.PFP_BUCKET.put(historyKey, await current.arrayBuffer(), {
-        httpMetadata: current.httpMetadata,
-      });
-      await env.DB.prepare(
-        "INSERT INTO pfp_history (id, user_id, r2_key, created_at) VALUES (?, ?, ?, unixepoch())",
-      ).bind(historyId, userId, historyKey).run();
-    }
+    await saveCurrentPfpToHistory(env, userId);
 
     await env.PFP_BUCKET.put(key, await file.arrayBuffer(), {
       httpMetadata: { contentType: file.type },
     });
 
+    await prunePfpHistory(env, userId);
+
     const pfpUrl = `/api/user/pfp/${userId}`;
     await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, userId).run();
 
-    return new Response(JSON.stringify({ pfpUrl }), {
+    const pfpHistory = await getPfpHistoryForUser(env, userId);
+
+    return new Response(JSON.stringify({ pfpUrl, pfpHistory }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
@@ -625,20 +626,6 @@ export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: Requ
 
   const currentKey = `pfp/${userId}`;
 
-  // Save current PFP to history before swapping
-  const current = await env.PFP_BUCKET.get(currentKey);
-  if (current) {
-    const newHistoryId = crypto.randomUUID();
-    const newHistoryKey = `pfp/${userId}/hist/${newHistoryId}`;
-    await env.PFP_BUCKET.put(newHistoryKey, await current.arrayBuffer(), {
-      httpMetadata: current.httpMetadata,
-    });
-    await env.DB.prepare(
-      "INSERT INTO pfp_history (id, user_id, r2_key, created_at) VALUES (?, ?, ?, unixepoch())",
-    ).bind(newHistoryId, userId, newHistoryKey).run();
-  }
-
-  // Copy history entry back to current
   const historyObject = await env.PFP_BUCKET.get(historyRow.r2_key);
   if (!historyObject) {
     return new Response(JSON.stringify({ error: "History image not found in storage" }), {
@@ -647,14 +634,23 @@ export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: Requ
     });
   }
 
+  await saveCurrentPfpToHistory(env, userId);
+
   await env.PFP_BUCKET.put(currentKey, await historyObject.arrayBuffer(), {
     httpMetadata: historyObject.httpMetadata,
   });
 
+  await env.PFP_BUCKET.delete(historyRow.r2_key);
+  await env.DB.prepare("DELETE FROM pfp_history WHERE id = ?").bind(historyId).run();
+
+  await prunePfpHistory(env, userId);
+
   const pfpUrl = `/api/user/pfp/${userId}`;
   await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, userId).run();
 
-  return new Response(JSON.stringify({ pfpUrl }), {
+  const pfpHistory = await getPfpHistoryForUser(env, userId);
+
+  return new Response(JSON.stringify({ pfpUrl, pfpHistory }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }

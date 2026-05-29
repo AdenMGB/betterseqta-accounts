@@ -72,30 +72,39 @@
         </div>
 
         <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
-            <div class="max-h-[600px] overflow-y-auto">
+            <div ref="usersScrollContainer" class="max-h-[600px] overflow-y-auto">
                 <table class="w-full text-left">
                     <thead class="sticky top-0 bg-zinc-50 dark:bg-zinc-800/95 backdrop-blur-sm z-10">
                         <tr class="border-b border-zinc-200 dark:border-zinc-700">
                             <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">User</th>
                             <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Email</th>
-                            <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">PFP</th>
                             <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Role</th>
                             <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
                         <tr v-for="user in users" :key="user.id" class="group hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors duration-200">
-                            <td class="py-4 px-4 text-zinc-900 dark:text-white font-medium">
-                                <span v-if="editingUser?.id !== user.id">
-                                    {{ user.displayName || user.username }}
-                                    <span v-if="user.displayName && user.displayName !== user.username" class="text-xs text-zinc-500 dark:text-zinc-400 ml-1">({{ user.username }})</span>
-                                </span>
-                                <input 
-                                    v-else
-                                    v-model="editingUser.username"
-                                    type="text"
-                                    class="w-full px-2 py-1 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
-                                />
+                            <td class="py-4 px-4">
+                                <div class="flex items-center gap-3">
+                                    <AdminPfpStack
+                                        :user-id="user.id"
+                                        :pfp-url="user.pfpUrl"
+                                        :pfp-history="user.pfpHistory"
+                                        :can-edit="canModerateUsers()"
+                                        @edit="openPfpEditor(user)"
+                                        @view="openPfpView"
+                                    />
+                                    <div v-if="editingUser?.id !== user.id" class="text-zinc-900 dark:text-white font-medium min-w-0">
+                                        {{ user.displayName || user.username }}
+                                        <span v-if="user.displayName && user.displayName !== user.username" class="text-xs text-zinc-500 dark:text-zinc-400 ml-1">({{ user.username }})</span>
+                                    </div>
+                                    <input
+                                        v-else
+                                        v-model="editingUser.username"
+                                        type="text"
+                                        class="flex-1 min-w-0 px-2 py-1 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+                                    />
+                                </div>
                             </td>
                             <td class="py-4 px-4 text-zinc-600 dark:text-zinc-400">
                                 <span v-if="editingUser?.id !== user.id">{{ user.email }}</span>
@@ -105,53 +114,6 @@
                                     type="email"
                                     class="w-full px-2 py-1 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
                                 />
-                            </td>
-                            <td class="py-4 px-4">
-                                <div class="flex items-center gap-2">
-                                    <img
-                                        :src="user.pfpUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`"
-                                        alt=""
-                                        class="w-9 h-9 rounded-full object-cover border border-zinc-300 dark:border-zinc-600 shrink-0 cursor-pointer"
-                                        @click="openPfpView(user.pfpUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`)"
-                                    />
-                                    <div v-if="canModerateUsers() && user.pfpHistory?.length" class="flex -space-x-1">
-                                        <div
-                                            v-for="(h, idx) in user.pfpHistory.slice(0, 3)"
-                                            :key="h.id"
-                                            class="relative group"
-                                        >
-                                            <img
-                                                :src="h.r2Key"
-                                                alt=""
-                                                class="w-6 h-6 rounded-full object-cover border-2 border-white dark:border-zinc-800 cursor-pointer"
-                                                :title="(idx < 2 ? 'Click to revert' : '')"
-                                                @click="idx < 2 && revertPfp(user, h)"
-                                            />
-                                            <div
-                                                v-if="idx < 2"
-                                                class="absolute -top-1 -right-1 w-3 h-3 bg-primary-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                                title="Revert to this PFP"
-                                            >
-                                                <ArrowUturnLeftIcon class="w-2 h-2 text-white" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button
-                                        v-if="canModerateUsers()"
-                                        @click="triggerAdminPfpUpload(user)"
-                                        class="text-zinc-400 hover:text-primary-500 transition-colors shrink-0"
-                                        :title="'Upload PFP for ' + (user.displayName || user.username)"
-                                    >
-                                        <CameraIcon class="w-4 h-4" />
-                                    </button>
-                                    <input
-                                        type="file"
-                                        :ref="(el: any) => { if (el) pfpUploadInputs[user.id] = el }"
-                                        @change="handleAdminPfpUpload(user, $event)"
-                                        accept="image/*"
-                                        class="hidden"
-                                    />
-                                </div>
                             </td>
                             <td class="py-4 px-4">
                                 <span v-if="editingUser?.id !== user.id" :class="getRoleBadgeClass(user.admin_level || 0)">
@@ -241,14 +203,12 @@
                 <div v-if="users.length === 0 && searched" class="text-center py-8 text-zinc-500 dark:text-zinc-400">
                     No users found.
                 </div>
+                <div ref="scrollSentinel" class="flex justify-center py-4">
+                    <LoadingSpinner v-if="loadingMore" size="md" />
+                    <span v-else-if="searched && currentPage < totalPages" class="text-xs text-zinc-400">Scroll for more</span>
+                    <span v-else-if="searched && users.length > 0" class="text-xs text-zinc-500">All users loaded</span>
+                </div>
             </div>
-        </div>
-
-        <!-- Infinite scroll sentinel -->
-        <div ref="scrollSentinel" class="flex justify-center py-4">
-            <LoadingSpinner v-if="loadingMore" size="md" />
-            <span v-else-if="searched && currentPage < totalPages" class="text-xs text-zinc-400">Scroll for more</span>
-            <span v-else-if="searched && users.length > 0" class="text-xs text-zinc-500">All users loaded</span>
         </div>
       </div>
 
@@ -503,7 +463,7 @@
   <!-- Fullscreen PFP viewer -->
   <div
     v-if="pfpViewerSrc"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+    class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm"
     @click="pfpViewerSrc = null"
   >
     <button
@@ -519,15 +479,28 @@
       @click.stop
     />
   </div>
+
+  <AdminPfpEditorModal
+    :is-open="pfpEditorOpen"
+    :user="pfpEditorUser"
+    @close="closePfpEditor"
+    @view="openPfpView"
+    @updated="onPfpUpdated"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
-import { ShieldExclamationIcon, EnvelopeIcon, TrashIcon, ArrowPathIcon, ArrowUturnLeftIcon, CameraIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { ShieldExclamationIcon, EnvelopeIcon, TrashIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
+import AdminPfpStack from '~/components/admin/PfpStack.vue'
+import AdminPfpEditorModal from '~/components/admin/PfpEditorModal.vue'
 import { useInfiniteScroll } from '@vueuse/core'
+
+const SCROLL_BUFFER = 400
+const CHAIN_CAP = 3
 
 const auth = useAuth()
 const { showToast } = useToast()
@@ -545,6 +518,7 @@ const editingUser = ref<any>(null)
 const sendingResetUserId = ref<string | null>(null)
 const deletingUserId = ref<string | null>(null)
 const loadingMore = ref(false)
+const usersScrollContainer = ref<HTMLElement | null>(null)
 const scrollSentinel = ref<HTMLElement | null>(null)
 const sortOption = ref('username:asc')
 const hasPfpFilter = ref(false)
@@ -578,73 +552,45 @@ const lastCreatedApiKey = ref<any>(null)
 const deletingApiKeyId = ref<string | null>(null)
 
 // PFP Management State
-const pfpUploadInputs = ref<Record<string, HTMLInputElement>>({})
-const revertingPfpId = ref<string | null>(null)
-const uploadingPfpUserId = ref<string | null>(null)
+const pfpViewerSrc = ref<string | null>(null)
+const pfpEditorOpen = ref(false)
+const pfpEditorUser = ref<any>(null)
 
-const revertPfp = async (user: any, history: any) => {
-  if (!confirm(`Revert ${user.displayName || user.username}'s profile picture to a previous version?`)) return
-  revertingPfpId.value = history.id
-  try {
-    const res = await $fetch<{ pfpUrl: string }>('/api/admin/user/pfp/revert', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      body: { userId: user.id, historyId: history.id },
-    })
-    user.pfpUrl = res.pfpUrl
-    showToast('PFP reverted', 'success')
-  } catch (e: any) {
-    showToast(e?.data?.error || 'Failed to revert PFP', 'error')
-  } finally {
-    revertingPfpId.value = null
-  }
+const openPfpView = (src: string) => { pfpViewerSrc.value = src }
+
+const openPfpEditor = (user: any) => {
+  pfpEditorUser.value = user
+  pfpEditorOpen.value = true
 }
 
-const triggerAdminPfpUpload = (user: any) => {
-  pfpUploadInputs.value[user.id]?.click()
+const closePfpEditor = () => {
+  pfpEditorOpen.value = false
+  pfpEditorUser.value = null
 }
 
-const handleAdminPfpUpload = async (user: any, event: Event) => {
-  const target = event.target as HTMLInputElement
-  if (!target.files?.length) return
-  const file = target.files[0]
-  if (!file.type.startsWith('image/')) return
-  if (file.size > 5 * 1024 * 1024) {
-    showToast('File too large (max 5MB)', 'error')
-    return
+const onPfpUpdated = (payload: { pfpUrl: string; pfpHistory: any[] }) => {
+  if (!pfpEditorUser.value) return
+  const idx = users.value.findIndex(u => u.id === pfpEditorUser.value.id)
+  if (idx !== -1) {
+    users.value[idx].pfpUrl = payload.pfpUrl
+    users.value[idx].pfpHistory = payload.pfpHistory
   }
-
-  uploadingPfpUserId.value = user.id
-  try {
-    const formData = new FormData()
-    formData.append('userId', user.id)
-    formData.append('file', file)
-    const res = await $fetch<{ pfpUrl: string }>('/api/admin/user/pfp', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      body: formData,
-    })
-    user.pfpUrl = res.pfpUrl
-    showToast('PFP updated', 'success')
-    await searchUsers(currentPage.value)
-  } catch (e: any) {
-    showToast(e?.data?.error || 'Failed to upload PFP', 'error')
-  } finally {
-    uploadingPfpUserId.value = null
-    target.value = ''
-  }
+  pfpEditorUser.value.pfpUrl = payload.pfpUrl
+  pfpEditorUser.value.pfpHistory = payload.pfpHistory
 }
-
-// PFP Migration State
 const migratingPfps = ref(false)
 const migrationResult = ref<{ total: number; migrated: number; failed: number; results: any[] } | null>(null)
 const failedResults = computed(() => migrationResult.value?.results?.filter(r => !r.success) || [])
 const isTab = (tab: string) => activeTab.value === tab
 
-const pfpViewerSrc = ref<string | null>(null)
-const openPfpView = (src: string) => { pfpViewerSrc.value = src }
-
+// PFP Migration State
 // Actions
+const getScrollRemaining = () => {
+  const el = usersScrollContainer.value
+  if (!el) return Infinity
+  return el.scrollHeight - el.scrollTop - el.clientHeight
+}
+
 const searchUsers = async (page: number = 1, append: boolean = false) => {
     try {
         const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number, maxAdminLevel: number }>('/api/admin/users', {
@@ -670,25 +616,57 @@ const searchUsers = async (page: number = 1, append: boolean = false) => {
     }
 }
 
-const handleSearch = () => {
-    searchUsers(1, false)
+const ensureScrollBuffer = async () => {
+  await nextTick()
+  let chained = 0
+  while (
+    searched.value &&
+    currentPage.value < totalPages.value &&
+    getScrollRemaining() < SCROLL_BUFFER &&
+    chained < CHAIN_CAP &&
+    !loadingMore.value
+  ) {
+    await loadMore()
+    await nextTick()
+    chained++
+  }
+}
+
+const handleSearch = async () => {
+    await searchUsers(1, false)
+    await nextTick()
+    usersScrollContainer.value?.scrollTo(0, 0)
+    await ensureScrollBuffer()
 }
 
 const loadMore = async () => {
-    if (loadingMore.value || currentPage.value >= totalPages.value) return
-    const scrollBottom = document.documentElement.scrollHeight - window.scrollY - window.innerHeight
-    if (scrollBottom > 10 || scrollBottom < 0) return
+    if (loadingMore.value || currentPage.value >= totalPages.value || !searched.value) return
     loadingMore.value = true
-    await searchUsers(currentPage.value + 1, true)
-    loadingMore.value = false
+    try {
+        await searchUsers(currentPage.value + 1, true)
+    } finally {
+        loadingMore.value = false
+    }
 }
 
-useInfiniteScroll(window, () => {
+useInfiniteScroll(
+  usersScrollContainer,
+  () => {
     if (searched.value) loadMore()
-}, { distance: 10 })
+  },
+  {
+    distance: SCROLL_BUFFER,
+    canLoadMore: () => !loadingMore.value && currentPage.value < totalPages.value && searched.value,
+  },
+)
 
-watch([sortOption, hasPfpFilter], () => {
-    if (searched.value) searchUsers(1, false)
+watch([sortOption, hasPfpFilter], async () => {
+    if (searched.value) {
+        await searchUsers(1, false)
+        await nextTick()
+        usersScrollContainer.value?.scrollTo(0, 0)
+        await ensureScrollBuffer()
+    }
 })
 
 const getRoleLabel = (level: number): string => {
@@ -1066,12 +1044,13 @@ const migratePfps = async () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
     if (auth.user.value && (auth.user.value?.admin_level || 0) > 0) {
         loadClients()
         loadDesqtaClientsCount()
         loadApiKeys()
-        searchUsers(1) // Load initial users
+        await searchUsers(1)
+        await ensureScrollBuffer()
     }
 })
 </script>

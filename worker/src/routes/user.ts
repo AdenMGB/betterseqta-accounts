@@ -1,5 +1,6 @@
 import { corsHeaders } from "../constants";
 import { getUser } from "../lib/auth";
+import { prunePfpHistory, saveCurrentPfpToHistory } from "../lib/pfpHistory";
 import type { RequestContext } from "../types/context";
 
 export async function handleUserUpdate({ env, request, jwtSecret }: RequestContext): Promise<Response> {
@@ -68,19 +69,8 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
 
     const key = `pfp/${user.id}`;
 
-    // Save current PFP to history before overwriting
     try {
-      const current = await env.PFP_BUCKET.get(key);
-      if (current) {
-        const historyId = crypto.randomUUID();
-        const historyKey = `pfp/${user.id}/hist/${historyId}`;
-        await env.PFP_BUCKET.put(historyKey, await current.arrayBuffer(), {
-          httpMetadata: current.httpMetadata,
-        });
-        await env.DB.prepare(
-          "INSERT INTO pfp_history (id, user_id, r2_key, created_at) VALUES (?, ?, ?, unixepoch())",
-        ).bind(historyId, user.id, historyKey).run();
-      }
+      await saveCurrentPfpToHistory(env, user.id);
     } catch {
       // pfp_history table might not exist yet (migration not run) — ignore
     }
@@ -88,6 +78,12 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
     await env.PFP_BUCKET.put(key, await file.arrayBuffer(), {
       httpMetadata: { contentType: file.type },
     });
+
+    try {
+      await prunePfpHistory(env, user.id);
+    } catch {
+      // pfp_history table might not exist yet — ignore
+    }
 
     const pfpUrl = `/api/user/pfp/${user.id}`;
 
