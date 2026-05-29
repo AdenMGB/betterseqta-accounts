@@ -40,15 +40,15 @@
             </button>
           </div>
 
-          <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-6">
+          <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-4">
             <div class="flex flex-col items-center gap-2">
               <button
                 type="button"
-                class="relative group rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
+                class="rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
                 @click="$emit('view', currentSrc)"
               >
                 <img
-                  :src="currentSrc"
+                  :src="bust(currentSrc)"
                   alt="Current profile picture"
                   class="w-20 h-20 rounded-full object-cover border-2 border-primary-500 shadow"
                 />
@@ -75,12 +75,13 @@
                 @click="$emit('view', h.r2Key)"
               >
                 <img
-                  :src="h.r2Key"
+                  :src="bust(h.r2Key)"
                   :alt="`Past profile picture ${idx + 1}`"
                   class="w-20 h-20 rounded-full object-cover border-2 border-zinc-300 dark:border-zinc-600 shadow"
                 />
               </button>
               <span class="text-xs text-zinc-500 dark:text-zinc-400">Past</span>
+              <span v-if="h.createdAt" class="text-[10px] text-zinc-400">{{ formatRelativeTime(h.createdAt) }}</span>
               <button
                 type="button"
                 class="text-xs px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors disabled:opacity-50"
@@ -99,9 +100,19 @@
               <div class="w-20 h-20 rounded-full border-2 border-dashed border-zinc-300 dark:border-zinc-600 flex items-center justify-center">
                 <span class="text-xs text-zinc-400">Empty</span>
               </div>
-              <span class="text-xs text-zinc-400 invisible">Past</span>
-              <span class="text-xs invisible px-3 py-1">Restore</span>
             </div>
+          </div>
+
+          <div class="flex flex-wrap gap-2 mb-4">
+            <button
+              v-if="canClear"
+              type="button"
+              class="text-xs px-3 py-1.5 border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+              :disabled="clearing"
+              @click="clearPfp"
+            >
+              {{ clearing ? 'Clearing...' : 'Clear profile picture' }}
+            </button>
           </div>
 
           <p class="text-xs text-zinc-500 dark:text-zinc-400">
@@ -133,6 +144,7 @@ import { ref, computed, watch } from 'vue'
 import { XMarkIcon } from '@heroicons/vue/24/outline'
 import ImageCropper from '~/components/ui/ImageCropper.vue'
 import { useToast } from '~/composables/useToast'
+import { withPfpCacheBust, formatRelativeTime, dicebearUrl } from '~/utils/pfp'
 
 type PfpHistoryItem = {
   id: string
@@ -151,35 +163,45 @@ type UserLike = {
 const props = defineProps<{
   isOpen: boolean
   user: UserLike | null
+  mode?: 'admin' | 'self'
+  cacheVersion?: number | string
 }>()
 
 const emit = defineEmits<{
   close: []
   view: [src: string]
-  updated: [payload: { pfpUrl: string; pfpHistory: PfpHistoryItem[] }]
+  updated: [payload: { pfpUrl: string | null; pfpHistory: PfpHistoryItem[] }]
 }>()
 
 const { showToast } = useToast()
+const mode = computed(() => props.mode ?? 'admin')
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const cropperOpen = ref(false)
 const cropperSrc = ref<string | null>(null)
 const uploading = ref(false)
 const restoringId = ref<string | null>(null)
+const clearing = ref(false)
 const localHistory = ref<PfpHistoryItem[]>([])
+const localPfpUrl = ref<string | null>(null)
 
 const currentSrc = computed(() => {
   if (!props.user) return ''
-  return props.user.pfpUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${props.user.id}`
+  return localPfpUrl.value || props.user.pfpUrl || dicebearUrl(props.user.id)
 })
 
+const canClear = computed(() => !!(localPfpUrl.value || props.user?.pfpUrl))
 const emptySlots = computed(() => Math.max(0, 3 - localHistory.value.length))
+const bust = (url: string) => withPfpCacheBust(url, props.cacheVersion)
+
+const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` })
 
 watch(
-  () => [props.isOpen, props.user?.pfpHistory] as const,
+  () => [props.isOpen, props.user?.id, props.user?.pfpUrl, props.user?.pfpHistory] as const,
   ([open]) => {
     if (open && props.user) {
       localHistory.value = [...(props.user.pfpHistory ?? [])]
+      localPfpUrl.value = props.user.pfpUrl ?? null
     }
     if (!open) {
       cropperOpen.value = false
@@ -223,14 +245,18 @@ const onCropConfirm = async (file: File) => {
   uploading.value = true
   try {
     const formData = new FormData()
-    formData.append('userId', props.user.id)
     formData.append('file', file)
-    const res = await $fetch<{ pfpUrl: string; pfpHistory: PfpHistoryItem[] }>('/api/admin/user/pfp', {
+    if (mode.value === 'admin') {
+      formData.append('userId', props.user.id)
+    }
+    const url = mode.value === 'admin' ? '/api/admin/user/pfp' : '/api/user/pfp'
+    const res = await $fetch<{ pfpUrl: string; pfpHistory: PfpHistoryItem[] }>(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      headers: authHeaders(),
       body: formData,
     })
     localHistory.value = res.pfpHistory
+    localPfpUrl.value = res.pfpUrl
     emit('updated', { pfpUrl: res.pfpUrl, pfpHistory: res.pfpHistory })
     showToast('Profile picture updated', 'success')
   } catch (e: any) {
@@ -245,18 +271,46 @@ const restore = async (history: PfpHistoryItem) => {
   if (!confirm(`Restore this profile picture for ${props.user.displayName || props.user.username}?`)) return
   restoringId.value = history.id
   try {
-    const res = await $fetch<{ pfpUrl: string; pfpHistory: PfpHistoryItem[] }>('/api/admin/user/pfp/revert', {
+    const url = mode.value === 'admin' ? '/api/admin/user/pfp/revert' : '/api/user/pfp/revert'
+    const body = mode.value === 'admin'
+      ? { userId: props.user.id, historyId: history.id }
+      : { historyId: history.id }
+    const res = await $fetch<{ pfpUrl: string; pfpHistory: PfpHistoryItem[] }>(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      body: { userId: props.user.id, historyId: history.id },
+      headers: authHeaders(),
+      body,
     })
     localHistory.value = res.pfpHistory
+    localPfpUrl.value = res.pfpUrl
     emit('updated', { pfpUrl: res.pfpUrl, pfpHistory: res.pfpHistory })
     showToast('Profile picture restored', 'success')
   } catch (e: any) {
     showToast(e?.data?.error || 'Failed to restore profile picture', 'error')
   } finally {
     restoringId.value = null
+  }
+}
+
+const clearPfp = async () => {
+  if (!props.user) return
+  if (!confirm(`Clear profile picture for ${props.user.displayName || props.user.username}?`)) return
+  clearing.value = true
+  try {
+    const url = mode.value === 'admin' ? '/api/admin/user/pfp/clear' : '/api/user/pfp/clear'
+    const body = mode.value === 'admin' ? { userId: props.user.id } : undefined
+    const res = await $fetch<{ pfpUrl: null; pfpHistory: PfpHistoryItem[] }>(url, {
+      method: 'POST',
+      headers: authHeaders(),
+      body,
+    })
+    localHistory.value = res.pfpHistory
+    localPfpUrl.value = null
+    emit('updated', { pfpUrl: null, pfpHistory: res.pfpHistory })
+    showToast('Profile picture cleared', 'success')
+  } catch (e: any) {
+    showToast(e?.data?.error || 'Failed to clear profile picture', 'error')
+  } finally {
+    clearing.value = false
   }
 }
 </script>

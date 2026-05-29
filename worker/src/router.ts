@@ -71,13 +71,19 @@ const routes: Route[] = [
   { test: (m, p) => m === "POST" && p === "/api/admin/update-user", handle: (c) => admin.handleAdminUpdateUser(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/user/pfp", handle: (c) => admin.handleAdminUserPfpUpload(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/user/pfp/revert", handle: (c) => admin.handleAdminUserPfpRevert(c) },
+  { test: (m, p) => m === "POST" && p === "/api/admin/user/pfp/clear", handle: (c) => admin.handleAdminUserPfpClear(c) },
+  { test: (m, p) => m === "GET" && p === "/api/admin/audit-log", handle: (c) => admin.handleAdminAuditLog(c) },
   { test: (m, p) => m === "POST" && p === "/api/settings/sync-init", handle: (c) => settings.handleSettingsSyncInit(c) },
   { test: (m, p) => p === "/api/settings", handle: (c) => settings.handleSettings(c) },
   { test: (m, p) => m === "POST" && p === "/api/user/update", handle: (c) => user.handleUserUpdate(c) },
+  { test: (m, p) => m === "GET" && p === "/api/user/pfp/history", handle: (c) => user.handleUserPfpHistory(c) },
+  { test: (m, p) => m === "POST" && p === "/api/user/pfp/revert", handle: (c) => user.handleUserPfpRevert(c) },
+  { test: (m, p) => m === "POST" && p === "/api/user/pfp/clear", handle: (c) => user.handleUserPfpClear(c) },
   { test: (m, p) => m === "POST" && p === "/api/user/pfp", handle: (c) => user.handleUserPfp(c) },
   { test: (m, p) => m === "GET" && p.startsWith("/api/user/pfp/") && p.split("/").length >= 5, handle: (c) => user.handleUserPfpGet(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/migrate-pfps", handle: (c) => admin.handleAdminMigratePfps(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/fix-pfp-urls", handle: (c) => admin.handleAdminFixPfpUrls(c) },
+  { test: (m, p) => m === "POST" && p === "/api/admin/prune-pfp-history", handle: (c) => admin.handleAdminPrunePfpHistory(c) },
 ];
 
 export async function dispatch(ctx: RequestContext): Promise<Response | null> {

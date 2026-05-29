@@ -32,15 +32,21 @@
           <div v-if="activeTab === 'profile'">
             <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-6">Profile Settings</h2>
             <form @submit.prevent="updateProfile" class="space-y-6">
-              <!-- PFP Uploader -->
+              <!-- PFP stack + editor -->
               <div class="flex items-center gap-4">
-                <img :src="pfpPreview || auth.user.value?.pfpUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${auth.user.value?.id ?? auth.user.value?.username ?? 'default'}`" alt="Profile Picture" class="w-20 h-20 rounded-full object-cover border-2 border-primary-500">
+                <PfpStack
+                  v-if="auth.user.value"
+                  :user-id="auth.user.value.id"
+                  :pfp-url="auth.user.value.pfpUrl"
+                  :pfp-history="pfpHistory"
+                  :cache-version="pfpCacheVersion"
+                  can-edit
+                  @edit="pfpEditorOpen = true"
+                  @view="openPfpView"
+                />
                 <div>
-                  <input type="file" ref="pfpInput" @change="handlePfpChange" accept="image/*" class="hidden">
-                  <button type="button" @click="triggerPfpInput" class="px-4 py-2 text-sm font-medium border border-zinc-300 dark:border-zinc-600 rounded-lg hover:bg-zinc-200/70 dark:hover:bg-zinc-700/50 transition-all duration-200">
-                    Change Picture
-                  </button>
-                  <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-2">PNG, JPG, GIF up to 5MB.</p>
+                  <p class="text-sm text-zinc-600 dark:text-zinc-400">Profile pictures</p>
+                  <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Click the pencil to change, restore, or clear.</p>
                 </div>
               </div>
 
@@ -66,13 +72,25 @@
               </div>
             </form>
 
-            <!-- PFP Crop Modal -->
-            <ImageCropper
-              :is-open="showPfpCropper"
-              :image-src="pfpCropSource"
-              @confirm="onPfpCropConfirm"
-              @cancel="onPfpCropCancel"
+            <PfpEditorModal
+              v-if="auth.user.value"
+              :is-open="pfpEditorOpen"
+              :user="settingsPfpUser"
+              mode="self"
+              :cache-version="pfpCacheVersion"
+              @close="pfpEditorOpen = false"
+              @view="openPfpView"
+              @updated="onSettingsPfpUpdated"
             />
+
+            <!-- Fullscreen PFP viewer -->
+            <div
+              v-if="pfpViewerSrc"
+              class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+              @click="pfpViewerSrc = null"
+            >
+              <img :src="pfpViewerSrc" alt="" class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl" @click.stop />
+            </div>
           </div>
 
           <!-- Account Settings -->
@@ -229,11 +247,12 @@
 </style>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useSettings } from '~/composables/useSettings'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
-import ImageCropper from '~/components/ui/ImageCropper.vue'
+import PfpStack from '~/components/PfpStack.vue'
+import PfpEditorModal from '~/components/PfpEditorModal.vue'
 import { UserCircleIcon, ShieldCheckIcon, CogIcon, SparklesIcon } from '@heroicons/vue/24/outline'
 
 const auth = useAuth()
@@ -244,11 +263,43 @@ const username = ref('')
 const loading = ref(false)
 const error = ref('')
 const success = ref('')
-const pfpInput = ref<HTMLInputElement | null>(null)
-const pfpFile = ref<File | null>(null)
-const pfpPreview = ref<string | null>(null)
-const showPfpCropper = ref(false)
-const pfpCropSource = ref<string | null>(null)
+const pfpHistory = ref<any[]>([])
+const pfpEditorOpen = ref(false)
+const pfpViewerSrc = ref<string | null>(null)
+const pfpCacheVersion = ref(Date.now())
+
+const settingsPfpUser = computed(() => {
+  if (!auth.user.value) return null
+  return {
+    id: auth.user.value.id,
+    username: auth.user.value.username,
+    displayName: auth.user.value.displayName,
+    pfpUrl: auth.user.value.pfpUrl,
+    pfpHistory: pfpHistory.value,
+  }
+})
+
+const openPfpView = (src: string) => { pfpViewerSrc.value = src }
+
+const loadPfpHistory = async () => {
+  try {
+    const res = await $fetch<{ pfpHistory: any[] }>('/api/user/pfp/history', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    })
+    pfpHistory.value = res.pfpHistory
+  } catch {
+    pfpHistory.value = []
+  }
+}
+
+const onSettingsPfpUpdated = async (payload: { pfpUrl: string | null; pfpHistory: any[] }) => {
+  pfpCacheVersion.value = Date.now()
+  pfpHistory.value = payload.pfpHistory
+  if (auth.user.value) {
+    auth.user.value.pfpUrl = payload.pfpUrl
+  }
+  await auth.fetchUser()
+}
 
 const activeTab = ref('profile')
 const tabs = [
@@ -284,10 +335,6 @@ const emailLoading = ref(false)
 const emailError = ref('')
 const emailSuccess = ref('')
 
-const triggerPfpInput = () => {
-  pfpInput.value?.click()
-}
-
 onMounted(async () => {
   // Check for hash-based navigation
   if (window.location.hash) {
@@ -307,7 +354,7 @@ onMounted(async () => {
     })
   }
   
-  await Promise.all([loadBsSettings(), loadBsPlusSettings()])
+  await Promise.all([loadBsSettings(), loadBsPlusSettings(), loadPfpHistory()])
 })
 
 const loadBsSettings = async () => {
@@ -338,86 +385,29 @@ const loadBsPlusSettings = async () => {
   }
 }
 
-const handlePfpChange = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  if (target.files && target.files[0]) {
-    const file = target.files[0]
-    if (!file.type.startsWith('image/')) return
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      pfpCropSource.value = e.target?.result as string
-      showPfpCropper.value = true
-    }
-    reader.readAsDataURL(file)
-    target.value = '' // Reset so same file can be selected again
-  }
-}
-
-const onPfpCropConfirm = (file: File) => {
-  pfpFile.value = file
-  pfpPreview.value = URL.createObjectURL(file)
-  showPfpCropper.value = false
-  pfpCropSource.value = null
-}
-
-const onPfpCropCancel = () => {
-  showPfpCropper.value = false
-  pfpCropSource.value = null
-}
-
 const updateProfile = async () => {
   error.value = ''
   success.value = ''
   loading.value = true
   
   try {
-    let newPfpUrl: string | undefined = undefined;
-    
-    // 1. Upload PFP if a new one is selected
-    if (pfpFile.value) {
-      const formData = new FormData()
-      formData.append('file', pfpFile.value)
-      
-      const response = await $fetch<{ pfpUrl: string }>('/api/user/pfp', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        body: formData
-      })
-      
-      newPfpUrl = response.pfpUrl
-    }
-    
-    // 2. Update user profile data (text fields)
-    // Only send if they differ from current or just send them anyway.
-    // The backend now supports partial updates.
-    const dataToUpdate: { displayName: string, username: string, pfpUrl?: string } = {
-      displayName: displayName.value,
-      username: username.value,
-    }
-
-    // Note: The /api/user/pfp endpoint already updates the DB with the new PFP URL.
-    // However, if we want to be consistent or update other fields, we call /api/user/update.
-    // If we just uploaded a PFP, the DB is already updated for that field, but the frontend might want to sync.
-    // Actually, sending it again to /api/user/update is redundant for the PFP but fine for other fields.
-    // BUT, since /api/user/pfp updates the DB, we don't strictly NEED to send pfpUrl to /api/user/update
-    // unless we want to manually set it to something else (which we don't here).
-    // So we can just update the text fields.
-    
     await $fetch('/api/user/update', {
       method: 'POST',
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      body: dataToUpdate,
+      body: {
+        displayName: displayName.value,
+        username: username.value,
+      },
     })
     
     success.value = 'Profile updated successfully.'
-    await auth.fetchUser() // Refresh user data globally
+    await auth.fetchUser()
 
   } catch (err: any) {
     error.value = err?.data?.statusMessage || err?.message || 'Update failed.'
     console.error(err)
   } finally {
     loading.value = false
-    pfpFile.value = null
   }
 }
 

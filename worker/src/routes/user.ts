@@ -1,6 +1,11 @@
 import { corsHeaders } from "../constants";
 import { getUser } from "../lib/auth";
-import { prunePfpHistory, saveCurrentPfpToHistory } from "../lib/pfpHistory";
+import {
+  clearUserPfp,
+  getPfpHistoryForUser,
+  prunePfpHistory,
+  saveCurrentPfpToHistory,
+} from "../lib/pfpHistory";
 import type { RequestContext } from "../types/context";
 
 export async function handleUserUpdate({ env, request, jwtSecret }: RequestContext): Promise<Response> {
@@ -48,6 +53,16 @@ export async function handleUserUpdate({ env, request, jwtSecret }: RequestConte
   }
 }
 
+export async function handleUserPfpHistory({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const user = await getUser(request, jwtSecret);
+  if (!user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+
+  const pfpHistory = await getPfpHistoryForUser(env, user.id);
+  return new Response(JSON.stringify({ pfpHistory }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 export async function handleUserPfp({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   const user = await getUser(request, jwtSecret);
   if (!user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
@@ -72,7 +87,7 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
     try {
       await saveCurrentPfpToHistory(env, user.id);
     } catch {
-      // pfp_history table might not exist yet (migration not run) — ignore
+      // pfp_history table might not exist yet
     }
 
     await env.PFP_BUCKET.put(key, await file.arrayBuffer(), {
@@ -82,14 +97,15 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
     try {
       await prunePfpHistory(env, user.id);
     } catch {
-      // pfp_history table might not exist yet — ignore
+      // ignore
     }
 
     const pfpUrl = `/api/user/pfp/${user.id}`;
-
     await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, user.id).run();
 
-    return new Response(JSON.stringify({ pfpUrl }), {
+    const pfpHistory = await getPfpHistoryForUser(env, user.id);
+
+    return new Response(JSON.stringify({ pfpUrl, pfpHistory }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
@@ -98,9 +114,68 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
   }
 }
 
+export async function handleUserPfpRevert({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const user = await getUser(request, jwtSecret);
+  if (!user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+
+  const { historyId } = (await request.json()) as { historyId?: string };
+  if (!historyId) {
+    return new Response(JSON.stringify({ error: "historyId is required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const historyRow = await env.DB.prepare(
+    "SELECT id, r2_key FROM pfp_history WHERE id = ? AND user_id = ?",
+  ).bind(historyId, user.id).first() as { id: string; r2_key: string } | null;
+
+  if (!historyRow) {
+    return new Response(JSON.stringify({ error: "History entry not found" }), {
+      status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const historyObject = await env.PFP_BUCKET.get(historyRow.r2_key);
+  if (!historyObject) {
+    return new Response(JSON.stringify({ error: "History image not found in storage" }), {
+      status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const archivedHistoryId = await saveCurrentPfpToHistory(env, user.id);
+  await env.PFP_BUCKET.put(`pfp/${user.id}`, await historyObject.arrayBuffer(), {
+    httpMetadata: historyObject.httpMetadata,
+  });
+  await env.PFP_BUCKET.delete(historyRow.r2_key);
+  await env.DB.prepare("DELETE FROM pfp_history WHERE id = ?").bind(historyId).run();
+  await prunePfpHistory(env, user.id);
+
+  const pfpUrl = `/api/user/pfp/${user.id}`;
+  await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, user.id).run();
+
+  const pfpHistory = await getPfpHistoryForUser(env, user.id);
+
+  return new Response(JSON.stringify({ pfpUrl, pfpHistory }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export async function handleUserPfpClear({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const user = await getUser(request, jwtSecret);
+  if (!user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+
+  await clearUserPfp(env, user.id);
+  const pfpHistory = await getPfpHistoryForUser(env, user.id);
+
+  return new Response(JSON.stringify({ pfpUrl: null, pfpHistory }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 export async function handleUserPfpGet({ env, url }: RequestContext): Promise<Response> {
-  // Path: /api/user/pfp/{userId} or /api/user/pfp/{userId}/hist/{historyId}
-  // Map to R2 key: pfp/{userId} or pfp/{userId}/hist/{historyId}
   const r2Key = url.pathname.replace(/^\/api\/user\/pfp\//, "pfp/");
   if (!r2Key || r2Key === "pfp/") {
     return new Response("Not found", { status: 404, headers: corsHeaders });
