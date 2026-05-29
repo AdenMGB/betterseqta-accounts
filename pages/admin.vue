@@ -54,6 +54,12 @@
                 placeholder="Search by username or email..." 
                 class="flex-1 px-4 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
             >
+            <select
+                v-model="sortOption"
+                class="px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+            >
+                <option v-for="opt in sortOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
             <button @click="handleSearch" class="px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200">Search</button>
         </div>
 
@@ -68,6 +74,7 @@
                         <tr class="border-b border-zinc-200 dark:border-zinc-700">
                             <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">User</th>
                             <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Email</th>
+                            <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">PFP</th>
                             <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Role</th>
                             <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400 text-right">Actions</th>
                         </tr>
@@ -94,6 +101,52 @@
                                     type="email"
                                     class="w-full px-2 py-1 text-sm bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
                                 />
+                            </td>
+                            <td class="py-4 px-4">
+                                <div class="flex items-center gap-2">
+                                    <img
+                                        :src="user.pfpUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`"
+                                        alt=""
+                                        class="w-9 h-9 rounded-full object-cover border border-zinc-300 dark:border-zinc-600 shrink-0"
+                                    />
+                                    <div v-if="canModerateUsers() && user.pfpHistory?.length" class="flex -space-x-1">
+                                        <div
+                                            v-for="(h, idx) in user.pfpHistory.slice(0, 3)"
+                                            :key="h.id"
+                                            class="relative group"
+                                        >
+                                            <img
+                                                :src="h.r2Key"
+                                                alt=""
+                                                class="w-6 h-6 rounded-full object-cover border-2 border-white dark:border-zinc-800 cursor-pointer"
+                                                :title="(idx < 2 ? 'Click to revert' : '')"
+                                                @click="idx < 2 && revertPfp(user, h)"
+                                            />
+                                            <div
+                                                v-if="idx < 2"
+                                                class="absolute -top-1 -right-1 w-3 h-3 bg-primary-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                                                title="Revert to this PFP"
+                                            >
+                                                <ArrowUturnLeftIcon class="w-2 h-2 text-white" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        v-if="canModerateUsers()"
+                                        @click="triggerAdminPfpUpload(user)"
+                                        class="text-zinc-400 hover:text-primary-500 transition-colors shrink-0"
+                                        :title="'Upload PFP for ' + (user.displayName || user.username)"
+                                    >
+                                        <CameraIcon class="w-4 h-4" />
+                                    </button>
+                                    <input
+                                        type="file"
+                                        :ref="(el: any) => { if (el) pfpUploadInputs[user.id] = el }"
+                                        @change="handleAdminPfpUpload(user, $event)"
+                                        accept="image/*"
+                                        class="hidden"
+                                    />
+                                </div>
                             </td>
                             <td class="py-4 px-4">
                                 <span v-if="editingUser?.id !== user.id" :class="getRoleBadgeClass(user.admin_level || 0)">
@@ -186,27 +239,11 @@
             </div>
         </div>
 
-        <!-- Pagination -->
-        <div v-if="totalPages > 1" class="flex items-center justify-between">
-            <div class="text-sm text-zinc-600 dark:text-zinc-400">
-                Page {{ currentPage }} of {{ totalPages }}
-            </div>
-            <div class="flex gap-2">
-                <button 
-                    @click="goToPage(currentPage - 1)"
-                    :disabled="currentPage === 1"
-                    :class="['px-4 py-2 rounded-lg transition-all duration-200', currentPage === 1 ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed' : 'bg-primary-500 text-white hover:bg-primary-600 hover:scale-105 active:scale-95']"
-                >
-                    Previous
-                </button>
-                <button 
-                    @click="goToPage(currentPage + 1)"
-                    :disabled="currentPage === totalPages"
-                    :class="['px-4 py-2 rounded-lg transition-all duration-200', currentPage === totalPages ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed' : 'bg-primary-500 text-white hover:bg-primary-600 hover:scale-105 active:scale-95']"
-                >
-                    Next
-                </button>
-            </div>
+        <!-- Infinite scroll sentinel -->
+        <div ref="scrollSentinel" class="flex justify-center py-4">
+            <LoadingSpinner v-if="loadingMore" size="md" />
+            <span v-else-if="searched && currentPage < totalPages" class="text-xs text-zinc-400">Scroll for more</span>
+            <span v-else-if="searched && users.length > 0" class="text-xs text-zinc-500">All users loaded</span>
         </div>
       </div>
 
@@ -264,6 +301,7 @@
                             <th class="pb-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Name</th>
                             <th class="pb-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Client ID</th>
                             <th class="pb-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Redirect URI</th>
+                            <th class="pb-3 text-sm font-semibold text-zinc-500 dark:text-zinc-400 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
@@ -271,6 +309,19 @@
                             <td class="py-4 text-zinc-900 dark:text-white font-medium">{{ client.name }}</td>
                             <td class="py-4 font-mono text-xs text-zinc-600 dark:text-zinc-400">{{ client.id }}</td>
                             <td class="py-4 text-zinc-600 dark:text-zinc-400 text-sm truncate max-w-xs" :title="client.redirect_uri">{{ client.redirect_uri }}</td>
+                            <td class="py-4 text-right">
+                                <button
+                                    v-if="getCurrentAdminLevel() >= maxAdminLevel || client.created_by === auth.user.value?.id"
+                                    @click="deleteClient(client)"
+                                    :disabled="deletingClientId === client.id"
+                                    class="text-sm px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    :title="'Delete client ' + client.name"
+                                >
+                                    <TrashIcon v-if="deletingClientId !== client.id" class="w-4 h-4 inline" />
+                                    <LoadingSpinner v-else size="sm" container-class="inline-flex" />
+                                    <span class="ml-1">Delete</span>
+                                </button>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -411,11 +462,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
-import { ShieldExclamationIcon, EnvelopeIcon, TrashIcon, ArrowPathIcon } from '@heroicons/vue/24/outline'
+import { ShieldExclamationIcon, EnvelopeIcon, TrashIcon, ArrowPathIcon, ArrowUturnLeftIcon, CameraIcon } from '@heroicons/vue/24/outline'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
+import { useIntersectionObserver } from '@vueuse/core'
 
 const auth = useAuth()
 const { showToast } = useToast()
@@ -428,10 +480,26 @@ const searched = ref(false)
 const totalUsers = ref(0)
 const currentPage = ref(1)
 const totalPages = ref(1)
-const maxAdminLevel = ref(3) // Default to 3, will be updated from API
-const editingUser = ref<any>(null) // User currently being edited
+const maxAdminLevel = ref(3)
+const editingUser = ref<any>(null)
 const sendingResetUserId = ref<string | null>(null)
 const deletingUserId = ref<string | null>(null)
+const loadingMore = ref(false)
+const scrollSentinel = ref<HTMLElement | null>(null)
+const sortOption = ref('username:asc')
+
+const sortOptions = [
+  { value: 'username:asc', label: 'Username (A-Z)' },
+  { value: 'username:desc', label: 'Username (Z-A)' },
+  { value: 'created_at:desc', label: 'Newest first' },
+  { value: 'created_at:asc', label: 'Oldest first' },
+  { value: 'email:asc', label: 'Email (A-Z)' },
+  { value: 'email:desc', label: 'Email (Z-A)' },
+  { value: 'admin_level:desc', label: 'Highest role' },
+  { value: 'admin_level:asc', label: 'Lowest role' },
+  { value: 'displayName:asc', label: 'Display name (A-Z)' },
+  { value: 'displayName:desc', label: 'Display name (Z-A)' },
+]
 
 // Clients State
 const clients = ref<any[]>([])
@@ -439,6 +507,7 @@ const desqtaClientsCount = ref(0)
 const newClient = ref({ name: '', redirect_uri: '' })
 const creatingClient = ref(false)
 const lastCreatedClient = ref<any>(null)
+const deletingClientId = ref<string | null>(null)
 
 // API Keys State
 const apiKeys = ref<any[]>([])
@@ -447,6 +516,64 @@ const creatingApiKey = ref(false)
 const lastCreatedApiKey = ref<any>(null)
 const deletingApiKeyId = ref<string | null>(null)
 
+// PFP Management State
+const pfpUploadInputs = ref<Record<string, HTMLInputElement>>({})
+const revertingPfpId = ref<string | null>(null)
+const uploadingPfpUserId = ref<string | null>(null)
+
+const revertPfp = async (user: any, history: any) => {
+  if (!confirm(`Revert ${user.displayName || user.username}'s profile picture to a previous version?`)) return
+  revertingPfpId.value = history.id
+  try {
+    const res = await $fetch<{ pfpUrl: string }>('/api/admin/user/pfp/revert', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      body: { userId: user.id, historyId: history.id },
+    })
+    user.pfpUrl = res.pfpUrl
+    showToast('PFP reverted', 'success')
+  } catch (e: any) {
+    showToast(e?.data?.error || 'Failed to revert PFP', 'error')
+  } finally {
+    revertingPfpId.value = null
+  }
+}
+
+const triggerAdminPfpUpload = (user: any) => {
+  pfpUploadInputs.value[user.id]?.click()
+}
+
+const handleAdminPfpUpload = async (user: any, event: Event) => {
+  const target = event.target as HTMLInputElement
+  if (!target.files?.length) return
+  const file = target.files[0]
+  if (!file.type.startsWith('image/')) return
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('File too large (max 5MB)', 'error')
+    return
+  }
+
+  uploadingPfpUserId.value = user.id
+  try {
+    const formData = new FormData()
+    formData.append('userId', user.id)
+    formData.append('file', file)
+    const res = await $fetch<{ pfpUrl: string }>('/api/admin/user/pfp', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      body: formData,
+    })
+    user.pfpUrl = res.pfpUrl
+    showToast('PFP updated', 'success')
+    await searchUsers(currentPage.value)
+  } catch (e: any) {
+    showToast(e?.data?.error || 'Failed to upload PFP', 'error')
+  } finally {
+    uploadingPfpUserId.value = null
+    target.value = ''
+  }
+}
+
 // PFP Migration State
 const migratingPfps = ref(false)
 const migrationResult = ref<{ total: number; migrated: number; failed: number; results: any[] } | null>(null)
@@ -454,17 +581,21 @@ const failedResults = computed(() => migrationResult.value?.results?.filter(r =>
 const isTab = (tab: string) => activeTab.value === tab
 
 // Actions
-const searchUsers = async (page: number = 1) => {
+const searchUsers = async (page: number = 1, append: boolean = false) => {
     try {
         const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number, maxAdminLevel: number }>('/api/admin/users', {
-            params: { q: searchQuery.value, page },
+            params: { q: searchQuery.value, page, sort: sortOption.value },
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
-        // Initialize previous admin level for each user (for rollback on error)
-        users.value = res.users.map((user: any) => ({
+        const mapped = res.users.map((user: any) => ({
             ...user,
             _previousAdminLevel: user.admin_level || 0
         }))
+        if (append) {
+            users.value = [...users.value, ...mapped]
+        } else {
+            users.value = mapped
+        }
         totalUsers.value = res.total
         currentPage.value = res.page
         totalPages.value = res.totalPages
@@ -476,14 +607,25 @@ const searchUsers = async (page: number = 1) => {
 }
 
 const handleSearch = () => {
-    searchUsers(1)
+    searchUsers(1, false)
 }
 
-const goToPage = (page: number) => {
-    if (page >= 1 && page <= totalPages.value) {
-        searchUsers(page)
-    }
+const loadMore = async () => {
+    if (loadingMore.value || currentPage.value >= totalPages.value) return
+    loadingMore.value = true
+    await searchUsers(currentPage.value + 1, true)
+    loadingMore.value = false
 }
+
+useIntersectionObserver(scrollSentinel, ([entry]) => {
+    if (entry.isIntersecting && searched.value) {
+        loadMore()
+    }
+})
+
+watch(sortOption, () => {
+    if (searched.value) searchUsers(1, false)
+})
 
 const getRoleLabel = (level: number): string => {
     if (level === 0) return 'User'
@@ -739,6 +881,24 @@ const createClient = async () => {
         alert('Failed to create client')
     } finally {
         creatingClient.value = false
+    }
+}
+
+const deleteClient = async (client: any) => {
+    if (!confirm(`Delete OAuth client "${client.name}"? This cannot be undone.`)) return
+    deletingClientId.value = client.id
+    try {
+        await $fetch('/api/admin/clients/delete', {
+            method: 'POST',
+            body: { clientId: client.id },
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+        clients.value = clients.value.filter(c => c.id !== client.id)
+        showToast('Client deleted', 'success')
+    } catch (e: any) {
+        showToast(e?.data?.error || 'Failed to delete client', 'error')
+    } finally {
+        deletingClientId.value = null
     }
 }
 

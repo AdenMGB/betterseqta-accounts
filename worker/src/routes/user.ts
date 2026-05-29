@@ -68,6 +68,23 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
 
     const key = `pfp/${user.id}`;
 
+    // Save current PFP to history before overwriting
+    try {
+      const current = await env.PFP_BUCKET.get(key);
+      if (current) {
+        const historyId = crypto.randomUUID();
+        const historyKey = `pfp/${user.id}/hist/${historyId}`;
+        await env.PFP_BUCKET.put(historyKey, await current.arrayBuffer(), {
+          httpMetadata: current.httpMetadata,
+        });
+        await env.DB.prepare(
+          "INSERT INTO pfp_history (id, user_id, r2_key, created_at) VALUES (?, ?, ?, unixepoch())",
+        ).bind(historyId, user.id, historyKey).run();
+      }
+    } catch {
+      // pfp_history table might not exist yet (migration not run) — ignore
+    }
+
     await env.PFP_BUCKET.put(key, await file.arrayBuffer(), {
       httpMetadata: { contentType: file.type },
     });
@@ -85,16 +102,15 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
   }
 }
 
-export async function handleUserPfpGet({ env, url, jwtSecret }: RequestContext): Promise<Response> {
-  const segments = url.pathname.split("/");
-  const userId = segments[segments.length - 1];
-
-  if (!userId) {
+export async function handleUserPfpGet({ env, url }: RequestContext): Promise<Response> {
+  // Path: /api/user/pfp/{userId} or /api/user/pfp/{userId}/hist/{historyId}
+  // Map to R2 key: pfp/{userId} or pfp/{userId}/hist/{historyId}
+  const r2Key = url.pathname.replace(/^\/api\/user\/pfp\//, "pfp/");
+  if (!r2Key || r2Key === "pfp/") {
     return new Response("Not found", { status: 404, headers: corsHeaders });
   }
 
-  const key = `pfp/${userId}`;
-  const object = await env.PFP_BUCKET.get(key);
+  const object = await env.PFP_BUCKET.get(r2Key);
 
   if (!object) {
     return new Response("Not found", { status: 404, headers: corsHeaders });

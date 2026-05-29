@@ -17,22 +17,67 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
   const pageSize = 50;
   const offset = (page - 1) * pageSize;
 
+  const sortParam = url.searchParams.get("sort") || "username:asc";
+  const sortParts = sortParam.split(":");
+  const sortColumn = sortParts[0];
+  const sortDir = sortParts[1] === "desc" ? "DESC" : "ASC";
+
+  const allowedSorts: Record<string, string> = {
+    username: "username",
+    email: "email",
+    displayName: "displayName",
+    admin_level: "admin_level",
+    created_at: "created_at",
+  };
+
+  const orderBy = allowedSorts[sortColumn] || "username";
+  const orderDir = sortColumn === "admin_level" ? "DESC" : sortDir;
+
   const countResult = await env.DB.prepare("SELECT COUNT(*) as total FROM users WHERE username LIKE ? OR email LIKE ?")
     .bind(`%${query}%`, `%${query}%`)
     .first();
   const total = (countResult as { total: number }).total || 0;
 
   const users = await env.DB.prepare(
-    "SELECT id, email, username, displayName, admin_level FROM users WHERE username LIKE ? OR email LIKE ? ORDER BY username LIMIT ? OFFSET ?",
+    `SELECT id, email, username, displayName, pfpUrl, admin_level, created_at FROM users WHERE username LIKE ? OR email LIKE ? ORDER BY ${orderBy} ${orderDir} LIMIT ? OFFSET ?`,
   )
     .bind(`%${query}%`, `%${query}%`, pageSize, offset)
     .all();
+
+  // Fetch PFP history for all returned users
+  const userIds = ((users.results || []) as { id: string }[]).map((u) => u.id);
+  const pfpHistoryMap: Record<string, { id: string; r2Key: string; createdAt: number }[]> = {};
+  if (userIds.length > 0) {
+    try {
+      const placeholders = userIds.map(() => "?").join(",");
+      const historyRows = await env.DB.prepare(
+        `SELECT id, user_id, r2_key, created_at FROM pfp_history WHERE user_id IN (${placeholders}) ORDER BY created_at DESC LIMIT ?`,
+      )
+        .bind(...userIds, userIds.length * 3)
+        .all();
+      for (const row of (historyRows.results || []) as { id: string; user_id: string; r2_key: string; created_at: number }[]) {
+        if (!pfpHistoryMap[row.user_id]) pfpHistoryMap[row.user_id] = [];
+        if (pfpHistoryMap[row.user_id].length < 3) {
+          // Convert R2 key back to serving URL
+          const pfpPath = row.r2_key.replace(/^pfp\//, "/api/user/pfp/");
+          pfpHistoryMap[row.user_id].push({ id: row.id, r2Key: pfpPath, createdAt: row.created_at });
+        }
+      }
+    } catch {
+      // pfp_history table may not exist yet
+    }
+  }
+
+  const usersWithPfp = ((users.results || []) as { id: string; pfpUrl?: string }[]).map((u) => ({
+    ...u,
+    pfpHistory: pfpHistoryMap[u.id] || [],
+  }));
 
   const maxAdminLevel = await getMaxAdminLevel(env);
 
   return new Response(
     JSON.stringify({
-      users: users.results,
+      users: usersWithPfp,
       total,
       page,
       pageSize,
@@ -250,11 +295,59 @@ export async function handleAdminClientsPost({ env, request, jwtSecret }: Reques
   const id = crypto.randomUUID();
   const secret = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
 
-  await env.DB.prepare("INSERT INTO oauth_clients (id, name, secret, redirect_uri) VALUES (?, ?, ?, ?)")
-    .bind(id, name, secret, redirect_uri)
+  await env.DB.prepare("INSERT INTO oauth_clients (id, name, secret, redirect_uri, created_by) VALUES (?, ?, ?, ?, ?)")
+    .bind(id, name, secret, redirect_uri, admin.id)
     .run();
 
-  return new Response(JSON.stringify({ id, name, secret, redirect_uri }), {
+  return new Response(JSON.stringify({ id, name, secret, redirect_uri, created_by: admin.id }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export async function handleAdminClientsDelete({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUser(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const { clientId } = (await request.json()) as { clientId?: string };
+  if (!clientId) {
+    return new Response(JSON.stringify({ error: "clientId is required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const client = await env.DB.prepare("SELECT id, created_by FROM oauth_clients WHERE id = ?").bind(clientId).first() as {
+    id: string;
+    created_by?: string | null;
+  } | null;
+
+  if (!client) {
+    return new Response(JSON.stringify({ error: "Client not found" }), {
+      status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const maxAdminLevel = await getMaxAdminLevel(env);
+  const currentLevel = await (async () => {
+    const row = await env.DB.prepare("SELECT admin_level FROM users WHERE id = ?").bind(admin.id).first();
+    return (row as { admin_level: number } | null)?.admin_level || 0;
+  })();
+
+  const isSeniorAdmin = currentLevel >= maxAdminLevel;
+  const isCreator = client.created_by === admin.id;
+
+  if (!isSeniorAdmin && !isCreator) {
+    return new Response(
+      JSON.stringify({ error: "You can only delete clients you created. Contact a Senior Admin." }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  await env.DB.prepare("DELETE FROM oauth_codes WHERE client_id = ?").bind(clientId).run();
+  await env.DB.prepare("DELETE FROM oauth_clients WHERE id = ?").bind(clientId).run();
+
+  return new Response(JSON.stringify({ success: true }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
@@ -414,6 +507,139 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
   await env.DB.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).bind(...values).run();
 
   return new Response(JSON.stringify({ success: true }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export async function handleAdminUserPfpUpload({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  if ((admin.adminLevel || 0) < 2) {
+    return new Response(JSON.stringify({ error: "Moderator controls require Middle Admin level (2) or higher" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  try {
+    const formData = await request.formData();
+    const userId = formData.get("userId") as string | null;
+    const file = formData.get("file");
+
+    if (!userId || !file || !(file instanceof File)) {
+      return new Response("Missing userId or file", { status: 400, headers: corsHeaders });
+    }
+
+    if (!file.type.startsWith("image/")) {
+      return new Response("Invalid file type", { status: 400, headers: corsHeaders });
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      return new Response("File too large (max 5MB)", { status: 400, headers: corsHeaders });
+    }
+
+    const targetUser = await env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(userId).first();
+    if (!targetUser) {
+      return new Response(JSON.stringify({ error: "User not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const key = `pfp/${userId}`;
+
+    // Save current PFP to history
+    const current = await env.PFP_BUCKET.get(key);
+    if (current) {
+      const historyId = crypto.randomUUID();
+      const historyKey = `pfp/${userId}/hist/${historyId}`;
+      await env.PFP_BUCKET.put(historyKey, await current.arrayBuffer(), {
+        httpMetadata: current.httpMetadata,
+      });
+      await env.DB.prepare(
+        "INSERT INTO pfp_history (id, user_id, r2_key, created_at) VALUES (?, ?, ?, unixepoch())",
+      ).bind(historyId, userId, historyKey).run();
+    }
+
+    await env.PFP_BUCKET.put(key, await file.arrayBuffer(), {
+      httpMetadata: { contentType: file.type },
+    });
+
+    const pfpUrl = `/api/user/pfp/${userId}`;
+    await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, userId).run();
+
+    return new Response(JSON.stringify({ pfpUrl }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return new Response(message, { status: 500, headers: corsHeaders });
+  }
+}
+
+export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  if ((admin.adminLevel || 0) < 2) {
+    return new Response(JSON.stringify({ error: "Moderator controls require Middle Admin level (2) or higher" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { userId, historyId } = (await request.json()) as { userId?: string; historyId?: string };
+
+  if (!userId || !historyId) {
+    return new Response(JSON.stringify({ error: "userId and historyId are required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const historyRow = await env.DB.prepare(
+    "SELECT id, r2_key FROM pfp_history WHERE id = ? AND user_id = ?",
+  ).bind(historyId, userId).first() as { id: string; r2_key: string } | null;
+
+  if (!historyRow) {
+    return new Response(JSON.stringify({ error: "History entry not found" }), {
+      status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const currentKey = `pfp/${userId}`;
+
+  // Save current PFP to history before swapping
+  const current = await env.PFP_BUCKET.get(currentKey);
+  if (current) {
+    const newHistoryId = crypto.randomUUID();
+    const newHistoryKey = `pfp/${userId}/hist/${newHistoryId}`;
+    await env.PFP_BUCKET.put(newHistoryKey, await current.arrayBuffer(), {
+      httpMetadata: current.httpMetadata,
+    });
+    await env.DB.prepare(
+      "INSERT INTO pfp_history (id, user_id, r2_key, created_at) VALUES (?, ?, ?, unixepoch())",
+    ).bind(newHistoryId, userId, newHistoryKey).run();
+  }
+
+  // Copy history entry back to current
+  const historyObject = await env.PFP_BUCKET.get(historyRow.r2_key);
+  if (!historyObject) {
+    return new Response(JSON.stringify({ error: "History image not found in storage" }), {
+      status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  await env.PFP_BUCKET.put(currentKey, await historyObject.arrayBuffer(), {
+    httpMetadata: historyObject.httpMetadata,
+  });
+
+  const pfpUrl = `/api/user/pfp/${userId}`;
+  await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, userId).run();
+
+  return new Response(JSON.stringify({ pfpUrl }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
