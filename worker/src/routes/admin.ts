@@ -16,6 +16,7 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
   const page = parseInt(url.searchParams.get("page") || "1", 10);
   const pageSize = 50;
   const offset = (page - 1) * pageSize;
+  const hasPfp = url.searchParams.get("has_pfp") === "true";
 
   const sortParam = url.searchParams.get("sort") || "username:asc";
   const sortParts = sortParam.split(":");
@@ -33,15 +34,29 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
   const orderBy = allowedSorts[sortColumn] || "username";
   const orderDir = sortColumn === "admin_level" ? "DESC" : sortDir;
 
-  const countResult = await env.DB.prepare("SELECT COUNT(*) as total FROM users WHERE username LIKE ? OR email LIKE ?")
-    .bind(`%${query}%`, `%${query}%`)
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  conditions.push("(username LIKE ? OR email LIKE ?)");
+  params.push(`%${query}%`, `%${query}%`);
+
+  if (hasPfp) {
+    conditions.push("pfpUrl IS NOT NULL AND pfpUrl != ''");
+  }
+
+  const whereClause = conditions.join(" AND ");
+
+  const countResult = await env.DB.prepare(
+    `SELECT COUNT(*) as total FROM users WHERE ${whereClause}`,
+  )
+    .bind(...params)
     .first();
   const total = (countResult as { total: number }).total || 0;
 
   const users = await env.DB.prepare(
-    `SELECT id, email, username, displayName, pfpUrl, admin_level, created_at FROM users WHERE username LIKE ? OR email LIKE ? ORDER BY ${orderBy} ${orderDir} LIMIT ? OFFSET ?`,
+    `SELECT id, email, username, displayName, pfpUrl, admin_level, created_at FROM users WHERE ${whereClause} ORDER BY ${orderBy} ${orderDir} LIMIT ? OFFSET ?`,
   )
-    .bind(`%${query}%`, `%${query}%`, pageSize, offset)
+    .bind(...params, pageSize, offset)
     .all();
 
   // Fetch PFP history for all returned users

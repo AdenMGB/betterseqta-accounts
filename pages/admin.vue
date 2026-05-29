@@ -60,6 +60,10 @@
             >
                 <option v-for="opt in sortOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
+            <label class="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 cursor-pointer select-none shrink-0">
+                <input type="checkbox" v-model="hasPfpFilter" class="rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500" />
+                Has PFP
+            </label>
             <button @click="handleSearch" class="px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200">Search</button>
         </div>
 
@@ -487,6 +491,7 @@ const deletingUserId = ref<string | null>(null)
 const loadingMore = ref(false)
 const scrollSentinel = ref<HTMLElement | null>(null)
 const sortOption = ref('username:asc')
+const hasPfpFilter = ref(false)
 
 const sortOptions = [
   { value: 'username:asc', label: 'Username (A-Z)' },
@@ -584,7 +589,7 @@ const isTab = (tab: string) => activeTab.value === tab
 const searchUsers = async (page: number = 1, append: boolean = false) => {
     try {
         const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number, maxAdminLevel: number }>('/api/admin/users', {
-            params: { q: searchQuery.value, page, sort: sortOption.value },
+            params: { q: searchQuery.value, page, sort: sortOption.value, has_pfp: hasPfpFilter.value || undefined },
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
         const mapped = res.users.map((user: any) => ({
@@ -623,7 +628,7 @@ useIntersectionObserver(scrollSentinel, ([entry]) => {
     }
 })
 
-watch(sortOption, () => {
+watch([sortOption, hasPfpFilter], () => {
     if (searched.value) searchUsers(1, false)
 })
 
