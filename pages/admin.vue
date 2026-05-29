@@ -349,6 +349,7 @@
             </div>
             <p v-if="apiKeys.length === 0" class="text-center py-6 text-zinc-500 dark:text-zinc-400">No API keys yet.</p>
         </div>
+      </div>
       <!-- PFP Migration Tab -->
       <div v-if="isTab('pfp-migration')" class="space-y-6">
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
