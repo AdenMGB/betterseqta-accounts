@@ -33,3 +33,15 @@ body {
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
+
+/* Fixed column widths — content must truncate inside cells, not resize columns */
+.admin-data-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.admin-data-table th,
+.admin-data-table td {
+  overflow: hidden;
+  vertical-align: top;
+}

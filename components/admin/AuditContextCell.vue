@@ -1,6 +1,6 @@
 <template>
-  <div class="text-sm text-zinc-600 dark:text-zinc-400 max-w-md">
-    <div v-if="pfpResolved" class="flex items-center gap-2">
+  <div class="text-sm text-zinc-600 dark:text-zinc-400 min-w-0 max-w-full overflow-hidden">
+    <div v-if="pfpResolved" class="flex items-center gap-2 min-w-0 overflow-hidden">
       <button
         v-if="pfpResolved.from.available && pfpResolved.from.url"
         type="button"
@@ -22,15 +22,15 @@
       <div v-else class="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[9px] text-zinc-500 text-center px-1" title="No longer available">N/A</div>
     </div>
 
-    <div v-else-if="ctx.fromLevel !== undefined && ctx.toLevel !== undefined" class="flex items-center gap-2 flex-wrap">
+    <div v-else-if="ctx.fromLevel !== undefined && ctx.toLevel !== undefined" class="flex items-center gap-2 flex-wrap min-w-0 overflow-hidden">
       <span class="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-700">{{ roleLabel(ctx.fromLevel) }}</span>
       <span class="text-zinc-400">→</span>
       <span class="px-2 py-0.5 text-xs rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">{{ roleLabel(ctx.toLevel) }}</span>
       <span v-if="ctx.targetUsername" class="text-xs text-zinc-500">({{ ctx.targetUsername }})</span>
     </div>
 
-    <ul v-else-if="hasFieldChanges" class="space-y-1 text-xs">
-      <li v-for="(change, field) in ctx.changes" :key="String(field)">
+    <ul v-else-if="hasFieldChanges" class="space-y-1 text-xs min-w-0 overflow-hidden">
+      <li v-for="(change, field) in ctx.changes" :key="String(field)" class="truncate">
         <span class="font-medium capitalize">{{ field }}:</span>
         <span class="line-through text-zinc-400 mx-1">{{ change.from || '—' }}</span>
         <span>→</span>
