@@ -1,14 +1,30 @@
 import type { Env } from "../types/env";
 import type { PfpAuditRef } from "./auditPfpResolve";
 
+const DEFAULT_APP_URL = "https://accounts.betterseqta.org";
+
 export type PfpHistoryEntry = {
   id: string;
   r2Key: string;
   createdAt: number;
 };
 
-export function r2KeyToPfpUrl(r2Key: string): string {
-  return r2Key.replace(/^pfp\//, "/api/user/pfp/");
+export function getAppBaseUrl(env: Pick<Env, "APP_URL">): string {
+  return (env.APP_URL || DEFAULT_APP_URL).replace(/\/$/, "");
+}
+
+export function userPfpPath(userId: string): string {
+  return `/api/user/pfp/${userId}`;
+}
+
+export function buildUserPfpUrl(env: Pick<Env, "APP_URL">, userId: string): string {
+  return `${getAppBaseUrl(env)}${userPfpPath(userId)}`;
+}
+
+export function r2KeyToPfpUrl(r2Key: string, env?: Pick<Env, "APP_URL">): string {
+  const path = r2Key.replace(/^pfp\//, "/api/user/pfp/");
+  if (!env) return path;
+  return `${getAppBaseUrl(env)}${path}`;
 }
 
 export async function getPfpHistoryForUser(
@@ -26,7 +42,7 @@ export async function getPfpHistoryForUser(
     return ((rows.results || []) as { id: string; r2_key: string; created_at: number }[]).map(
       (row) => ({
         id: row.id,
-        r2Key: r2KeyToPfpUrl(row.r2_key),
+        r2Key: r2KeyToPfpUrl(row.r2_key, env),
         createdAt: row.created_at,
       }),
     );
