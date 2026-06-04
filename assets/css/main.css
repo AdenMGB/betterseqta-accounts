@@ -56,8 +56,15 @@ body {
   width: 100%;
 }
 
-.admin-data-table th,
-.admin-data-table td {
+.admin-data-table th {
   overflow: hidden;
   vertical-align: top;
+}
+
+.admin-data-table td {
+  vertical-align: top;
+}
+
+.admin-data-table td:not(.admin-table-actions) {
+  overflow: hidden;
 }

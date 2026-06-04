@@ -136,7 +136,7 @@
                                     </span>
                                 </div>
                             </td>
-                            <td class="py-4 px-4 text-right min-w-0">
+                            <td class="admin-table-actions py-4 px-4 text-right min-w-0">
                                 <div class="flex items-center justify-end gap-2">
                                     <template v-if="editingUser?.id === users[virtualRow.index].id">
                                         <button 
