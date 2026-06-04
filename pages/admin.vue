@@ -17,40 +17,19 @@
     <div v-else class="w-full min-w-0 backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 animate-fade-in overflow-hidden">
       
       <!-- Tabs -->
-      <div class="admin-table-scroll -mx-4 px-4 sm:mx-0 sm:px-0 mb-6">
+      <div class="admin-table-scroll -mx-4 px-4 sm:mx-0 sm:px-0 mb-2">
         <div class="flex gap-4 sm:gap-6 border-b border-zinc-200 dark:border-zinc-700 min-w-max sm:min-w-0">
-        <button 
-            @click="activeTab = 'users'" 
-            :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === 'users' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
+        <button
+            v-for="tab in adminTabs"
+            :key="tab.id"
+            @click="activeTab = tab.id"
+            :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === tab.id ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
         >
-            Users
-        </button>
-        <button 
-            @click="activeTab = 'clients'" 
-            :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === 'clients' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
-        >
-            OAuth Clients
-        </button>
-        <button 
-            @click="activeTab = 'apikeys'" 
-            :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === 'apikeys' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
-        >
-            API Keys
-        </button>
-        <button 
-            @click="activeTab = 'activity-log'" 
-            :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === 'activity-log' ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
-        >
-            Activity Log
-        </button>
-        <button 
-            @click="activeTab = 'pfp-migration'" 
-            :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', isTab('pfp-migration') ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
-        >
-            PFP Migration
+            {{ tab.label }}
         </button>
         </div>
       </div>
+      <p v-if="activeTabDescription" class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">{{ activeTabDescription }}</p>
 
       <!-- Users Tab -->
       <div v-if="activeTab === 'users'" class="space-y-4 sm:space-y-6 min-w-0">
@@ -73,23 +52,30 @@
                 <input type="checkbox" v-model="hasPfpFilter" class="rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500" />
                 Has PFP
             </label>
-            <button @click="handleSearch" class="w-full sm:w-auto px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200">Search</button>
+            <button @click="handleSearch" :disabled="usersLoading" class="w-full sm:w-auto px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200 disabled:opacity-50">
+              {{ usersLoading ? 'Searching…' : 'Search' }}
+            </button>
             </div>
         </div>
+        <p class="text-xs text-zinc-500 dark:text-zinc-400">Results update automatically as you type. Press Enter or Search to apply immediately.</p>
 
         <div v-if="searched" class="text-sm text-zinc-600 dark:text-zinc-400">
             Total users: <span class="font-semibold text-zinc-900 dark:text-white">{{ totalUsers }}</span>
+            <span v-if="users.length > 0" class="text-zinc-500"> · showing {{ users.length }}</span>
         </div>
 
-        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden min-w-0">
-            <div class="admin-table-scroll">
+        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden min-w-0 relative">
+            <div v-if="usersLoading && !users.length" class="flex justify-center py-16">
+              <LoadingSpinner size="lg" />
+            </div>
+            <div v-else class="admin-table-scroll">
             <div ref="usersScrollContainer" class="max-h-[600px] scroll-stable">
                 <table class="admin-data-table w-full text-left">
                     <colgroup>
+                        <col style="width: 32%" />
                         <col style="width: 28%" />
-                        <col style="width: 26%" />
-                        <col style="width: 16%" />
-                        <col style="width: 30%" />
+                        <col style="width: 18%" />
+                        <col style="width: 22%" />
                     </colgroup>
                     <thead class="sticky top-0 bg-zinc-50 dark:bg-zinc-800/95 backdrop-blur-sm z-10">
                         <tr class="border-b border-zinc-200 dark:border-zinc-700">
@@ -151,13 +137,14 @@
                                 </div>
                             </td>
                             <td class="py-4 px-4 text-right min-w-0">
-                                <div class="flex items-center gap-2 justify-end overflow-x-auto max-w-full">
+                                <div class="flex items-center justify-end gap-2">
                                     <template v-if="editingUser?.id === users[virtualRow.index].id">
                                         <button 
                                             @click="saveUserEdit(users[virtualRow.index])"
-                                            class="text-sm px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors duration-200"
+                                            :disabled="savingUserEdit"
+                                            class="text-sm px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors duration-200 disabled:opacity-50"
                                         >
-                                            Save
+                                            {{ savingUserEdit ? 'Saving…' : 'Save' }}
                                         </button>
                                         <button 
                                             @click="cancelUserEdit()"
@@ -166,51 +153,22 @@
                                             Cancel
                                         </button>
                                     </template>
-                                    <template v-else>
-                                        <button 
-                                            v-if="canModerateUsers()"
-                                            @click="startUserEdit(users[virtualRow.index])"
-                                            class="text-sm px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200"
-                                        >
-                                            Edit
-                                        </button>
-                                        <button 
-                                            v-if="canPromoteUser(users[virtualRow.index].admin_level || 0)"
-                                            @click="promoteUser(users[virtualRow.index])"
-                                            class="text-sm px-3 py-1 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200"
-                                        >
-                                            Promote
-                                        </button>
-                                        <button 
-                                            v-if="canDemoteUser(users[virtualRow.index].admin_level || 0)"
-                                            @click="demoteUser(users[virtualRow.index])"
-                                            class="text-sm px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200"
-                                        >
-                                            Demote
-                                        </button>
-                                        <button 
-                                            v-if="getCurrentAdminLevel() > 0 && users[virtualRow.index].id !== auth.user.value?.id"
-                                            @click="sendPasswordReset(users[virtualRow.index])"
-                                            :disabled="sendingResetUserId === users[virtualRow.index].id"
-                                            :title="'Send password reset email to ' + (users[virtualRow.index].displayName || users[virtualRow.index].username)"
-                                            class="text-sm px-3 py-1 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
-                                        >
-                                            <EnvelopeIcon v-if="sendingResetUserId !== users[virtualRow.index].id" class="w-4 h-4 inline" />
-                                            <LoadingSpinner v-else size="sm" container-class="inline-flex" />
-                                            <span class="ml-1">Reset</span>
-                                        </button>
-                                        <button 
-                                            v-if="canDeleteUser(users[virtualRow.index])"
-                                            @click="deleteUser(users[virtualRow.index])"
-                                            :disabled="deletingUserId === users[virtualRow.index].id"
-                                            :title="'Delete user ' + (users[virtualRow.index].displayName || users[virtualRow.index].username)"
-                                            class="text-sm px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                                        >
-                                            <TrashIcon v-if="deletingUserId !== users[virtualRow.index].id" class="w-4 h-4 inline" />
-                                            <LoadingSpinner v-else size="sm" container-class="inline-flex" />
-                                            <span class="ml-1">Delete</span>
-                                        </button>
-                                    </template>
+                                    <UserActionsMenu
+                                        v-else-if="hasUserActions(users[virtualRow.index])"
+                                        :user="users[virtualRow.index]"
+                                        :can-edit="canModerateUsers()"
+                                        :can-promote="canPromoteUser(users[virtualRow.index].admin_level || 0)"
+                                        :can-demote="canDemoteUser(users[virtualRow.index].admin_level || 0)"
+                                        :can-reset="getCurrentAdminLevel() > 0 && users[virtualRow.index].id !== auth.user.value?.id"
+                                        :can-delete="canDeleteUser(users[virtualRow.index])"
+                                        :resetting="sendingResetUserId === users[virtualRow.index].id"
+                                        :deleting="deletingUserId === users[virtualRow.index].id"
+                                        @edit="startUserEdit(users[virtualRow.index])"
+                                        @promote="promoteUser(users[virtualRow.index])"
+                                        @demote="demoteUser(users[virtualRow.index])"
+                                        @reset="sendPasswordReset(users[virtualRow.index])"
+                                        @delete="deleteUser(users[virtualRow.index])"
+                                    />
                                 </div>
                             </td>
                         </tr>
@@ -407,8 +365,18 @@
             <option value="">All actions</option>
             <option v-for="opt in auditActionOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
-          <button @click="loadAuditLog(1, false)" class="w-full sm:w-auto px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors">Refresh</button>
+          <button @click="loadAuditLog(1, false)" :disabled="auditRefreshing" class="w-full sm:w-auto px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50">
+            {{ auditRefreshing ? 'Refreshing…' : 'Refresh' }}
+          </button>
           </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
+          <span v-if="activeTab === 'activity-log'" class="inline-flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            Live · refreshes every 15s
+          </span>
+          <span v-if="auditLastUpdated">Last updated {{ auditLastUpdatedLabel }}</span>
+          <span v-if="auditTotal">{{ auditTotal }} entries</span>
         </div>
 
         <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden min-w-0">
@@ -619,6 +587,16 @@
     @view="openPfpView"
     @updated="onPfpUpdated"
   />
+
+  <ConfirmDialog
+    :open="confirmOpen"
+    :title="confirmTitle"
+    :message="confirmMessage"
+    :confirm-label="confirmLabel"
+    :destructive="confirmDestructive"
+    @cancel="closeConfirm"
+    @confirm="runConfirm"
+  />
 </template>
 
 <script setup lang="ts">
@@ -626,13 +604,15 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
-import { ShieldExclamationIcon, EnvelopeIcon, TrashIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { ShieldExclamationIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import PfpStack from '~/components/PfpStack.vue'
 import PfpEditorModal from '~/components/PfpEditorModal.vue'
 import AuditContextCell from '~/components/admin/AuditContextCell.vue'
+import ConfirmDialog from '~/components/admin/ConfirmDialog.vue'
+import UserActionsMenu from '~/components/admin/UserActionsMenu.vue'
 import { useInfiniteScroll, watchDebounced } from '@vueuse/core'
-import { withPfpCacheBust } from '~/utils/pfp'
+import { withPfpCacheBust, formatRelativeTime } from '~/utils/pfp'
 
 const SCROLL_BUFFER = 400
 const CHAIN_CAP = 3
@@ -641,10 +621,55 @@ const auth = useAuth()
 const { showToast } = useToast()
 const activeTab = ref<string>('users')
 
+const adminTabs = [
+  { id: 'users', label: 'Users', description: 'Search, edit, and manage user accounts and profile pictures.' },
+  { id: 'clients', label: 'OAuth Clients', description: 'Create and manage OAuth applications.' },
+  { id: 'apikeys', label: 'API Keys', description: 'Issue and revoke API keys for integrations.' },
+  { id: 'activity-log', label: 'Activity Log', description: 'Review admin actions with live updates every 15 seconds.' },
+  { id: 'pfp-migration', label: 'PFP Migration', description: 'Senior admin tools for bulk profile picture maintenance.' },
+]
+
+const activeTabDescription = computed(() => adminTabs.find(t => t.id === activeTab.value)?.description ?? '')
+
+// Confirm dialog
+const confirmOpen = ref(false)
+const confirmTitle = ref('')
+const confirmMessage = ref('')
+const confirmLabel = ref('Confirm')
+const confirmDestructive = ref(false)
+let confirmHandler: (() => void) | null = null
+
+const openConfirm = (opts: {
+  title: string
+  message: string
+  confirmLabel?: string
+  destructive?: boolean
+  onConfirm: () => void
+}) => {
+  confirmTitle.value = opts.title
+  confirmMessage.value = opts.message
+  confirmLabel.value = opts.confirmLabel ?? 'Confirm'
+  confirmDestructive.value = !!opts.destructive
+  confirmHandler = opts.onConfirm
+  confirmOpen.value = true
+}
+
+const closeConfirm = () => {
+  confirmOpen.value = false
+  confirmHandler = null
+}
+
+const runConfirm = () => {
+  confirmHandler?.()
+  closeConfirm()
+}
+
 // Users State
 const searchQuery = ref('')
 const users = ref<any[]>([])
 const searched = ref(false)
+const usersLoading = ref(false)
+const savingUserEdit = ref(false)
 const totalUsers = ref(0)
 const currentPage = ref(1)
 const totalPages = ref(1)
@@ -746,6 +771,7 @@ const auditLoadError = ref(false)
 const auditScrollContainer = ref<HTMLElement | null>(null)
 const auditSearchQuery = ref('')
 const auditActionFilter = ref('')
+const auditLastUpdated = ref<number | null>(null)
 const AUDIT_POLL_MS = 15_000
 let auditPollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -779,6 +805,13 @@ const auditTargetTypeLabel = (type: string | null | undefined) => {
 const formatAuditTime = (ts: number) =>
   new Date(ts * 1000).toLocaleString()
 
+const auditLastUpdatedLabel = computed(() => {
+  if (!auditLastUpdated.value) return ''
+  return formatRelativeTime(Math.floor(auditLastUpdated.value / 1000))
+})
+
+const touchAuditUpdated = () => { auditLastUpdated.value = Date.now() }
+
 const loadAuditLog = async (page = 1, append = false) => {
   auditLoadError.value = false
   try {
@@ -795,6 +828,7 @@ const loadAuditLog = async (page = 1, append = false) => {
     auditTotalPages.value = res.totalPages
     auditTotal.value = res.total
     auditLoaded.value = true
+    touchAuditUpdated()
   } catch (e) {
     console.error('Failed to load audit log', e)
     auditLoadError.value = true
@@ -821,6 +855,7 @@ const refreshAuditLog = async () => {
     if (auditPage.value <= 1) {
       auditEntries.value = res.entries
       auditPage.value = 1
+      touchAuditUpdated()
       return
     }
 
@@ -829,6 +864,7 @@ const refreshAuditLog = async () => {
     if (brandNew.length) {
       auditEntries.value = [...brandNew, ...auditEntries.value]
     }
+    touchAuditUpdated()
   } catch (e) {
     console.error('Failed to refresh audit log', e)
   } finally {
@@ -876,6 +912,9 @@ useInfiniteScroll(auditScrollContainer, () => {
 }, { distance: SCROLL_BUFFER, canLoadMore: () => !auditLoadingMore.value && auditPage.value < auditTotalPages.value })
 
 watch(activeTab, (tab, prevTab) => {
+  if (import.meta.client) {
+    history.replaceState(null, '', `#${tab}`)
+  }
   if (prevTab === 'activity-log') onActivityLogTabDeactivated()
   if (tab === 'activity-log') onActivityLogTabActivated()
 })
@@ -890,21 +929,28 @@ const pruningPfpHistory = ref(false)
 const pruneResult = ref<{ usersProcessed: number; rowsDeleted: number } | null>(null)
 
 const prunePfpHistory = async () => {
-  if (!confirm('Prune excess PFP history for all users?')) return
-  pruningPfpHistory.value = true
-  pruneResult.value = null
-  try {
-    const res = await $fetch<{ usersProcessed: number; rowsDeleted: number }>('/api/admin/prune-pfp-history', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-    })
-    pruneResult.value = res
-    showToast('PFP history pruned', 'success')
-  } catch (e: any) {
-    showToast(e?.data?.error || 'Prune failed', 'error')
-  } finally {
-    pruningPfpHistory.value = false
-  }
+  openConfirm({
+    title: 'Prune PFP history',
+    message: 'Trim all users to 3 saved past profile pictures (plus current)? Excess history and storage will be deleted.',
+    confirmLabel: 'Prune',
+    destructive: true,
+    onConfirm: async () => {
+      pruningPfpHistory.value = true
+      pruneResult.value = null
+      try {
+        const res = await $fetch<{ usersProcessed: number; rowsDeleted: number }>('/api/admin/prune-pfp-history', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        })
+        pruneResult.value = res
+        showToast('PFP history pruned', 'success')
+      } catch (e: any) {
+        showToast(e?.data?.error || 'Prune failed', 'error')
+      } finally {
+        pruningPfpHistory.value = false
+      }
+    },
+  })
 }
 const migratingPfps = ref(false)
 const migrationResult = ref<{ total: number; migrated: number; failed: number; results: any[] } | null>(null)
@@ -921,6 +967,7 @@ const getScrollRemaining = () => {
 
 const searchUsers = async (page: number = 1, append: boolean = false) => {
     loadMoreError.value = false
+    if (!append) usersLoading.value = true
     try {
         const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number, maxAdminLevel: number }>('/api/admin/users', {
             params: { q: searchQuery.value, page, sort: sortOption.value, has_pfp: hasPfpFilter.value || undefined },
@@ -943,6 +990,8 @@ const searchUsers = async (page: number = 1, append: boolean = false) => {
     } catch (e) {
         console.error('Failed to search users', e)
         loadMoreError.value = true
+    } finally {
+        if (!append) usersLoading.value = false
     }
 }
 
@@ -1066,40 +1115,60 @@ const canDeleteUser = (user: any): boolean => {
     return true
 }
 
-const sendPasswordReset = async (user: any) => {
-    if (!confirm(`Send a password reset email to ${user.displayName || user.username} (${user.email})?`)) return
-    sendingResetUserId.value = user.id
-    try {
-        await $fetch('/api/admin/send-password-reset', {
-            method: 'POST',
-            body: { userId: user.id },
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-        })
-        showToast('Password reset email sent', 'success')
-    } catch (e: any) {
-        showToast(e?.data?.error || 'Failed to send reset email', 'error')
-    } finally {
-        sendingResetUserId.value = null
-    }
+const hasUserActions = (user: any) =>
+    canModerateUsers()
+    || canPromoteUser(user.admin_level || 0)
+    || canDemoteUser(user.admin_level || 0)
+    || (getCurrentAdminLevel() > 0 && user.id !== auth.user.value?.id)
+    || canDeleteUser(user)
+
+const sendPasswordReset = (user: any) => {
+    openConfirm({
+        title: 'Send password reset',
+        message: `Send a password reset email to ${user.displayName || user.username} (${user.email})?`,
+        confirmLabel: 'Send email',
+        onConfirm: async () => {
+            sendingResetUserId.value = user.id
+            try {
+                await $fetch('/api/admin/send-password-reset', {
+                    method: 'POST',
+                    body: { userId: user.id },
+                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                })
+                showToast('Password reset email sent', 'success')
+            } catch (e: any) {
+                showToast(e?.data?.error || 'Failed to send reset email', 'error')
+            } finally {
+                sendingResetUserId.value = null
+            }
+        },
+    })
 }
 
-const deleteUser = async (user: any) => {
-    if (!confirm(`Permanently delete ${user.displayName || user.username} (${user.email})? This cannot be undone.`)) return
-    deletingUserId.value = user.id
-    try {
-        await $fetch('/api/admin/delete-user', {
-            method: 'POST',
-            body: { userId: user.id },
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-        })
-        users.value = users.value.filter(u => u.id !== user.id)
-        totalUsers.value = Math.max(0, totalUsers.value - 1)
-        showToast('User deleted', 'success')
-    } catch (e: any) {
-        showToast(e?.data?.error || 'Failed to delete user', 'error')
-    } finally {
-        deletingUserId.value = null
-    }
+const deleteUser = (user: any) => {
+    openConfirm({
+        title: 'Delete user',
+        message: `Permanently delete ${user.displayName || user.username} (${user.email})? This cannot be undone.`,
+        confirmLabel: 'Delete',
+        destructive: true,
+        onConfirm: async () => {
+            deletingUserId.value = user.id
+            try {
+                await $fetch('/api/admin/delete-user', {
+                    method: 'POST',
+                    body: { userId: user.id },
+                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                })
+                users.value = users.value.filter(u => u.id !== user.id)
+                totalUsers.value = Math.max(0, totalUsers.value - 1)
+                showToast('User deleted', 'success')
+            } catch (e: any) {
+                showToast(e?.data?.error || 'Failed to delete user', 'error')
+            } finally {
+                deletingUserId.value = null
+            }
+        },
+    })
 }
 
 const startUserEdit = (user: any) => {
@@ -1131,6 +1200,7 @@ const saveUserEdit = async (user: any) => {
     const originalUser = { ...user }
     const userIndex = users.value.findIndex(u => u.id === user.id)
     
+    savingUserEdit.value = true
     try {
         await $fetch('/api/admin/update-user', {
             method: 'POST',
@@ -1143,7 +1213,6 @@ const saveUserEdit = async (user: any) => {
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
         
-        // Update local state
         if (userIndex !== -1) {
             users.value[userIndex].username = editingUser.value.username
             users.value[userIndex].email = editingUser.value.email
@@ -1151,83 +1220,77 @@ const saveUserEdit = async (user: any) => {
         }
         
         editingUser.value = null
+        showToast('User updated', 'success')
     } catch (e: any) {
-        const errorMsg = e?.data?.error || e?.message || 'Failed to update user'
-        alert(errorMsg)
-        // Restore original values on error
+        showToast(e?.data?.error || e?.message || 'Failed to update user', 'error')
         if (userIndex !== -1) {
             users.value[userIndex] = originalUser
         }
+    } finally {
+        savingUserEdit.value = false
     }
 }
 
-const promoteUser = async (user: any) => {
+const promoteUser = (user: any) => {
     const currentLevel = user.admin_level || 0
     const adminLevel = getCurrentAdminLevel()
     
-    // Determine next level: promote to adminLevel (up to admin's own level)
-    // But if user is level 0 and admin is Senior Admin, promote to level 1
     let newLevel: number
     if (currentLevel === 0) {
-        // Only Senior Admins can do this, and they promote to Junior Admin (level 1)
         newLevel = 1
     } else {
-        // Promote existing admin up to admin's own level
         newLevel = Math.min(currentLevel + 1, adminLevel)
     }
     
-    if (!confirm(`Are you sure you want to promote ${user.username} to ${getRoleLabel(newLevel)}?`)) {
-        return
-    }
-    
-    const oldLevel = user.admin_level || 0
-    
-    // Update UI optimistically
-    user.admin_level = newLevel
-    
-    try {
-        await $fetch('/api/admin/promote', {
-            method: 'POST',
-            body: { userId: user.id, adminLevel: newLevel },
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-        })
-        // Update previous level for next change
-        user._previousAdminLevel = newLevel
-    } catch (e: any) {
-        // Rollback on error
-        user.admin_level = oldLevel
-        const errorMsg = e?.data?.error || e?.message || 'Failed to promote user'
-        alert(errorMsg)
-    }
+    openConfirm({
+        title: 'Promote user',
+        message: `Promote ${user.username} to ${getRoleLabel(newLevel)}?`,
+        confirmLabel: 'Promote',
+        onConfirm: async () => {
+            const oldLevel = user.admin_level || 0
+            user.admin_level = newLevel
+            try {
+                await $fetch('/api/admin/promote', {
+                    method: 'POST',
+                    body: { userId: user.id, adminLevel: newLevel },
+                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                })
+                user._previousAdminLevel = newLevel
+                showToast(`${user.username} promoted`, 'success')
+            } catch (e: any) {
+                user.admin_level = oldLevel
+                showToast(e?.data?.error || e?.message || 'Failed to promote user', 'error')
+            }
+        },
+    })
 }
 
-const demoteUser = async (user: any) => {
+const demoteUser = (user: any) => {
     const currentLevel = user.admin_level || 0
     const newLevel = Math.max(0, currentLevel - 1)
     
-    if (!confirm(`Are you sure you want to demote ${user.username} to ${getRoleLabel(newLevel)}?`)) {
-        return
-    }
-    
-    const oldLevel = user.admin_level || 0
-    
-    // Update UI optimistically
-    user.admin_level = newLevel
-    
-    try {
-        await $fetch('/api/admin/promote', {
-            method: 'POST',
-            body: { userId: user.id, adminLevel: newLevel },
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-        })
-        // Update previous level for next change
-        user._previousAdminLevel = newLevel
-    } catch (e: any) {
-        // Rollback on error
-        user.admin_level = oldLevel
-        const errorMsg = e?.data?.error || e?.message || 'Failed to demote user'
-        alert(errorMsg)
-    }
+    openConfirm({
+        title: 'Demote user',
+        message: `Demote ${user.username} to ${getRoleLabel(newLevel)}?`,
+        confirmLabel: 'Demote',
+        destructive: true,
+        onConfirm: async () => {
+            const oldLevel = user.admin_level || 0
+            user.admin_level = newLevel
+            try {
+                await $fetch('/api/admin/promote', {
+                    method: 'POST',
+                    body: { userId: user.id, adminLevel: newLevel },
+                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                })
+                user._previousAdminLevel = newLevel
+                showToast(`${user.username} demoted`, 'success')
+            } catch (e: any) {
+                user.admin_level = oldLevel
+                showToast(e?.data?.error || e?.message || 'Failed to demote user', 'error')
+            }
+        },
+    })
 }
 
 const loadClients = async () => {
@@ -1264,29 +1327,37 @@ const createClient = async () => {
         lastCreatedClient.value = res
         clients.value.unshift(res)
         newClient.value = { name: '', redirect_uri: '' }
-    } catch (e) {
-        alert('Failed to create client')
+        showToast('Client created', 'success')
+    } catch (e: any) {
+        showToast(e?.data?.error || 'Failed to create client', 'error')
     } finally {
         creatingClient.value = false
     }
 }
 
-const deleteClient = async (client: any) => {
-    if (!confirm(`Delete OAuth client "${client.name}"? This cannot be undone.`)) return
-    deletingClientId.value = client.id
-    try {
-        await $fetch('/api/admin/clients/delete', {
-            method: 'POST',
-            body: { clientId: client.id },
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-        })
-        clients.value = clients.value.filter(c => c.id !== client.id)
-        showToast('Client deleted', 'success')
-    } catch (e: any) {
-        showToast(e?.data?.error || 'Failed to delete client', 'error')
-    } finally {
-        deletingClientId.value = null
-    }
+const deleteClient = (client: any) => {
+    openConfirm({
+        title: 'Delete OAuth client',
+        message: `Delete "${client.name}"? This cannot be undone.`,
+        confirmLabel: 'Delete',
+        destructive: true,
+        onConfirm: async () => {
+            deletingClientId.value = client.id
+            try {
+                await $fetch('/api/admin/clients/delete', {
+                    method: 'POST',
+                    body: { clientId: client.id },
+                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                })
+                clients.value = clients.value.filter(c => c.id !== client.id)
+                showToast('Client deleted', 'success')
+            } catch (e: any) {
+                showToast(e?.data?.error || 'Failed to delete client', 'error')
+            } finally {
+                deletingClientId.value = null
+            }
+        },
+    })
 }
 
 const loadApiKeys = async () => {
@@ -1334,68 +1405,99 @@ const formatDate = (ts: number) => {
     return new Date(ts * 1000).toLocaleDateString()
 }
 
-const deleteApiKey = async (key: any) => {
-    if (!confirm(`Delete API key "${key.name}"? This will revoke access immediately.`)) return
-    deletingApiKeyId.value = key.id
-    try {
-        await $fetch('/api/admin/api-keys', {
-            method: 'DELETE',
-            body: { id: key.id },
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-        })
-        apiKeys.value = apiKeys.value.filter(k => k.id !== key.id)
-        showToast('API key deleted', 'success')
-    } catch (e: any) {
-        showToast(e?.data?.error || 'Failed to delete API key', 'error')
-    } finally {
-        deletingApiKeyId.value = null
-    }
+const deleteApiKey = (key: any) => {
+    openConfirm({
+        title: 'Delete API key',
+        message: `Delete "${key.name}"? This will revoke access immediately.`,
+        confirmLabel: 'Delete',
+        destructive: true,
+        onConfirm: async () => {
+            deletingApiKeyId.value = key.id
+            try {
+                await $fetch('/api/admin/api-keys', {
+                    method: 'DELETE',
+                    body: { id: key.id },
+                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                })
+                apiKeys.value = apiKeys.value.filter(k => k.id !== key.id)
+                showToast('API key deleted', 'success')
+            } catch (e: any) {
+                showToast(e?.data?.error || 'Failed to delete API key', 'error')
+            } finally {
+                deletingApiKeyId.value = null
+            }
+        },
+    })
 }
 
 const fixingPfpUrls = ref(false)
 const urlFixResult = ref<{ total: number; fixed: number; failed: number; results: any[] } | null>(null)
 
-const fixPfpUrls = async () => {
-  if (!confirm('This will prepend https://accounts.betterseqta.org to all relative PFP URLs. Continue?')) return
-  fixingPfpUrls.value = true
-  urlFixResult.value = null
-  try {
-    const res = await $fetch<{ total: number; fixed: number; failed: number; results: any[] }>('/api/admin/fix-pfp-urls', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-    })
-    urlFixResult.value = res
-  } catch (e: any) {
-    showToast(e?.data?.error || 'Fix failed', 'error')
-  } finally {
-    fixingPfpUrls.value = false
-  }
+const fixPfpUrls = () => {
+  openConfirm({
+    title: 'Fix PFP URLs',
+    message: 'Prepend https://accounts.betterseqta.org to all relative profile picture URLs stored in the database?',
+    confirmLabel: 'Fix URLs',
+    onConfirm: async () => {
+      fixingPfpUrls.value = true
+      urlFixResult.value = null
+      try {
+        const res = await $fetch<{ total: number; fixed: number; failed: number; results: any[] }>('/api/admin/fix-pfp-urls', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+        urlFixResult.value = res
+        showToast('PFP URLs updated', 'success')
+      } catch (e: any) {
+        showToast(e?.data?.error || 'Fix failed', 'error')
+      } finally {
+        fixingPfpUrls.value = false
+      }
+    },
+  })
 }
 
-const migratePfps = async () => {
-  if (!confirm('This will download all external profile pictures and upload them to Cloudflare R2. This may take a while. Continue?')) return
-  migratingPfps.value = true
-  migrationResult.value = null
-  try {
-    const res = await $fetch<{ total: number; migrated: number; failed: number; results: any[] }>('/api/admin/migrate-pfps', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-    })
-    migrationResult.value = res
-  } catch (e: any) {
-    showToast(e?.data?.error || 'Migration failed', 'error')
-  } finally {
-    migratingPfps.value = false
-  }
+const migratePfps = () => {
+  openConfirm({
+    title: 'Migrate profile pictures',
+    message: 'Download all external profile pictures and upload them to Cloudflare R2? This may take a while.',
+    confirmLabel: 'Start migration',
+    onConfirm: async () => {
+      migratingPfps.value = true
+      migrationResult.value = null
+      try {
+        const res = await $fetch<{ total: number; migrated: number; failed: number; results: any[] }>('/api/admin/migrate-pfps', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        })
+        migrationResult.value = res
+        showToast('Migration complete', 'success')
+      } catch (e: any) {
+        showToast(e?.data?.error || 'Migration failed', 'error')
+      } finally {
+        migratingPfps.value = false
+      }
+    },
+  })
 }
 
 onMounted(async () => {
+    if (import.meta.client) {
+        const hash = window.location.hash.slice(1)
+        if (adminTabs.some(t => t.id === hash)) {
+            activeTab.value = hash
+        }
+    }
     if (auth.user.value && (auth.user.value?.admin_level || 0) > 0) {
         loadClients()
         loadDesqtaClientsCount()
         loadApiKeys()
-        await searchUsers(1)
-        await ensureScrollBuffer()
+        if (activeTab.value === 'activity-log') {
+            await onActivityLogTabActivated()
+        } else {
+            await searchUsers(1)
+            await ensureScrollBuffer()
+        }
     }
 })
 </script>

@@ -1,18 +1,18 @@
 <template>
-  <div>
-    <h1 class="text-3xl font-bold text-zinc-900 dark:text-white font-display mb-6">Settings</h1>
+  <div class="w-full min-w-0 max-w-4xl mx-auto">
+    <h1 class="text-2xl sm:text-3xl font-bold text-zinc-900 dark:text-white font-display mb-6">Settings</h1>
 
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8">
       <!-- Settings Navigation -->
       <div class="lg:col-span-1">
-        <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-4">
-          <nav class="space-y-1">
+        <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-3 sm:p-4">
+          <nav class="flex lg:flex-col gap-2 overflow-x-auto admin-table-scroll lg:overflow-visible">
             <button
               v-for="tab in tabs"
               :key="tab.name"
               @click="activeTab = tab.name"
               :class="[
-                'w-full flex items-center gap-3 px-3 py-2 text-left text-sm font-medium rounded-lg transition-all duration-200',
+                'shrink-0 lg:shrink lg:w-full flex items-center gap-3 px-3 py-2 text-left text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap',
                 activeTab === tab.name
                   ? 'bg-primary-500/10 text-primary-500'
                   : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/70 dark:hover:bg-zinc-700/50 hover:text-zinc-900 dark:hover:text-white'
@@ -26,8 +26,8 @@
       </div>
 
       <!-- Settings Content -->
-      <div class="lg:col-span-3">
-        <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-8">
+      <div class="lg:col-span-3 min-w-0">
+        <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-4 sm:p-6 md:p-8">
           <!-- Profile Settings -->
           <div v-if="activeTab === 'profile'">
             <h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-6">Profile Settings</h2>
