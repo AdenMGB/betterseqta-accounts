@@ -1,13 +1,20 @@
 import { corsHeaders } from "../constants";
 import { getUser } from "../lib/auth";
+import { processPfpUpload } from "../lib/pfpProcess";
 import {
   buildUserPfpUrl,
   clearUserPfp,
   getPfpHistoryForUser,
+  getUserPfpHash,
   prunePfpHistory,
+  putCurrentPfp,
   saveCurrentPfpToHistory,
 } from "../lib/pfpHistory";
 import type { RequestContext } from "../types/context";
+
+function isAccountsHostedPfpUrl(pfpUrl: string): boolean {
+  return pfpUrl.includes("/api/user/pfp/") && !pfpUrl.includes("/hist/");
+}
 
 export async function handleUserUpdate({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   const user = await getUser(request, jwtSecret);
@@ -34,6 +41,10 @@ export async function handleUserUpdate({ env, request, jwtSecret }: RequestConte
     if (pfpUrl !== undefined) {
       updates.push("pfpUrl = ?");
       values.push(pfpUrl);
+      if (!pfpUrl || !isAccountsHostedPfpUrl(pfpUrl)) {
+        updates.push("pfp_hash = ?");
+        values.push(null);
+      }
     }
 
     if (updates.length === 0) {
@@ -64,6 +75,19 @@ export async function handleUserPfpHistory({ env, request, jwtSecret }: RequestC
   });
 }
 
+export async function handleUserPfpMeta({ env, url }: RequestContext): Promise<Response> {
+  const parts = url.pathname.split("/");
+  const userId = parts[parts.length - 2];
+  if (!userId || parts[parts.length - 1] !== "meta") {
+    return new Response("Not found", { status: 404, headers: corsHeaders });
+  }
+
+  const pfpHash = await getUserPfpHash(env, userId);
+  return new Response(JSON.stringify({ pfpHash }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 export async function handleUserPfp({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   const user = await getUser(request, jwtSecret);
   if (!user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
@@ -71,6 +95,7 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
   try {
     const formData = await request.formData();
     const file = formData.get("file");
+    const preCropped = formData.get("preCropped") === "true";
 
     if (!file || !(file instanceof File)) {
       return new Response("No file uploaded", { status: 400, headers: corsHeaders });
@@ -83,17 +108,14 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
       return new Response("File too large (max 5MB)", { status: 400, headers: corsHeaders });
     }
 
-    const key = `pfp/${user.id}`;
-
     try {
       await saveCurrentPfpToHistory(env, user.id);
     } catch {
       // pfp_history table might not exist yet
     }
 
-    await env.PFP_BUCKET.put(key, await file.arrayBuffer(), {
-      httpMetadata: { contentType: file.type },
-    });
+    const processed = await processPfpUpload(await file.arrayBuffer(), { preCropped });
+    const { pfpUrl, pfpHash } = await putCurrentPfp(env, user.id, processed);
 
     try {
       await prunePfpHistory(env, user.id);
@@ -101,12 +123,9 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
       // ignore
     }
 
-    const pfpUrl = buildUserPfpUrl(env, user.id);
-    await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, user.id).run();
-
     const pfpHistory = await getPfpHistoryForUser(env, user.id);
 
-    return new Response(JSON.stringify({ pfpUrl, pfpHistory }), {
+    return new Response(JSON.stringify({ pfpUrl, pfpHash, pfpHistory }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
@@ -146,20 +165,17 @@ export async function handleUserPfpRevert({ env, request, jwtSecret }: RequestCo
     });
   }
 
-  const archivedHistoryId = await saveCurrentPfpToHistory(env, user.id);
-  await env.PFP_BUCKET.put(`pfp/${user.id}`, await historyObject.arrayBuffer(), {
-    httpMetadata: historyObject.httpMetadata,
-  });
+  await saveCurrentPfpToHistory(env, user.id);
+  const processed = await processPfpUpload(await historyObject.arrayBuffer());
+  const { pfpUrl, pfpHash } = await putCurrentPfp(env, user.id, processed);
+
   await env.PFP_BUCKET.delete(historyRow.r2_key);
   await env.DB.prepare("DELETE FROM pfp_history WHERE id = ?").bind(historyId).run();
   await prunePfpHistory(env, user.id);
 
-  const pfpUrl = buildUserPfpUrl(env, user.id);
-  await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, user.id).run();
-
   const pfpHistory = await getPfpHistoryForUser(env, user.id);
 
-  return new Response(JSON.stringify({ pfpUrl, pfpHistory }), {
+  return new Response(JSON.stringify({ pfpUrl, pfpHash, pfpHistory }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
@@ -171,15 +187,38 @@ export async function handleUserPfpClear({ env, request, jwtSecret }: RequestCon
   await clearUserPfp(env, user.id);
   const pfpHistory = await getPfpHistoryForUser(env, user.id);
 
-  return new Response(JSON.stringify({ pfpUrl: null, pfpHistory }), {
+  return new Response(JSON.stringify({ pfpUrl: null, pfpHash: null, pfpHistory }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
 
-export async function handleUserPfpGet({ env, url }: RequestContext): Promise<Response> {
-  const r2Key = url.pathname.replace(/^\/api\/user\/pfp\//, "pfp/");
-  if (!r2Key || r2Key === "pfp/") {
+export async function handleUserPfpGet({ env, url, request }: RequestContext): Promise<Response> {
+  const pathname = url.pathname;
+  if (pathname.endsWith("/meta")) {
+    return handleUserPfpMeta({ env, url, request } as RequestContext);
+  }
+
+  const r2Key = pathname.replace(/^\/api\/user\/pfp\//, "pfp/");
+  if (!r2Key || r2Key === "pfp/" || r2Key.endsWith("/meta")) {
     return new Response("Not found", { status: 404, headers: corsHeaders });
+  }
+
+  const isHistory = r2Key.includes("/hist/");
+  let pfpHash: string | null = null;
+  if (!isHistory) {
+    const userId = r2Key.replace(/^pfp\//, "");
+    pfpHash = await getUserPfpHash(env, userId);
+    const ifNoneMatch = request.headers.get("If-None-Match");
+    if (pfpHash && ifNoneMatch && (ifNoneMatch === `"${pfpHash}"` || ifNoneMatch === pfpHash)) {
+      return new Response(null, {
+        status: 304,
+        headers: {
+          ...corsHeaders,
+          ETag: `"${pfpHash}"`,
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
+    }
   }
 
   const object = await env.PFP_BUCKET.get(r2Key);
@@ -189,14 +228,17 @@ export async function handleUserPfpGet({ env, url }: RequestContext): Promise<Re
   }
 
   const headers = new Headers(corsHeaders);
-  headers.set("Content-Type", object.httpMetadata?.contentType || "image/png");
-  // Current slot is overwritten in place; history blobs are immutable.
-  const isHistory = r2Key.includes("/hist/");
+  headers.set("Content-Type", object.httpMetadata?.contentType || "image/jpeg");
   headers.set(
     "Cache-Control",
-    isHistory ? "private, max-age=31536000, immutable" : "private, no-cache, must-revalidate",
+    isHistory ? "private, max-age=31536000, immutable" : "public, max-age=31536000, immutable",
   );
-  headers.set("ETag", object.etag);
+  if (pfpHash) {
+    headers.set("ETag", `"${pfpHash}"`);
+    headers.set("X-Pfp-Hash", pfpHash);
+  } else {
+    headers.set("ETag", object.etag);
+  }
 
   return new Response(object.body, { headers });
 }

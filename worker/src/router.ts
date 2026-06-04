@@ -81,6 +81,7 @@ const routes: Route[] = [
   { test: (m, p) => m === "POST" && p === "/api/user/pfp/clear", handle: (c) => user.handleUserPfpClear(c) },
   { test: (m, p) => m === "POST" && p === "/api/user/pfp", handle: (c) => user.handleUserPfp(c) },
   { test: (m, p) => m === "GET" && p.startsWith("/api/user/pfp/") && p.split("/").length >= 5, handle: (c) => user.handleUserPfpGet(c) },
+  { test: (m, p) => m === "POST" && p === "/api/admin/process-pfps", handle: (c) => admin.handleAdminProcessPfps(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/migrate-pfps", handle: (c) => admin.handleAdminMigratePfps(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/fix-pfp-urls", handle: (c) => admin.handleAdminFixPfpUrls(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/prune-pfp-history", handle: (c) => admin.handleAdminPrunePfpHistory(c) },

@@ -20,6 +20,7 @@ import {
   revokeSessionById,
 } from "../lib/session";
 import { findUserByCredentialsLogin, findUserProfileByLogin } from "../lib/user-by-login";
+import { mapUserPublic, publicUserFromCredentials, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
 
 export async function handleRegister({ env, request, jwtSecret }: RequestContext): Promise<Response> {
@@ -137,14 +138,7 @@ export async function handleLogin({ env, request, jwtSecret }: RequestContext): 
       {
         token,
         expires_in: WEBSITE_ACCESS_EXPIRES_IN,
-        user: {
-          id: user.id,
-          email: user.email,
-          username: user.username,
-          displayName: user.displayName,
-          pfpUrl: user.pfpUrl,
-          admin_level: (user as unknown as { admin_level?: number }).admin_level || 0,
-        },
+        user: publicUserFromCredentials(user),
       },
       {
         "Set-Cookie": refreshCookie,
@@ -160,10 +154,10 @@ export async function handleMe({ env, request, jwtSecret }: RequestContext): Pro
   const payload = await getUser(request, jwtSecret);
   if (!payload) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
-  const user = await env.DB.prepare("SELECT id, email, username, displayName, pfpUrl, admin_level FROM users WHERE id = ?")
+  const user = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)
     .bind(payload.id)
     .first();
-  return new Response(JSON.stringify(user), {
+  return new Response(JSON.stringify(mapUserPublic(user as Record<string, unknown>)), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
@@ -186,9 +180,7 @@ export async function handleRefresh({ env, request, jwtSecret }: RequestContext)
       });
     }
 
-    const user = await env.DB.prepare(
-      "SELECT id, email, username, displayName, pfpUrl, admin_level FROM users WHERE id = ?",
-    )
+    const user = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)
       .bind(session.user_id as string)
       .first();
     if (!user) {
@@ -205,19 +197,11 @@ export async function handleRefresh({ env, request, jwtSecret }: RequestContext)
       maxAge: WEBSITE_REFRESH_EXPIRY_DAYS * 24 * 60 * 60,
     });
 
-    const u = user as Record<string, unknown>;
     return authJson(
       {
         token: accessToken,
         expires_in: WEBSITE_ACCESS_EXPIRES_IN,
-        user: {
-          id: u.id,
-          email: u.email,
-          username: u.username,
-          displayName: u.displayName,
-          pfpUrl: u.pfpUrl,
-          admin_level: (u.admin_level as number) || 0,
-        },
+        user: mapUserPublic(user as Record<string, unknown>),
       },
       {
         "Set-Cookie": refreshCookie,

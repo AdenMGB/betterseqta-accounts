@@ -276,6 +276,7 @@ const settingsPfpUser = computed(() => {
     username: auth.user.value.username,
     displayName: auth.user.value.displayName,
     pfpUrl: auth.user.value.pfpUrl,
+    pfpHash: auth.user.value.pfpHash,
     pfpHistory: pfpHistory.value,
   }
 })
@@ -295,11 +296,12 @@ const loadPfpHistory = async () => {
   }
 }
 
-const onSettingsPfpUpdated = async (payload: { pfpUrl: string | null; pfpHistory: any[] }) => {
-  pfpCacheVersion.value = Date.now()
+const onSettingsPfpUpdated = async (payload: { pfpUrl: string | null; pfpHash: string | null; pfpHistory: any[] }) => {
+  pfpCacheVersion.value = payload.pfpHash ?? Date.now()
   pfpHistory.value = payload.pfpHistory
   if (auth.user.value) {
     auth.user.value.pfpUrl = payload.pfpUrl
+    auth.user.value.pfpHash = payload.pfpHash
   }
   await auth.fetchUser()
 }

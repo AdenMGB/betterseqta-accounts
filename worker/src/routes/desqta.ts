@@ -4,6 +4,7 @@ import { getDesqtaClient, validateDesqtaClient, touchDesqtaReservedClient } from
 import bcrypt from "bcryptjs";
 import { createSession, getSessionByRefreshToken, touchUserSession, revokeSessionById } from "../lib/session";
 import { findUserByCredentialsLogin } from "../lib/user-by-login";
+import { mapUserPublic, publicUserFromCredentials, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
 
 export async function handleDesqtaReserve({ env, request }: RequestContext): Promise<Response> {
@@ -87,9 +88,7 @@ export async function handleDesqtaRefresh({ env, request, jwtSecret }: RequestCo
     }
 
     const effectiveClientId = client_id || (session.client_id as string);
-    const user = await env.DB.prepare(
-      "SELECT id, email, username, displayName, pfpUrl, admin_level FROM users WHERE id = ?",
-    )
+    const user = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)
       .bind(session.user_id as string)
       .first();
     if (!user) {
@@ -101,20 +100,12 @@ export async function handleDesqtaRefresh({ env, request, jwtSecret }: RequestCo
     const newExpiresAt = now + APP_REFRESH_EXPIRY_DAYS * 24 * 60 * 60;
     await touchUserSession(env, sessionId, now, request, { expiresAt: newExpiresAt, clientId: effectiveClientId });
 
-    const u = user as Record<string, unknown>;
     return authJson({
       access_token: accessToken,
       token_type: "Bearer",
       expires_in: WEBSITE_ACCESS_EXPIRES_IN,
       refresh_token: refresh_token,
-      user: {
-        id: u.id,
-        email: u.email,
-        username: u.username,
-        displayName: u.displayName,
-        pfpUrl: u.pfpUrl,
-        admin_level: (u.admin_level as number) || 0,
-      },
+      user: mapUserPublic(user as Record<string, unknown>),
     });
   } catch (err) {
     console.error("Desqta refresh error:", err);
@@ -176,14 +167,7 @@ export async function handleDesqtaLogin({ env, request, jwtSecret }: RequestCont
       access_token: accessToken,
       refresh_token: session.refreshToken,
       expires_in: WEBSITE_ACCESS_EXPIRES_IN,
-      user: {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        displayName: user.displayName,
-        pfpUrl: user.pfpUrl,
-        admin_level: (user as unknown as { admin_level?: number }).admin_level || 0,
-      },
+      user: publicUserFromCredentials(user),
     });
   } catch (err) {
     console.error("Desqta login error:", err);
