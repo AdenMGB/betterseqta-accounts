@@ -1,6 +1,7 @@
 import { corsHeaders } from "../constants";
 import { getUser } from "../lib/auth";
 import {
+  buildUserPfpUrl,
   clearUserPfp,
   getPfpHistoryForUser,
   prunePfpHistory,
@@ -100,7 +101,7 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
       // ignore
     }
 
-    const pfpUrl = `/api/user/pfp/${user.id}`;
+    const pfpUrl = buildUserPfpUrl(env, user.id);
     await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, user.id).run();
 
     const pfpHistory = await getPfpHistoryForUser(env, user.id);
@@ -153,7 +154,7 @@ export async function handleUserPfpRevert({ env, request, jwtSecret }: RequestCo
   await env.DB.prepare("DELETE FROM pfp_history WHERE id = ?").bind(historyId).run();
   await prunePfpHistory(env, user.id);
 
-  const pfpUrl = `/api/user/pfp/${user.id}`;
+  const pfpUrl = buildUserPfpUrl(env, user.id);
   await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, user.id).run();
 
   const pfpHistory = await getPfpHistoryForUser(env, user.id);
