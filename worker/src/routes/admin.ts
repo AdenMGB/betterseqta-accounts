@@ -10,7 +10,9 @@ import { recordAdminAction, AUDIT_HIDE_NOOP_UPDATES, isDisplayableAuditEntry } f
 import { buildPfpAuditContext, resolvePfpAuditRefs, type PfpAuditRef } from "../lib/auditPfpResolve";
 import { auditTargetForUser, resolveAuditTargets } from "../lib/auditTarget";
 import {
+  buildUserPfpUrl,
   clearUserPfp,
+  getAppBaseUrl,
   getPfpHistoryForUser,
   hasCurrentPfpBlob,
   prunePfpHistory,
@@ -99,7 +101,7 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
         if (pfpHistoryMap[row.user_id].length < 3) {
           pfpHistoryMap[row.user_id].push({
             id: row.id,
-            r2Key: r2KeyToPfpUrl(row.r2_key),
+            r2Key: r2KeyToPfpUrl(row.r2_key, env),
             createdAt: row.created_at,
           });
         }
@@ -742,7 +744,7 @@ export async function handleAdminUserPfpUpload({ env, request, jwtSecret }: Requ
 
     await prunePfpHistory(env, userId);
 
-    const pfpUrl = `/api/user/pfp/${userId}`;
+    const pfpUrl = buildUserPfpUrl(env, userId);
     await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, userId).run();
 
     const pfpHistory = await getPfpHistoryForUser(env, userId);
@@ -874,7 +876,7 @@ export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: Requ
 
   await prunePfpHistory(env, userId);
 
-  const pfpUrl = `/api/user/pfp/${userId}`;
+  const pfpUrl = buildUserPfpUrl(env, userId);
   await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, userId).run();
 
   const pfpHistory = await getPfpHistoryForUser(env, userId);
@@ -913,7 +915,7 @@ export async function handleAdminFixPfpUrls({ env, request, jwtSecret }: Request
     });
   }
 
-  const baseUrl = "https://accounts.betterseqta.org";
+  const baseUrl = getAppBaseUrl(env);
 
   const users = await env.DB.prepare(
     "SELECT id, pfpUrl FROM users WHERE pfpUrl LIKE ?",
@@ -1003,7 +1005,7 @@ export async function handleAdminMigratePfps({ env, request, jwtSecret }: Reques
 
       await env.PFP_BUCKET.put(key, buffer, { httpMetadata: { contentType } });
 
-      const newUrl = `/api/user/pfp/${user.id}`;
+      const newUrl = buildUserPfpUrl(env, user.id);
       await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(newUrl, user.id).run();
 
       results.push({ userId: user.id, oldUrl: user.pfpUrl, success: true });
