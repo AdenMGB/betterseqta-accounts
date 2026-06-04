@@ -137,12 +137,23 @@
     @confirm="onCropConfirm"
     @cancel="closeCropper"
   />
+
+  <ConfirmDialog
+    :open="confirmOpen"
+    :title="confirmTitle"
+    :message="confirmMessage"
+    :confirm-label="confirmLabel"
+    :destructive="confirmDestructive"
+    @cancel="closeConfirm"
+    @confirm="runConfirm"
+  />
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { XMarkIcon } from '@heroicons/vue/24/outline'
 import ImageCropper from '~/components/ui/ImageCropper.vue'
+import ConfirmDialog from '~/components/admin/ConfirmDialog.vue'
 import { useToast } from '~/composables/useToast'
 import { withPfpCacheBust, formatRelativeTime, dicebearUrl } from '~/utils/pfp'
 
@@ -175,6 +186,38 @@ const emit = defineEmits<{
 
 const { showToast } = useToast()
 const mode = computed(() => props.mode ?? 'admin')
+
+const confirmOpen = ref(false)
+const confirmTitle = ref('')
+const confirmMessage = ref('')
+const confirmLabel = ref('Confirm')
+const confirmDestructive = ref(false)
+let confirmHandler: (() => void) | null = null
+
+const openConfirm = (opts: {
+  title: string
+  message: string
+  confirmLabel?: string
+  destructive?: boolean
+  onConfirm: () => void
+}) => {
+  confirmTitle.value = opts.title
+  confirmMessage.value = opts.message
+  confirmLabel.value = opts.confirmLabel ?? 'Confirm'
+  confirmDestructive.value = !!opts.destructive
+  confirmHandler = opts.onConfirm
+  confirmOpen.value = true
+}
+
+const closeConfirm = () => {
+  confirmOpen.value = false
+  confirmHandler = null
+}
+
+const runConfirm = () => {
+  confirmHandler?.()
+  closeConfirm()
+}
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const cropperOpen = ref(false)
@@ -273,9 +316,18 @@ const onCropConfirm = async (file: File) => {
   }
 }
 
-const restore = async (history: PfpHistoryItem) => {
+const restore = (history: PfpHistoryItem) => {
   if (!props.user) return
-  if (!confirm(`Restore this profile picture for ${props.user.displayName || props.user.username}?`)) return
+  openConfirm({
+    title: 'Restore profile picture',
+    message: `Restore this past profile picture for ${props.user.displayName || props.user.username}?`,
+    confirmLabel: 'Restore',
+    onConfirm: () => doRestore(history),
+  })
+}
+
+const doRestore = async (history: PfpHistoryItem) => {
+  if (!props.user) return
   restoringId.value = history.id
   try {
     const url = mode.value === 'admin' ? '/api/admin/user/pfp/revert' : '/api/user/pfp/revert'
@@ -299,9 +351,19 @@ const restore = async (history: PfpHistoryItem) => {
   }
 }
 
-const clearPfp = async () => {
+const clearPfp = () => {
   if (!props.user) return
-  if (!confirm(`Clear profile picture for ${props.user.displayName || props.user.username}?`)) return
+  openConfirm({
+    title: 'Clear profile picture',
+    message: `Remove the current profile picture for ${props.user.displayName || props.user.username}?`,
+    confirmLabel: 'Clear',
+    destructive: true,
+    onConfirm: () => doClearPfp(),
+  })
+}
+
+const doClearPfp = async () => {
+  if (!props.user) return
   clearing.value = true
   try {
     const url = mode.value === 'admin' ? '/api/admin/user/pfp/clear' : '/api/user/pfp/clear'

@@ -29,12 +29,12 @@
     </div>
 
     <!-- Main Content -->
-    <div class="md:ml-64 flex-1 flex flex-col min-h-screen relative">
+    <div class="md:ml-64 flex-1 flex flex-col min-h-screen min-w-0 w-full relative">
        <div class="absolute inset-0 -z-10 h-full w-full bg-white dark:bg-zinc-900 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px]"></div>
 
       <!-- Header -->
       <header
-        class="w-full flex items-center justify-end px-6 py-4 animate-slide-down main-header"
+        class="w-full min-w-0 flex items-center justify-end px-4 sm:px-6 py-4 animate-slide-down main-header"
       >
         <div class="flex items-center gap-4">
           <button
@@ -49,7 +49,7 @@
         </div>
       </header>
       <!-- Page Content -->
-      <main class="flex-1 p-0 md:p-0 animate-fade-in delay-200">
+      <main class="flex-1 w-full min-w-0 overflow-x-hidden px-4 sm:px-6 pb-20 md:pb-0 animate-fade-in delay-200">
         <slot />
       </main>
     </div>
