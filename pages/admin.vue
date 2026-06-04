@@ -401,7 +401,7 @@
                   <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Status</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
+              <tbody v-show="!auditLoadingInitial" class="divide-y divide-zinc-200 dark:divide-zinc-700">
                 <tr v-for="entry in auditEntries" :key="entry.id" class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
                   <td class="py-3 px-4 text-xs text-zinc-500 whitespace-nowrap truncate">{{ formatAuditTime(entry.createdAt) }}</td>
                   <td class="py-3 px-4 text-sm text-zinc-900 dark:text-white truncate">{{ entry.actorUsername || entry.actorId }}</td>
@@ -426,17 +426,30 @@
                 </tr>
               </tbody>
             </table>
-            <div v-if="auditEntries.length === 0 && auditLoaded" class="text-center py-8 text-zinc-500">No activity logged yet.</div>
-            <div class="flex justify-center py-4 gap-3">
+            <div v-if="auditLoadingInitial" class="flex justify-center py-12">
+              <LoadingSpinner size="md" />
+            </div>
+            <div v-else-if="auditEntries.length === 0 && auditLoaded" class="text-center py-8 text-zinc-500">No activity logged yet.</div>
+            <div v-else class="flex flex-col items-center justify-center py-4 gap-3">
               <LoadingSpinner v-if="auditLoadingMore" size="md" />
               <span v-else-if="auditLoadError" class="text-xs text-red-500">
                 Failed to load.
                 <button class="underline ml-1" @click="retryAuditLoad">Retry</button>
               </span>
-              <span v-else-if="auditPage < auditTotalPages" class="text-xs text-zinc-400">
-                Showing {{ auditEntries.length }} of {{ auditTotal }} — scroll for more
-              </span>
-              <span v-else-if="auditEntries.length > 0" class="text-xs text-zinc-500">All entries loaded</span>
+              <template v-else>
+                <span v-if="auditPage < auditTotalPages" class="text-xs text-zinc-400">
+                  Showing {{ auditEntries.length }} of {{ auditTotal }} — newest first
+                </span>
+                <button
+                  v-if="auditShowLoadMoreButton"
+                  type="button"
+                  class="text-xs font-medium text-primary-500 hover:text-primary-600 underline"
+                  @click="loadMoreAudit"
+                >
+                  Load older entries
+                </button>
+                <span v-else-if="auditEntries.length > 0" class="text-xs text-zinc-500">All entries loaded</span>
+              </template>
             </div>
           </div>
           </div>
@@ -765,6 +778,7 @@ const auditPage = ref(1)
 const auditTotalPages = ref(1)
 const auditTotal = ref(0)
 const auditLoaded = ref(false)
+const auditLoadingInitial = ref(false)
 const auditLoadingMore = ref(false)
 const auditRefreshing = ref(false)
 const auditLoadError = ref(false)
@@ -812,8 +826,30 @@ const auditLastUpdatedLabel = computed(() => {
 
 const touchAuditUpdated = () => { auditLastUpdated.value = Date.now() }
 
+const auditListOverflows = () => {
+  const el = auditScrollContainer.value
+  if (!el) return false
+  return el.scrollHeight > el.clientHeight + 1
+}
+
+const auditShowLoadMoreButton = computed(() =>
+  auditLoaded.value &&
+  !auditLoadingMore.value &&
+  !auditLoadingInitial.value &&
+  auditPage.value < auditTotalPages.value &&
+  !auditListOverflows(),
+)
+
+const auditCanLoadMore = () =>
+  !auditLoadingMore.value &&
+  !auditLoadingInitial.value &&
+  auditPage.value < auditTotalPages.value &&
+  auditLoaded.value &&
+  auditListOverflows()
+
 const loadAuditLog = async (page = 1, append = false) => {
   auditLoadError.value = false
+  if (!append && page === 1) auditLoadingInitial.value = true
   try {
     const res = await $fetch<{ entries: any[]; total: number; page: number; totalPages: number }>('/api/admin/audit-log', {
       params: {
@@ -832,6 +868,8 @@ const loadAuditLog = async (page = 1, append = false) => {
   } catch (e) {
     console.error('Failed to load audit log', e)
     auditLoadError.value = true
+  } finally {
+    if (!append && page === 1) auditLoadingInitial.value = false
   }
 }
 
@@ -887,6 +925,9 @@ const startAuditAutoRefresh = () => {
 }
 
 const onActivityLogTabActivated = async () => {
+  auditEntries.value = []
+  auditLoaded.value = false
+  auditPage.value = 1
   await loadAuditLog(1, false)
   startAuditAutoRefresh()
 }
@@ -909,7 +950,7 @@ const retryAuditLoad = () => loadAuditLog(auditPage.value >= auditTotalPages.val
 
 useInfiniteScroll(auditScrollContainer, () => {
   if (activeTab.value === 'activity-log') loadMoreAudit()
-}, { distance: SCROLL_BUFFER, canLoadMore: () => !auditLoadingMore.value && auditPage.value < auditTotalPages.value })
+}, { distance: SCROLL_BUFFER, canLoadMore: auditCanLoadMore })
 
 watch(activeTab, (tab, prevTab) => {
   if (import.meta.client) {
