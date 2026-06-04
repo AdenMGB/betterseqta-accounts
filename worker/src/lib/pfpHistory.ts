@@ -1,5 +1,6 @@
 import type { Env } from "../types/env";
 import type { PfpAuditRef } from "./auditPfpResolve";
+import type { ProcessedPfp } from "./pfpProcess";
 
 const DEFAULT_APP_URL = "https://accounts.betterseqta.org";
 
@@ -49,6 +50,29 @@ export async function getPfpHistoryForUser(
   } catch {
     return [];
   }
+}
+
+export async function getUserPfpHash(env: Env, userId: string): Promise<string | null> {
+  const row = await env.DB.prepare("SELECT pfp_hash FROM users WHERE id = ?")
+    .bind(userId)
+    .first() as { pfp_hash: string | null } | null;
+  return row?.pfp_hash ?? null;
+}
+
+export async function putCurrentPfp(
+  env: Env,
+  userId: string,
+  processed: ProcessedPfp,
+): Promise<{ pfpUrl: string; pfpHash: string }> {
+  const key = `pfp/${userId}`;
+  await env.PFP_BUCKET.put(key, processed.bytes, {
+    httpMetadata: { contentType: processed.contentType },
+  });
+  const pfpUrl = buildUserPfpUrl(env, userId);
+  await env.DB.prepare("UPDATE users SET pfpUrl = ?, pfp_hash = ? WHERE id = ?")
+    .bind(pfpUrl, processed.hash, userId)
+    .run();
+  return { pfpUrl, pfpHash: processed.hash };
 }
 
 export async function hasCurrentPfpBlob(env: Env, userId: string): Promise<boolean> {
@@ -107,7 +131,7 @@ export async function clearUserPfp(
     await env.PFP_BUCKET.delete(`pfp/${userId}`);
   }
 
-  await env.DB.prepare("UPDATE users SET pfpUrl = NULL WHERE id = ?").bind(userId).run();
+  await env.DB.prepare("UPDATE users SET pfpUrl = NULL, pfp_hash = NULL WHERE id = ?").bind(userId).run();
   await prunePfpHistory(env, userId);
 
   return {

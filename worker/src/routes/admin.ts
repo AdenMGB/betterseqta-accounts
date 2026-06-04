@@ -9,6 +9,7 @@ import { sendPasswordResetEmail } from "../lib/email";
 import { recordAdminAction, AUDIT_HIDE_NOOP_UPDATES, isDisplayableAuditEntry } from "../lib/adminAudit";
 import { buildPfpAuditContext, resolvePfpAuditRefs, type PfpAuditRef } from "../lib/auditPfpResolve";
 import { auditTargetForUser, resolveAuditTargets } from "../lib/auditTarget";
+import { processPfpUpload } from "../lib/pfpProcess";
 import {
   buildUserPfpUrl,
   clearUserPfp,
@@ -16,6 +17,7 @@ import {
   getPfpHistoryForUser,
   hasCurrentPfpBlob,
   prunePfpHistory,
+  putCurrentPfp,
   pfpRefFromArchivedHistory,
   r2KeyToPfpUrl,
   saveCurrentPfpToHistory,
@@ -733,19 +735,15 @@ export async function handleAdminUserPfpUpload({ env, request, jwtSecret }: Requ
       });
     }
 
-    const key = `pfp/${userId}`;
+    const preCropped = formData.get("preCropped") === "true";
 
     const archivedHistoryId = await saveCurrentPfpToHistory(env, userId);
     const fromRef = pfpRefFromArchivedHistory(archivedHistoryId, archivedHistoryId !== null);
 
-    await env.PFP_BUCKET.put(key, await file.arrayBuffer(), {
-      httpMetadata: { contentType: file.type },
-    });
+    const processed = await processPfpUpload(await file.arrayBuffer(), { preCropped });
+    const { pfpUrl, pfpHash } = await putCurrentPfp(env, userId, processed);
 
     await prunePfpHistory(env, userId);
-
-    const pfpUrl = buildUserPfpUrl(env, userId);
-    await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, userId).run();
 
     const pfpHistory = await getPfpHistoryForUser(env, userId);
 
@@ -760,7 +758,7 @@ export async function handleAdminUserPfpUpload({ env, request, jwtSecret }: Requ
       success: true,
     });
 
-    return new Response(JSON.stringify({ pfpUrl, pfpHistory }), {
+    return new Response(JSON.stringify({ pfpUrl, pfpHash, pfpHistory }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
@@ -818,7 +816,7 @@ export async function handleAdminUserPfpClear({ env, request, jwtSecret }: Reque
     success: true,
   });
 
-  return new Response(JSON.stringify({ pfpUrl: null, pfpHistory }), {
+  return new Response(JSON.stringify({ pfpUrl: null, pfpHash: null, pfpHistory }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
@@ -854,8 +852,6 @@ export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: Requ
     });
   }
 
-  const currentKey = `pfp/${userId}`;
-
   const historyObject = await env.PFP_BUCKET.get(historyRow.r2_key);
   if (!historyObject) {
     return new Response(JSON.stringify({ error: "History image not found in storage" }), {
@@ -867,17 +863,13 @@ export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: Requ
   const archivedHistoryId = await saveCurrentPfpToHistory(env, userId);
   const fromRef = pfpRefFromArchivedHistory(archivedHistoryId, archivedHistoryId !== null);
 
-  await env.PFP_BUCKET.put(currentKey, await historyObject.arrayBuffer(), {
-    httpMetadata: historyObject.httpMetadata,
-  });
+  const processed = await processPfpUpload(await historyObject.arrayBuffer());
+  const { pfpUrl, pfpHash } = await putCurrentPfp(env, userId, processed);
 
   await env.PFP_BUCKET.delete(historyRow.r2_key);
   await env.DB.prepare("DELETE FROM pfp_history WHERE id = ?").bind(historyId).run();
 
   await prunePfpHistory(env, userId);
-
-  const pfpUrl = buildUserPfpUrl(env, userId);
-  await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(pfpUrl, userId).run();
 
   const pfpHistory = await getPfpHistoryForUser(env, userId);
   const targetUser = await env.DB.prepare("SELECT id, username, displayName, email FROM users WHERE id = ?").bind(userId).first() as {
@@ -898,7 +890,7 @@ export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: Requ
     success: true,
   });
 
-  return new Response(JSON.stringify({ pfpUrl, pfpHistory }), {
+  return new Response(JSON.stringify({ pfpUrl, pfpHash, pfpHistory }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
@@ -984,7 +976,7 @@ export async function handleAdminMigratePfps({ env, request, jwtSecret }: Reques
     .all();
 
   const rows = (users.results || []) as { id: string; pfpUrl: string }[];
-  const results: { userId: string; oldUrl: string; success: boolean; error?: string }[] = [];
+  const results: { userId: string; oldUrl: string; success: boolean; error?: string; pfpHash?: string }[] = [];
 
   for (const user of rows) {
     try {
@@ -999,16 +991,16 @@ export async function handleAdminMigratePfps({ env, request, jwtSecret }: Reques
         continue;
       }
 
-      const contentType = response.headers.get("content-type") || "image/png";
       const buffer = await response.arrayBuffer();
-      const key = `pfp/${user.id}`;
+      const processed = await processPfpUpload(buffer);
+      await putCurrentPfp(env, user.id, processed);
 
-      await env.PFP_BUCKET.put(key, buffer, { httpMetadata: { contentType } });
-
-      const newUrl = buildUserPfpUrl(env, user.id);
-      await env.DB.prepare("UPDATE users SET pfpUrl = ? WHERE id = ?").bind(newUrl, user.id).run();
-
-      results.push({ userId: user.id, oldUrl: user.pfpUrl, success: true });
+      results.push({
+        userId: user.id,
+        oldUrl: user.pfpUrl,
+        success: true,
+        pfpHash: processed.hash,
+      });
     } catch (e) {
       results.push({ userId: user.id, oldUrl: user.pfpUrl, success: false, error: String(e) });
     }
@@ -1080,13 +1072,120 @@ export async function handleAdminPrunePfpHistory({ env, request, jwtSecret }: Re
   });
 }
 
+function auditSummaryFromDetails(details: Record<string, unknown>): string {
+  const ctx = details.context as Record<string, unknown> | undefined;
+  if (ctx && typeof ctx === "object") {
+    const parts: string[] = [];
+    if (typeof ctx.changes === "string") parts.push(ctx.changes);
+    if (typeof ctx.targetUsername === "string") parts.push(ctx.targetUsername);
+    if (typeof ctx.total === "number") parts.push(`${ctx.total} total`);
+    if (parts.length) return parts.join(" · ");
+  }
+  if (typeof details.error === "string") return details.error;
+  const label = details.displayName ?? details.username ?? details.email;
+  if (typeof label === "string") return label;
+  return "";
+}
+
+export async function handleAdminProcessPfps({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const maxAdminLevel = await getMaxAdminLevel(env);
+  if ((admin.adminLevel || 0) < maxAdminLevel) {
+    return new Response(JSON.stringify({ error: "Only Senior Admins can process profile pictures" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  let body: { offset?: number; limit?: number; includeHistory?: boolean } = {};
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    body = {};
+  }
+
+  const offset = Math.max(0, body.offset ?? 0);
+  const limit = Math.min(50, Math.max(1, body.limit ?? 20));
+  const includeHistory = body.includeHistory === true;
+
+  const userRows = await env.DB.prepare(
+    `SELECT id, pfp_hash FROM users
+     WHERE pfpUrl IS NOT NULL AND pfpUrl != '' AND pfpUrl LIKE '%/api/user/pfp/%' AND pfpUrl NOT LIKE '%/hist/%'
+     ORDER BY id LIMIT ? OFFSET ?`,
+  )
+    .bind(limit, offset)
+    .all();
+
+  const users = (userRows.results || []) as { id: string; pfp_hash: string | null }[];
+  let processed = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const user of users) {
+    const currentKey = `pfp/${user.id}`;
+    const current = await env.PFP_BUCKET.get(currentKey);
+
+    if (!current) {
+      if (user.pfp_hash) {
+        await env.DB.prepare("UPDATE users SET pfp_hash = NULL WHERE id = ?").bind(user.id).run();
+      }
+      skipped++;
+      continue;
+    }
+
+    if (user.pfp_hash) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      const processedPfp = await processPfpUpload(await current.arrayBuffer());
+      await putCurrentPfp(env, user.id, processedPfp);
+      processed++;
+    } catch {
+      failed++;
+    }
+
+    if (includeHistory) {
+      const histRows = await env.DB.prepare(
+        "SELECT r2_key FROM pfp_history WHERE user_id = ?",
+      )
+        .bind(user.id)
+        .all();
+      for (const row of (histRows.results || []) as { r2_key: string }[]) {
+        try {
+          const obj = await env.PFP_BUCKET.get(row.r2_key);
+          if (!obj) continue;
+          const histProcessed = await processPfpUpload(await obj.arrayBuffer());
+          await env.PFP_BUCKET.put(row.r2_key, histProcessed.bytes, {
+            httpMetadata: { contentType: histProcessed.contentType },
+          });
+        } catch {
+          // ignore per-history failures
+        }
+      }
+    }
+  }
+
+  const nextOffset = users.length < limit ? null : offset + limit;
+
+  return new Response(
+    JSON.stringify({ processed, skipped, failed, nextOffset }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
+
 export async function handleAdminAuditLog({ env, request, url, jwtSecret }: RequestContext): Promise<Response> {
   const admin = await getAdminUser(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
+  const light = url.searchParams.get("light") !== "false";
+  const since = parseInt(url.searchParams.get("since") || "0", 10);
+  const cursor = url.searchParams.get("cursor") || "";
   const page = parseInt(url.searchParams.get("page") || "1", 10);
-  const pageSize = 50;
-  const offset = (page - 1) * pageSize;
+  const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get("limit") || "25", 10)));
   const actionFilter = url.searchParams.get("action") || "";
   const actorFilter = url.searchParams.get("actor_id") || "";
   const q = url.searchParams.get("q") || "";
@@ -1107,21 +1206,38 @@ export async function handleAdminAuditLog({ env, request, url, jwtSecret }: Requ
     params.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
 
+  if (since > 0) {
+    conditions.push("created_at > ?");
+    params.push(since);
+  } else if (cursor) {
+    const [cursorTs, cursorId] = cursor.split(":");
+    const ts = parseInt(cursorTs || "0", 10);
+    if (ts > 0 && cursorId) {
+      conditions.push("(created_at < ? OR (created_at = ? AND id < ?))");
+      params.push(ts, ts, cursorId);
+    }
+  }
+
   const where = `WHERE ${conditions.join(" AND ")}`;
 
-  const countRow = await env.DB.prepare(`SELECT COUNT(*) as total FROM admin_audit_log ${where}`)
-    .bind(...params)
-    .first();
-  const total = (countRow as { total: number })?.total || 0;
+  const useOffset = since <= 0 && !cursor && page > 1;
+  const offset = useOffset ? (page - 1) * limit : 0;
+
+  const countRow = since <= 0 && !cursor
+    ? await env.DB.prepare(`SELECT COUNT(*) as total FROM admin_audit_log ${where}`)
+        .bind(...params)
+        .first()
+    : null;
+  const total = since > 0 || cursor ? 0 : (countRow as { total: number })?.total || 0;
 
   const rows = await env.DB.prepare(
     `SELECT id, actor_id, actor_username, action, target_type, target_id, details, success, created_at
-     FROM admin_audit_log ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+     FROM admin_audit_log ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
   )
-    .bind(...params, pageSize, offset)
+    .bind(...params, since > 0 ? Math.min(limit, 50) : limit, offset)
     .all();
 
-  const entries = ((rows.results || []) as {
+  type AuditRow = {
     id: string;
     actor_id: string;
     actor_username: string | null;
@@ -1131,7 +1247,9 @@ export async function handleAdminAuditLog({ env, request, url, jwtSecret }: Requ
     details: string | null;
     success: number;
     created_at: number;
-  }[]).map((row) => {
+  };
+
+  const parsedRows = ((rows.results || []) as AuditRow[]).map((row) => {
     let details: Record<string, unknown> = {};
     if (row.details) {
       try {
@@ -1147,64 +1265,108 @@ export async function handleAdminAuditLog({ env, request, url, jwtSecret }: Requ
       action: row.action,
       targetType: row.target_type,
       targetId: row.target_id,
-      details,
       success: row.success === 1,
       createdAt: row.created_at,
+      details,
     };
   }).filter(isDisplayableAuditEntry);
 
-  const targetMap = await resolveAuditTargets(
-    env,
-    entries.map((e) => ({ targetType: e.targetType, targetId: e.targetId, details: e.details })),
-  );
-
-  const entriesWithTarget = entries.map((entry) => {
-    const key = `${entry.targetType ?? ""}:${entry.targetId ?? ""}`;
-    const target = targetMap.get(key);
-    return target ? { ...entry, target } : entry;
+  const rawEntries = parsedRows.map((row) => {
+    const base = {
+      id: row.id,
+      actorId: row.actorId,
+      actorUsername: row.actorUsername,
+      action: row.action,
+      targetType: row.targetType,
+      targetId: row.targetId,
+      success: row.success,
+      createdAt: row.createdAt,
+    };
+    if (light) {
+      return {
+        ...base,
+        summary: auditSummaryFromDetails(row.details),
+      };
+    }
+    return {
+      ...base,
+      details: row.details,
+    };
   });
 
-  const pfpUserIds = [
-    ...new Set(
-      entriesWithTarget
-        .filter((e) => e.action.startsWith("pfp.") && e.targetType === "user" && e.targetId)
-        .map((e) => e.targetId as string),
-    ),
-  ];
+  let entries: typeof rawEntries = rawEntries;
 
-  const stackMap: Record<string, { pfpUrl: string | null; pfpHistory: Awaited<ReturnType<typeof getPfpHistoryForUser>> }> = {};
-  for (const uid of pfpUserIds) {
-    const userRow = await env.DB.prepare("SELECT pfpUrl FROM users WHERE id = ?").bind(uid).first() as { pfpUrl: string | null } | null;
-    stackMap[uid] = {
-      pfpUrl: userRow?.pfpUrl ?? null,
-      pfpHistory: await getPfpHistoryForUser(env, uid),
-    };
+  if (!light) {
+    const fullEntries = rawEntries as (typeof rawEntries[number] & { details: Record<string, unknown> })[];
+    const targetMap = await resolveAuditTargets(
+      env,
+      fullEntries.map((e) => ({
+        targetType: e.targetType,
+        targetId: e.targetId,
+        details: e.details,
+      })),
+    );
+
+    const entriesWithTarget = fullEntries.map((entry) => {
+      const key = `${entry.targetType ?? ""}:${entry.targetId ?? ""}`;
+      const target = targetMap.get(key);
+      return target ? { ...entry, target } : entry;
+    });
+
+    const pfpUserIds = [
+      ...new Set(
+        entriesWithTarget
+          .filter((e) => e.action.startsWith("pfp.") && e.targetType === "user" && e.targetId)
+          .map((e) => e.targetId as string),
+      ),
+    ];
+
+    const stackMap: Record<string, { pfpUrl: string | null; pfpHistory: Awaited<ReturnType<typeof getPfpHistoryForUser>> }> = {};
+    for (const uid of pfpUserIds) {
+      const userRow = await env.DB.prepare("SELECT pfpUrl FROM users WHERE id = ?").bind(uid).first() as
+        | { pfpUrl: string | null }
+        | null;
+      stackMap[uid] = {
+        pfpUrl: userRow?.pfpUrl ?? null,
+        pfpHistory: await getPfpHistoryForUser(env, uid),
+      };
+    }
+
+    entries = entriesWithTarget.map((entry) => {
+      if (!entry.action.startsWith("pfp.") || entry.targetType !== "user" || !entry.targetId) {
+        return entry;
+      }
+      const ctx = entry.details?.context as { from?: unknown; to?: unknown } | undefined;
+      if (!ctx?.from || !ctx?.to) return entry;
+      const stack = stackMap[entry.targetId];
+      if (!stack) return entry;
+      const contextResolved = resolvePfpAuditRefs(entry.targetId, ctx as { from: PfpAuditRef; to: PfpAuditRef }, {
+        userId: entry.targetId,
+        pfpUrl: stack.pfpUrl,
+        pfpHistory: stack.pfpHistory,
+      });
+      return { ...entry, contextResolved };
+    }) as typeof rawEntries;
   }
 
-  const entriesWithResolved = entriesWithTarget.map((entry) => {
-    if (!entry.action.startsWith("pfp.") || entry.targetType !== "user" || !entry.targetId) {
-      return entry;
-    }
-    const ctx = entry.details?.context as { from?: unknown; to?: unknown } | undefined;
-    if (!ctx?.from || !ctx?.to) return entry;
-    const stack = stackMap[entry.targetId];
-    if (!stack) return entry;
-    const contextResolved = resolvePfpAuditRefs(entry.targetId, ctx as { from: PfpAuditRef; to: PfpAuditRef }, {
-      userId: entry.targetId,
-      pfpUrl: stack.pfpUrl,
-      pfpHistory: stack.pfpHistory,
-    });
-    return { ...entry, contextResolved };
-  });
+  const last = rawEntries[rawEntries.length - 1];
+  const nextCursor =
+    rawEntries.length >= limit && last ? `${last.createdAt}:${last.id}` : null;
 
-  return new Response(
-    JSON.stringify({
-      entries: entriesWithResolved,
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-    }),
-    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-  );
+  const payload: Record<string, unknown> = {
+    entries,
+    nextCursor,
+    hasMore: nextCursor !== null,
+  };
+
+  if (since <= 0 && !cursor) {
+    payload.total = total;
+    payload.page = page;
+    payload.pageSize = limit;
+    payload.totalPages = Math.ceil(total / limit);
+  }
+
+  return new Response(JSON.stringify(payload), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }

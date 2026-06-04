@@ -136,7 +136,7 @@
                                     </span>
                                 </div>
                             </td>
-                            <td class="py-4 px-4 text-right min-w-0">
+                            <td class="admin-table-actions py-4 px-4 text-right min-w-0">
                                 <div class="flex items-center justify-end gap-2">
                                     <template v-if="editingUser?.id === users[virtualRow.index].id">
                                         <button 
@@ -495,6 +495,27 @@
         </div>
 
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Process Profile Pictures (resize + hash)</h3>
+          <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+            Normalizes current R2 profile pictures (center crop, downscale to max 256px, JPEG) and writes <code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded">pfp_hash</code> for client caching. Skips users already processed. Runs in batches to limit load.
+          </p>
+          <button
+            @click="processAllPfps"
+            :disabled="processingPfps"
+            class="px-6 py-3 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center gap-2"
+          >
+            <LoadingSpinner v-if="processingPfps" size="sm" />
+            <template v-else>
+              <ArrowPathIcon class="w-5 h-5" />
+            </template>
+            {{ processingPfps ? 'Processing...' : 'Process all PFPs' }}
+          </button>
+          <div v-if="processPfpResult" class="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
+            Last batch: {{ processPfpResult.processed }} processed, {{ processPfpResult.skipped }} skipped, {{ processPfpResult.failed }} failed.
+          </div>
+        </div>
+
+        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
           <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Prune PFP History</h3>
           <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
             Trims all users down to 3 saved past profile pictures (plus current). Removes excess history rows and R2 objects.
@@ -745,8 +766,8 @@ const closePfpEditor = () => {
   pfpEditorUser.value = null
 }
 
-const onPfpUpdated = (payload: { pfpUrl: string | null; pfpHistory: any[] }) => {
-  pfpCacheVersion.value = Date.now()
+const onPfpUpdated = (payload: { pfpUrl: string | null; pfpHash: string | null; pfpHistory: any[] }) => {
+  pfpCacheVersion.value = payload.pfpHash ?? Date.now()
   if (!pfpEditorUser.value) return
   const idx = users.value.findIndex(u => u.id === pfpEditorUser.value.id)
   if (idx !== -1) {
@@ -777,6 +798,7 @@ const auditEntries = ref<any[]>([])
 const auditPage = ref(1)
 const auditTotalPages = ref(1)
 const auditTotal = ref(0)
+const auditNextCursor = ref<string | null>(null)
 const auditLoaded = ref(false)
 const auditLoadingInitial = ref(false)
 const auditLoadingMore = ref(false)
@@ -836,73 +858,88 @@ const auditShowLoadMoreButton = computed(() =>
   auditLoaded.value &&
   !auditLoadingMore.value &&
   !auditLoadingInitial.value &&
-  auditPage.value < auditTotalPages.value &&
+  (auditNextCursor.value != null || auditPage.value < auditTotalPages.value) &&
   !auditListOverflows(),
 )
 
 const auditCanLoadMore = () =>
   !auditLoadingMore.value &&
   !auditLoadingInitial.value &&
-  auditPage.value < auditTotalPages.value &&
   auditLoaded.value &&
+  (auditNextCursor.value != null || auditPage.value < auditTotalPages.value) &&
   auditListOverflows()
 
-const loadAuditLog = async (page = 1, append = false) => {
+const auditFetchParams = (extra: Record<string, string | number | undefined> = {}) => ({
+  limit: 25,
+  light: 'true',
+  q: auditSearchQuery.value || undefined,
+  action: auditActionFilter.value || undefined,
+  ...extra,
+})
+
+const loadAuditLog = async (opts: { append?: boolean; cursor?: string | null } = {}) => {
+  const { append = false, cursor = null } = opts
   auditLoadError.value = false
-  if (!append && page === 1) auditLoadingInitial.value = true
+  if (!append) auditLoadingInitial.value = true
   try {
-    const res = await $fetch<{ entries: any[]; total: number; page: number; totalPages: number }>('/api/admin/audit-log', {
-      params: {
-        page,
-        q: auditSearchQuery.value || undefined,
-        action: auditActionFilter.value || undefined,
-      },
+    const res = await $fetch<{
+      entries: any[]
+      total?: number
+      page?: number
+      totalPages?: number
+      nextCursor?: string | null
+      hasMore?: boolean
+    }>('/api/admin/audit-log', {
+      params: auditFetchParams({
+        page: cursor ? undefined : (append ? auditPage.value : 1),
+        cursor: cursor ?? undefined,
+      }),
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
     })
     auditEntries.value = append ? [...auditEntries.value, ...res.entries] : res.entries
-    auditPage.value = res.page
-    auditTotalPages.value = res.totalPages
-    auditTotal.value = res.total
+    auditNextCursor.value = res.nextCursor ?? null
+    if (res.page != null) auditPage.value = res.page
+    if (res.totalPages != null) auditTotalPages.value = res.totalPages
+    if (res.total != null) auditTotal.value = res.total
     auditLoaded.value = true
     touchAuditUpdated()
   } catch (e) {
     console.error('Failed to load audit log', e)
     auditLoadError.value = true
   } finally {
-    if (!append && page === 1) auditLoadingInitial.value = false
+    if (!append) auditLoadingInitial.value = false
   }
 }
 
-/** Poll refresh: replace page 1 when nothing else loaded; otherwise prepend new rows only. */
-const refreshAuditLog = async () => {
-  if (!auditLoaded.value || auditLoadingMore.value || auditRefreshing.value) return
-  auditRefreshing.value = true
+/** Poll: fetch only entries newer than the newest visible row (does not toggle Refresh label). */
+const pollAuditLog = async () => {
+  if (!auditLoaded.value || auditLoadingMore.value) return
+  const newest = auditEntries.value[0]?.createdAt
+  if (!newest) return
   try {
-    const res = await $fetch<{ entries: any[]; total: number; page: number; totalPages: number }>('/api/admin/audit-log', {
-      params: {
-        page: 1,
-        q: auditSearchQuery.value || undefined,
-        action: auditActionFilter.value || undefined,
-      },
+    const res = await $fetch<{ entries: any[] }>('/api/admin/audit-log', {
+      params: auditFetchParams({ since: newest, limit: 20 }),
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
     })
-    auditTotal.value = res.total
-    auditTotalPages.value = res.totalPages
-    auditLoadError.value = false
-
-    if (auditPage.value <= 1) {
-      auditEntries.value = res.entries
-      auditPage.value = 1
-      touchAuditUpdated()
-      return
-    }
-
+    if (!res.entries?.length) return
     const existingIds = new Set(auditEntries.value.map(e => e.id))
     const brandNew = res.entries.filter(e => !existingIds.has(e.id))
     if (brandNew.length) {
       auditEntries.value = [...brandNew, ...auditEntries.value]
+      if (auditTotal.value) auditTotal.value += brandNew.length
+      touchAuditUpdated()
     }
-    touchAuditUpdated()
+  } catch (e) {
+    console.error('Failed to poll audit log', e)
+  }
+}
+
+const refreshAuditLog = async () => {
+  if (!auditLoaded.value || auditLoadingMore.value || auditRefreshing.value) return
+  auditRefreshing.value = true
+  try {
+    await loadAuditLog({ append: false })
+    auditLoadError.value = false
   } catch (e) {
     console.error('Failed to refresh audit log', e)
   } finally {
@@ -920,7 +957,7 @@ const stopAuditAutoRefresh = () => {
 const startAuditAutoRefresh = () => {
   stopAuditAutoRefresh()
   auditPollTimer = setInterval(() => {
-    if (activeTab.value === 'activity-log') refreshAuditLog()
+    if (activeTab.value === 'activity-log') pollAuditLog()
   }, AUDIT_POLL_MS)
 }
 
@@ -928,7 +965,8 @@ const onActivityLogTabActivated = async () => {
   auditEntries.value = []
   auditLoaded.value = false
   auditPage.value = 1
-  await loadAuditLog(1, false)
+  auditNextCursor.value = null
+  await loadAuditLog({ append: false })
   startAuditAutoRefresh()
 }
 
@@ -937,16 +975,22 @@ const onActivityLogTabDeactivated = () => {
 }
 
 const loadMoreAudit = async () => {
-  if (auditLoadingMore.value || auditPage.value >= auditTotalPages.value || !auditLoaded.value) return
+  if (auditLoadingMore.value || !auditLoaded.value) return
+  if (!auditNextCursor.value && auditPage.value >= auditTotalPages.value) return
   auditLoadingMore.value = true
   try {
-    await loadAuditLog(auditPage.value + 1, true)
+    if (auditNextCursor.value) {
+      await loadAuditLog({ append: true, cursor: auditNextCursor.value })
+    } else {
+      auditPage.value += 1
+      await loadAuditLog({ append: true })
+    }
   } finally {
     auditLoadingMore.value = false
   }
 }
 
-const retryAuditLoad = () => loadAuditLog(auditPage.value >= auditTotalPages.value ? auditPage.value : auditPage.value + 1, auditPage.value > 1)
+const retryAuditLoad = () => loadAuditLog({ append: auditEntries.value.length > 0, cursor: auditNextCursor.value })
 
 useInfiniteScroll(auditScrollContainer, () => {
   if (activeTab.value === 'activity-log') loadMoreAudit()
@@ -963,8 +1007,49 @@ watch(activeTab, (tab, prevTab) => {
 onUnmounted(() => stopAuditAutoRefresh())
 
 watchDebounced([auditSearchQuery, auditActionFilter], () => {
-  if (activeTab.value === 'activity-log') loadAuditLog(1, false)
+  if (activeTab.value === 'activity-log') loadAuditLog({ append: false })
 }, { debounce: 300 })
+
+const processingPfps = ref(false)
+const processPfpResult = ref<{ processed: number; skipped: number; failed: number } | null>(null)
+
+const processAllPfps = async () => {
+  openConfirm({
+    title: 'Process all profile pictures',
+    message: 'Normalize and hash all current R2 profile pictures? This may take several batches.',
+    confirmLabel: 'Process',
+    onConfirm: async () => {
+      processingPfps.value = true
+      let offset = 0
+      let totalProcessed = 0
+      let totalSkipped = 0
+      let totalFailed = 0
+      try {
+        for (;;) {
+          const res = await $fetch<{ processed: number; skipped: number; failed: number; nextOffset: number | null }>(
+            '/api/admin/process-pfps',
+            {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+              body: { offset, limit: 20 },
+            },
+          )
+          totalProcessed += res.processed
+          totalSkipped += res.skipped
+          totalFailed += res.failed
+          processPfpResult.value = { processed: totalProcessed, skipped: totalSkipped, failed: totalFailed }
+          if (res.nextOffset == null) break
+          offset = res.nextOffset
+        }
+        showToast('Profile picture processing finished', 'success')
+      } catch (e: any) {
+        showToast(e?.data?.error || 'Processing failed', 'error')
+      } finally {
+        processingPfps.value = false
+      }
+    },
+  })
+}
 
 const pruningPfpHistory = ref(false)
 const pruneResult = ref<{ usersProcessed: number; rowsDeleted: number } | null>(null)

@@ -168,6 +168,7 @@ type UserLike = {
   username: string
   displayName?: string | null
   pfpUrl?: string | null
+  pfpHash?: string | null
   pfpHistory?: PfpHistoryItem[]
 }
 
@@ -181,7 +182,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   view: [src: string]
-  updated: [payload: { pfpUrl: string | null; pfpHistory: PfpHistoryItem[] }]
+  updated: [payload: { pfpUrl: string | null; pfpHash: string | null; pfpHistory: PfpHistoryItem[] }]
 }>()
 
 const { showToast } = useToast()
@@ -227,6 +228,7 @@ const restoringId = ref<string | null>(null)
 const clearing = ref(false)
 const localHistory = ref<PfpHistoryItem[]>([])
 const localPfpUrl = ref<string | null>(null)
+const localPfpHash = ref<string | null>(null)
 const localViewVersion = ref(0)
 
 const currentSrc = computed(() => {
@@ -236,10 +238,7 @@ const currentSrc = computed(() => {
 
 const canClear = computed(() => !!(localPfpUrl.value || props.user?.pfpUrl))
 const emptySlots = computed(() => Math.max(0, 3 - localHistory.value.length))
-const bustVersion = computed(() => {
-  const parent = Number(props.cacheVersion) || 0
-  return Math.max(parent, localViewVersion.value) || Date.now()
-})
+const bustVersion = computed(() => localPfpHash.value || props.cacheVersion)
 const bust = (url: string) => withPfpCacheBust(url, bustVersion.value)
 const bumpView = () => { localViewVersion.value = Date.now() }
 
@@ -251,6 +250,7 @@ watch(
     if (open && props.user) {
       localHistory.value = [...(props.user.pfpHistory ?? [])]
       localPfpUrl.value = props.user.pfpUrl ?? null
+      localPfpHash.value = props.user.pfpHash ?? null
     }
     if (!open) {
       cropperOpen.value = false
@@ -295,19 +295,21 @@ const onCropConfirm = async (file: File) => {
   try {
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('preCropped', 'true')
     if (mode.value === 'admin') {
       formData.append('userId', props.user.id)
     }
     const url = mode.value === 'admin' ? '/api/admin/user/pfp' : '/api/user/pfp'
-    const res = await $fetch<{ pfpUrl: string; pfpHistory: PfpHistoryItem[] }>(url, {
+    const res = await $fetch<{ pfpUrl: string; pfpHash: string; pfpHistory: PfpHistoryItem[] }>(url, {
       method: 'POST',
       headers: authHeaders(),
       body: formData,
     })
     localHistory.value = res.pfpHistory
     localPfpUrl.value = res.pfpUrl
+    localPfpHash.value = res.pfpHash
     bumpView()
-    emit('updated', { pfpUrl: res.pfpUrl, pfpHistory: res.pfpHistory })
+    emit('updated', { pfpUrl: res.pfpUrl, pfpHash: res.pfpHash, pfpHistory: res.pfpHistory })
     showToast('Profile picture updated', 'success')
   } catch (e: any) {
     showToast(e?.data?.error || 'Failed to upload profile picture', 'error')
@@ -334,15 +336,16 @@ const doRestore = async (history: PfpHistoryItem) => {
     const body = mode.value === 'admin'
       ? { userId: props.user.id, historyId: history.id }
       : { historyId: history.id }
-    const res = await $fetch<{ pfpUrl: string; pfpHistory: PfpHistoryItem[] }>(url, {
+    const res = await $fetch<{ pfpUrl: string; pfpHash: string; pfpHistory: PfpHistoryItem[] }>(url, {
       method: 'POST',
       headers: authHeaders(),
       body,
     })
     localHistory.value = res.pfpHistory
     localPfpUrl.value = res.pfpUrl
+    localPfpHash.value = res.pfpHash
     bumpView()
-    emit('updated', { pfpUrl: res.pfpUrl, pfpHistory: res.pfpHistory })
+    emit('updated', { pfpUrl: res.pfpUrl, pfpHash: res.pfpHash, pfpHistory: res.pfpHistory })
     showToast('Profile picture restored', 'success')
   } catch (e: any) {
     showToast(e?.data?.error || 'Failed to restore profile picture', 'error')
@@ -368,15 +371,16 @@ const doClearPfp = async () => {
   try {
     const url = mode.value === 'admin' ? '/api/admin/user/pfp/clear' : '/api/user/pfp/clear'
     const body = mode.value === 'admin' ? { userId: props.user.id } : undefined
-    const res = await $fetch<{ pfpUrl: null; pfpHistory: PfpHistoryItem[] }>(url, {
+    const res = await $fetch<{ pfpUrl: null; pfpHash: null; pfpHistory: PfpHistoryItem[] }>(url, {
       method: 'POST',
       headers: authHeaders(),
       body,
     })
     localHistory.value = res.pfpHistory
     localPfpUrl.value = null
+    localPfpHash.value = null
     bumpView()
-    emit('updated', { pfpUrl: null, pfpHistory: res.pfpHistory })
+    emit('updated', { pfpUrl: null, pfpHash: null, pfpHistory: res.pfpHistory })
     showToast('Profile picture cleared', 'success')
   } catch (e: any) {
     showToast(e?.data?.error || 'Failed to clear profile picture', 'error')

@@ -3,6 +3,7 @@ import { corsHeaders, APP_REFRESH_EXPIRY_DAYS } from "../constants";
 import { getUser, createAccessToken } from "../lib/auth";
 import { touchDesqtaReservedClient } from "../lib/desqta-client";
 import { createSession } from "../lib/session";
+import { mapUserPublic, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
 
 export async function handleOAuthClient({ env, url }: RequestContext): Promise<Response> {
@@ -81,9 +82,7 @@ export async function handleOAuthApprove({ env, request, jwtSecret }: RequestCon
       }
       await touchDesqtaReservedClient(env, client_id!);
 
-      const fullUser = await env.DB.prepare(
-        "SELECT id, email, username, displayName, pfpUrl, admin_level FROM users WHERE id = ?",
-      )
+      const fullUser = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)
         .bind(user.id)
         .first();
       if (!fullUser) {
@@ -191,12 +190,10 @@ export async function handleOAuthUserinfo({ env, request, jwtSecret }: RequestCo
   const user = await getUser(request, jwtSecret);
   if (!user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
-  const userData = await env.DB.prepare(
-    "SELECT id, email, username, displayName, pfpUrl, admin_level FROM users WHERE id = ?",
-  )
+  const userData = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)
     .bind(user.id)
     .first();
-  return new Response(JSON.stringify(userData), {
+  return new Response(JSON.stringify(mapUserPublic(userData as Record<string, unknown>)), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }

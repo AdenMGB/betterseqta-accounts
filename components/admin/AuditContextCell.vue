@@ -71,6 +71,7 @@ const props = defineProps<{
   entry: {
     action: string
     targetId?: string
+    summary?: string
     details?: Record<string, unknown>
     contextResolved?: {
       from: { available: boolean; url?: string; label: string }
@@ -102,5 +103,5 @@ const roleLabel = (level: number) => {
   return `Level ${level} Admin`
 }
 
-const summary = computed(() => JSON.stringify(ctx.value).slice(0, 80))
+const summary = computed(() => props.entry.summary || JSON.stringify(ctx.value).slice(0, 80))
 </script>
