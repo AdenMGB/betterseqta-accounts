@@ -1,6 +1,6 @@
 <template>
-  <div class="w-full min-w-0 max-w-4xl mx-auto space-y-6 sm:space-y-8">
-    <div class="text-center animate-slide-down">
+  <div class="w-full min-w-0 space-y-6 sm:space-y-8">
+    <div class="animate-slide-down">
       <h1 class="text-2xl sm:text-3xl font-bold text-zinc-900 dark:text-white font-display mb-2">Dashboard</h1>
       <p class="text-zinc-600 dark:text-zinc-400">
         Your BetterSEQTA account, cloud backups, and quick links
@@ -79,7 +79,7 @@
     <!-- Quick Links -->
     <div>
       <h2 class="text-lg font-semibold text-zinc-900 dark:text-white mb-4">Quick links</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in delay-100">
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 animate-fade-in delay-100">
         <NuxtLink to="/settings#profile" class="group">
           <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-6 hover:shadow-2xl hover:scale-[1.02] transition-all duration-200 cursor-pointer h-full">
             <div class="flex items-start gap-4">

@@ -1,5 +1,5 @@
 <template>
-  <div class="w-full min-w-0 max-w-4xl mx-auto">
+  <div class="w-full min-w-0">
     <h1 class="text-2xl sm:text-3xl font-bold text-zinc-900 dark:text-white font-display mb-6">Settings</h1>
 
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8">
@@ -267,7 +267,7 @@ const success = ref('')
 const pfpHistory = ref<any[]>([])
 const pfpEditorOpen = ref(false)
 const pfpViewerSrc = ref<string | null>(null)
-const pfpCacheVersion = ref(Date.now())
+const pfpCacheVersion = ref<number | string>(Date.now())
 
 const settingsPfpUser = computed(() => {
   if (!auth.user.value) return null

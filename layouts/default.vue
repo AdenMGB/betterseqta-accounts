@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen w-full bg-zinc-100 dark:bg-zinc-900 text-zinc-800 dark:text-zinc-300">
     <!-- Sidebar -->
-    <div class="hidden md:flex flex-col fixed top-0 left-0 w-64 h-full p-4">
+    <div class="hidden md:flex flex-col fixed top-0 left-0 w-64 h-full p-4 border-r border-zinc-200/60 dark:border-zinc-800/80 bg-zinc-100/90 dark:bg-zinc-900/90 backdrop-blur-sm z-30">
       <div class="flex items-center gap-2 mb-8 animate-slide-down">
         <UserCircleIcon class="w-8 h-8 text-primary-500" />
         <span class="text-xl font-bold text-zinc-900 dark:text-white font-display">BetterSEQTA+</span>
@@ -49,7 +49,7 @@
         </div>
       </header>
       <!-- Page Content -->
-      <main class="flex-1 w-full min-w-0 overflow-x-hidden px-4 sm:px-6 pb-20 md:pb-0 animate-fade-in delay-200">
+      <main class="flex-1 w-full min-w-0 overflow-x-hidden px-4 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8 animate-fade-in delay-200">
         <slot />
       </main>
     </div>

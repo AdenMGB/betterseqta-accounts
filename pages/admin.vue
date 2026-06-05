@@ -1,6 +1,6 @@
 <template>
-  <div class="w-full min-w-0 max-w-7xl mx-auto space-y-6 sm:space-y-8">
-    <div class="text-center animate-slide-down">
+  <div class="w-full min-w-0 space-y-6 sm:space-y-8">
+    <div class="animate-slide-down">
       <h1 class="text-2xl sm:text-3xl font-bold text-zinc-900 dark:text-white font-display mb-2">Admin Dashboard</h1>
       <p class="text-zinc-600 dark:text-zinc-400">Manage users and OAuth clients</p>
     </div>
@@ -91,10 +91,10 @@
                             <td class="py-4 px-4 min-w-0">
                                 <div class="flex items-center gap-3 min-w-0">
                                     <PfpStack
+                                        compact
                                         :user-id="users[virtualRow.index].id"
                                         :pfp-url="users[virtualRow.index].pfpUrl"
-                                        :pfp-history="users[virtualRow.index].pfpHistory"
-                                        :cache-version="pfpCacheVersion"
+                                        :cache-version="users[virtualRow.index]._pfpVersion"
                                         :can-edit="canModerateUsers()"
                                         @edit="openPfpEditor(users[virtualRow.index])"
                                         @view="openPfpView"
@@ -365,7 +365,7 @@
             <option value="">All actions</option>
             <option v-for="opt in auditActionOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
-          <button @click="loadAuditLog(1, false)" :disabled="auditRefreshing" class="w-full sm:w-auto px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50">
+          <button @click="refreshAuditLog" :disabled="auditRefreshing" class="w-full sm:w-auto px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors disabled:opacity-50">
             {{ auditRefreshing ? 'Refreshing…' : 'Refresh' }}
           </button>
           </div>
@@ -373,7 +373,7 @@
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
           <span v-if="activeTab === 'activity-log'" class="inline-flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            Live · refreshes every 15s
+            Live · checks every 8s
           </span>
           <span v-if="auditLastUpdated">Last updated {{ auditLastUpdatedLabel }}</span>
           <span v-if="auditTotal">{{ auditTotal }} entries</span>
@@ -649,7 +649,7 @@ import { useInfiniteScroll, watchDebounced } from '@vueuse/core'
 import { withPfpCacheBust, formatRelativeTime } from '~/utils/pfp'
 
 const SCROLL_BUFFER = 400
-const CHAIN_CAP = 3
+const CHAIN_CAP = 1
 
 const auth = useAuth()
 const { showToast } = useToast()
@@ -659,7 +659,7 @@ const adminTabs = [
   { id: 'users', label: 'Users', description: 'Search, edit, and manage user accounts and profile pictures.' },
   { id: 'clients', label: 'OAuth Clients', description: 'Create and manage OAuth applications.' },
   { id: 'apikeys', label: 'API Keys', description: 'Issue and revoke API keys for integrations.' },
-  { id: 'activity-log', label: 'Activity Log', description: 'Review admin actions with live updates every 15 seconds.' },
+  { id: 'activity-log', label: 'Activity Log', description: 'Review admin actions with live updates every 8 seconds.' },
   { id: 'pfp-migration', label: 'PFP Migration', description: 'Senior admin tools for bulk profile picture maintenance.' },
 ]
 
@@ -715,7 +715,7 @@ const loadingMore = ref(false)
 const loadMoreError = ref(false)
 const usersScrollContainer = ref<HTMLElement | null>(null)
 const scrollSentinel = ref<HTMLElement | null>(null)
-const pfpCacheVersion = ref(Date.now())
+const pfpCacheVersion = ref<number | string>(Date.now())
 const sortOption = ref('username:asc')
 const hasPfpFilter = ref(false)
 
@@ -756,9 +756,24 @@ const openPfpView = (src: string) => {
   pfpViewerSrc.value = withPfpCacheBust(src, pfpCacheVersion.value)
 }
 
-const openPfpEditor = (user: any) => {
-  pfpEditorUser.value = user
+const openPfpEditor = async (user: any) => {
+  pfpEditorUser.value = { ...user, pfpHistory: user.pfpHistory ?? [] }
   pfpEditorOpen.value = true
+  if (user.pfpHistory?.length) return
+  try {
+    const res = await $fetch<{ pfpUrl: string | null; pfpHash: string | null; pfpHistory: any[] }>('/api/admin/user/pfp', {
+      params: { userId: user.id },
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    })
+    if (pfpEditorUser.value?.id !== user.id) return
+    pfpEditorUser.value = { ...pfpEditorUser.value, pfpUrl: res.pfpUrl, pfpHistory: res.pfpHistory }
+    const idx = users.value.findIndex(u => u.id === user.id)
+    if (idx !== -1) {
+      users.value[idx].pfpHistory = res.pfpHistory
+    }
+  } catch (e) {
+    console.error('Failed to load PFP history', e)
+  }
 }
 
 const closePfpEditor = () => {
@@ -767,22 +782,23 @@ const closePfpEditor = () => {
 }
 
 const onPfpUpdated = (payload: { pfpUrl: string | null; pfpHash: string | null; pfpHistory: any[] }) => {
-  pfpCacheVersion.value = payload.pfpHash ?? Date.now()
   if (!pfpEditorUser.value) return
   const idx = users.value.findIndex(u => u.id === pfpEditorUser.value.id)
   if (idx !== -1) {
     users.value[idx].pfpUrl = payload.pfpUrl
     users.value[idx].pfpHistory = payload.pfpHistory
+    users.value[idx]._pfpVersion = payload.pfpHash ?? Date.now()
   }
   pfpEditorUser.value.pfpUrl = payload.pfpUrl
   pfpEditorUser.value.pfpHistory = payload.pfpHistory
+  pfpCacheVersion.value = payload.pfpHash ?? Date.now()
 }
 
 const rowVirtualizer = useVirtualizer(computed(() => ({
   count: users.value.length,
   getScrollElement: () => usersScrollContainer.value,
   estimateSize: () => 72,
-  overscan: 8,
+  overscan: 4,
 })))
 
 const virtualRows = computed(() => rowVirtualizer.value.getVirtualItems())
@@ -808,7 +824,7 @@ const auditScrollContainer = ref<HTMLElement | null>(null)
 const auditSearchQuery = ref('')
 const auditActionFilter = ref('')
 const auditLastUpdated = ref<number | null>(null)
-const AUDIT_POLL_MS = 15_000
+const AUDIT_POLL_MS = 8_000
 let auditPollTimer: ReturnType<typeof setInterval> | null = null
 
 const auditActionOptions = [
@@ -869,9 +885,9 @@ const auditCanLoadMore = () =>
   (auditNextCursor.value != null || auditPage.value < auditTotalPages.value) &&
   auditListOverflows()
 
-const auditFetchParams = (extra: Record<string, string | number | undefined> = {}) => ({
+const auditFetchParams = (extra: Record<string, string | number | undefined> = {}, opts: { light?: boolean } = {}) => ({
   limit: 25,
-  light: 'true',
+  ...(opts.light ? { light: 'true' } : {}),
   q: auditSearchQuery.value || undefined,
   action: auditActionFilter.value || undefined,
   ...extra,
@@ -911,24 +927,27 @@ const loadAuditLog = async (opts: { append?: boolean; cursor?: string | null } =
   }
 }
 
-/** Poll: fetch only entries newer than the newest visible row (does not toggle Refresh label). */
+/** Poll: lightweight fetch for new rows only (skips expensive PFP thumbnail resolution). */
 const pollAuditLog = async () => {
-  if (!auditLoaded.value || auditLoadingMore.value) return
+  if (!auditLoaded.value || auditLoadingMore.value || auditLoadingInitial.value) return
   const newest = auditEntries.value[0]?.createdAt
   if (!newest) return
   try {
     const res = await $fetch<{ entries: any[] }>('/api/admin/audit-log', {
-      params: auditFetchParams({ since: newest, limit: 20 }),
+      params: auditFetchParams({ since: newest, limit: 20 }, { light: true }),
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
     })
-    if (!res.entries?.length) return
+    if (!res.entries?.length) {
+      touchAuditUpdated()
+      return
+    }
     const existingIds = new Set(auditEntries.value.map(e => e.id))
     const brandNew = res.entries.filter(e => !existingIds.has(e.id))
     if (brandNew.length) {
       auditEntries.value = [...brandNew, ...auditEntries.value]
       if (auditTotal.value) auditTotal.value += brandNew.length
-      touchAuditUpdated()
     }
+    touchAuditUpdated()
   } catch (e) {
     console.error('Failed to poll audit log', e)
   }
@@ -968,6 +987,7 @@ const onActivityLogTabActivated = async () => {
   auditNextCursor.value = null
   await loadAuditLog({ append: false })
   startAuditAutoRefresh()
+  void pollAuditLog()
 }
 
 const onActivityLogTabDeactivated = () => {
@@ -1096,7 +1116,7 @@ const searchUsers = async (page: number = 1, append: boolean = false) => {
     if (!append) usersLoading.value = true
     try {
         const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number, maxAdminLevel: number }>('/api/admin/users', {
-            params: { q: searchQuery.value, page, sort: sortOption.value, has_pfp: hasPfpFilter.value || undefined },
+            params: { q: searchQuery.value, page, sort: sortOption.value, has_pfp: hasPfpFilter.value || undefined, include_history: 'false' },
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
         const mapped = res.users.map((user: any) => ({

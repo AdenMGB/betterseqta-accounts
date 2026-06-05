@@ -69,6 +69,7 @@ const routes: Route[] = [
   { test: (m, p) => m === "POST" && p === "/api/admin/api-keys", handle: (c) => admin.handleAdminApiKeysPost(c) },
   { test: (m, p) => m === "DELETE" && p === "/api/admin/api-keys", handle: (c) => admin.handleAdminApiKeysDelete(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/update-user", handle: (c) => admin.handleAdminUpdateUser(c) },
+  { test: (m, p) => m === "GET" && p === "/api/admin/user/pfp", handle: (c) => admin.handleAdminUserPfpGet(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/user/pfp", handle: (c) => admin.handleAdminUserPfpUpload(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/user/pfp/revert", handle: (c) => admin.handleAdminUserPfpRevert(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/user/pfp/clear", handle: (c) => admin.handleAdminUserPfpClear(c) },
