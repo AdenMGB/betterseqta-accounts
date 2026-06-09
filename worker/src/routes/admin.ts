@@ -8,7 +8,7 @@ import {
 import { sendPasswordResetEmail } from "../lib/email";
 import { recordAdminAction, AUDIT_HIDE_NOOP_UPDATES, isDisplayableAuditEntry } from "../lib/adminAudit";
 import { buildPfpAuditContext, resolvePfpAuditRefs, type PfpAuditRef } from "../lib/auditPfpResolve";
-import { auditTargetForUser, resolveAuditTargets } from "../lib/auditTarget";
+import { auditTargetForUser, labelFromDetails, resolveAuditTargets } from "../lib/auditTarget";
 import { processPfpUpload } from "../lib/pfpProcess";
 import {
   buildUserPfpUrl,
@@ -45,6 +45,7 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
   const pageSize = 50;
   const offset = (page - 1) * pageSize;
   const hasPfp = url.searchParams.get("has_pfp") === "true";
+  const includeHistory = url.searchParams.get("include_history") !== "false";
 
   const sortParam = url.searchParams.get("sort") || "username:asc";
   const sortParts = sortParam.split(":");
@@ -87,10 +88,9 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
     .bind(...params, pageSize, offset)
     .all();
 
-  // Fetch PFP history for all returned users
   const userIds = ((users.results || []) as { id: string }[]).map((u) => u.id);
   const pfpHistoryMap: Record<string, { id: string; r2Key: string; createdAt: number }[]> = {};
-  if (userIds.length > 0) {
+  if (includeHistory && userIds.length > 0) {
     try {
       const placeholders = userIds.map(() => "?").join(",");
       const historyRows = await env.DB.prepare(
@@ -695,6 +695,47 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
   });
 }
 
+export async function handleAdminUserPfpGet({ env, request, url, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  if ((admin.adminLevel || 0) < 2) {
+    return new Response(JSON.stringify({ error: "Moderator controls require Middle Admin level (2) or higher" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const userId = url.searchParams.get("userId");
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "userId is required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const userRow = await env.DB.prepare("SELECT pfpUrl, pfp_hash FROM users WHERE id = ?")
+    .bind(userId)
+    .first() as { pfpUrl: string | null; pfp_hash: string | null } | null;
+
+  if (!userRow) {
+    return new Response(JSON.stringify({ error: "User not found" }), {
+      status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const pfpHistory = await getPfpHistoryForUser(env, userId);
+
+  return new Response(JSON.stringify({
+    pfpUrl: userRow.pfpUrl,
+    pfpHash: userRow.pfp_hash,
+    pfpHistory,
+  }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 export async function handleAdminUserPfpUpload({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   const admin = await getAdminUserWithLevel(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
@@ -1207,7 +1248,7 @@ export async function handleAdminAuditLog({ env, request, url, jwtSecret }: Requ
   }
 
   if (since > 0) {
-    conditions.push("created_at > ?");
+    conditions.push("created_at >= ?");
     params.push(since);
   } else if (cursor) {
     const [cursorTs, cursorId] = cursor.split(":");
@@ -1283,9 +1324,16 @@ export async function handleAdminAuditLog({ env, request, url, jwtSecret }: Requ
       createdAt: row.createdAt,
     };
     if (light) {
+      const target = labelFromDetails({
+        targetType: row.targetType,
+        targetId: row.targetId,
+        details: row.details,
+      });
       return {
         ...base,
+        details: row.details,
         summary: auditSummaryFromDetails(row.details),
+        ...(target ? { target } : {}),
       };
     }
     return {

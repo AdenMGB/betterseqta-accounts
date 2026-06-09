@@ -65,6 +65,6 @@ body {
   vertical-align: top;
 }
 
-.admin-data-table td:not(.admin-table-actions) {
-  overflow: hidden;
+.admin-data-table td.admin-table-actions {
+  overflow: visible;
 }

@@ -18,7 +18,7 @@ function ctx(details: Record<string, unknown>): Record<string, unknown> {
   return c && typeof c === "object" ? (c as Record<string, unknown>) : {};
 }
 
-function labelFromDetails(entry: AuditLogEntry): ResolvedAuditTarget | null {
+export function labelFromDetails(entry: AuditLogEntry): ResolvedAuditTarget | null {
   const stored = entry.details.target;
   if (stored && typeof stored === "object") {
     const t = stored as Record<string, unknown>;
