@@ -93,8 +93,10 @@ const props = defineProps<{
   deleting?: boolean
 }>()
 
-const emit = defineEmits<{ edit: []; promote: []; demote: []; reset: []; delete: [] }>()
+type Action = 'edit' | 'promote' | 'demote' | 'reset' | 'delete'
 
+const emit = defineEmits<{ (e: Action): void }>()
+  
 const MENU_WIDTH = 192
 const MENU_GAP = 4
 const ESTIMATED_MENU_HEIGHT = 220
@@ -145,7 +147,6 @@ const toggle = () => {
   }
 }
 
-type Action = 'edit' | 'promote' | 'demote' | 'reset' | 'delete'
 
 const choose = (action: Action) => {
   close()
