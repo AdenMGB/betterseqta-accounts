@@ -15,9 +15,9 @@ import {
   clearUserPfp,
   getAppBaseUrl,
   getPfpHistoryForUser,
-  hasCurrentPfpBlob,
   prunePfpHistory,
   putCurrentPfp,
+  pfpRefBeforeClear,
   pfpRefFromArchivedHistory,
   r2KeyToPfpUrl,
   saveCurrentPfpToHistory,
@@ -834,11 +834,14 @@ export async function handleAdminUserPfpClear({ env, request, jwtSecret }: Reque
     });
   }
 
-  const hadBlob = await hasCurrentPfpBlob(env, userId);
-  const { archivedHistoryId, hadPfp } = await clearUserPfp(env, userId);
+  const pfpRow = await env.DB.prepare("SELECT pfpUrl FROM users WHERE id = ?").bind(userId).first() as
+    | { pfpUrl: string | null }
+    | null;
+  const pfpUrlBefore = pfpRow?.pfpUrl ?? null;
+  const { archivedHistoryId } = await clearUserPfp(env, userId);
   const pfpHistory = await getPfpHistoryForUser(env, userId);
 
-  const fromRef = pfpRefFromArchivedHistory(archivedHistoryId, hadBlob || hadPfp);
+  const fromRef = pfpRefBeforeClear(archivedHistoryId, pfpUrlBefore);
   const targetUser = await env.DB.prepare("SELECT id, username, displayName, email FROM users WHERE id = ?").bind(userId).first() as {
     id: string;
     username: string;
@@ -1222,7 +1225,7 @@ export async function handleAdminAuditLog({ env, request, url, jwtSecret }: Requ
   const admin = await getAdminUser(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
-  const light = url.searchParams.get("light") !== "false";
+  const light = url.searchParams.get("light") === "true";
   const since = parseInt(url.searchParams.get("since") || "0", 10);
   const cursor = url.searchParams.get("cursor") || "";
   const page = parseInt(url.searchParams.get("page") || "1", 10);

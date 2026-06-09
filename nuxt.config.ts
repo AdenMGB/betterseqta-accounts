@@ -27,11 +27,13 @@ export default defineNuxtConfig({
         { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' }
       ]
     },
-    pageTransition: { name: 'page', mode: 'out-in' }
+    pageTransition: { name: 'page' }
   },
   typescript: {
     strict: true,
-    typeCheck: true,
+    // Disabled in dev: vite-plugin-checker breaks on Vite 8 (/_nuxt/ base path).
+    // Run `pnpm typecheck` separately instead.
+    typeCheck: false,
     shim: false
   },
   css: ['~/assets/css/main.css'],
@@ -41,7 +43,7 @@ export default defineNuxtConfig({
         'smb.adenmgb.com',
         'localhost',
         '127.0.0.1'
-      ]
+      ],
     }
   },
   nitro: {

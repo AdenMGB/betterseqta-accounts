@@ -2,9 +2,329 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 body {
   @apply bg-zinc-900 text-zinc-300 antialiased;
 }
+
+/* ── Collapsible sidebar (paint-pour from button) ── */
+
+.sidebar-root {
+  --sidebar-btn: 3rem;
+  --sidebar-btn-center: calc(1rem + var(--sidebar-btn) / 2);
+  --sidebar-bg: rgb(244 244 245);
+  --sidebar-border: rgb(228 228 231 / 0.6);
+  --sidebar-expand-duration: 0.48s;
+  --sidebar-collapse-duration: 0.36s;
+
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 40;
+  width: 18rem;
+  height: 100dvh;
+  min-height: 100vh;
+  pointer-events: none;
+}
+
+.dark .sidebar-root {
+  --sidebar-bg: rgb(24 24 27);
+  --sidebar-border: rgb(39 39 42 / 0.8);
+}
+
+/* Shell: fixed sidebar rectangle — circle is clipped to these edges */
+.sidebar-shell {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+  border-right: 1px solid transparent;
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    background 0.1s ease 0s;
+}
+
+.sidebar-shell--open {
+  pointer-events: auto;
+  background: var(--sidebar-bg);
+  border-right-color: var(--sidebar-border);
+  box-shadow: 4px 0 24px rgb(0 0 0 / 0.08);
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    background 0.12s ease var(--sidebar-expand-duration);
+}
+
+.dark .sidebar-shell--open {
+  box-shadow: 4px 0 24px rgb(0 0 0 / 0.35);
+}
+
+/* GPU circle pour — sized to sidebar so scale feels gradual, not instant */
+.sidebar-circle {
+  position: absolute;
+  top: var(--sidebar-btn-center);
+  left: var(--sidebar-btn-center);
+  z-index: 0;
+  /* Must cover full sidebar from button origin at scale(1) — 100vh+18rem was too small */
+  width: 280vh;
+  height: 280vh;
+  border-radius: 50%;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--sidebar-border);
+  transform: translate(-50%, -50%) scale(0);
+  transform-origin: center;
+  transition:
+    transform var(--sidebar-expand-duration) cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.15s ease 0s;
+}
+
+.sidebar-circle:not(.sidebar-circle--ready) {
+  transition: none;
+}
+
+.sidebar-circle--open {
+  transform: translate(-50%, -50%) scale(1);
+  border-color: transparent;
+  transition:
+    transform var(--sidebar-expand-duration) cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.15s ease var(--sidebar-expand-duration);
+}
+
+.sidebar-circle--ready:not(.sidebar-circle--open) {
+  transition-duration: var(--sidebar-collapse-duration), 0.1s;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1), ease;
+  border-color: var(--sidebar-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-circle {
+    transition-duration: 0.01ms;
+  }
+}
+
+.sidebar-toggle {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 41;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--sidebar-btn);
+  height: var(--sidebar-btn);
+  cursor: pointer;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 9999px;
+  outline: none;
+  pointer-events: auto;
+  transition:
+    border-color 0.35s ease,
+    box-shadow 0.35s ease,
+    background 0.35s ease;
+}
+
+.sidebar-toggle--open {
+  border-color: transparent;
+  background: transparent;
+  backdrop-filter: none;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.sidebar-toggle:focus-visible {
+  outline: 2px solid #ff6b00;
+  outline-offset: 2px;
+}
+
+/* Hamburger #8 — ainalem/CodePen LJYRxz */
+.sidebar-toggle .ham {
+  width: 2.5rem;
+  height: 2.5rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--sidebar-expand-duration) cubic-bezier(0.22, 1, 0.36, 1);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.sidebar-toggle .hamRotate.active {
+  transform: rotate(45deg);
+}
+
+.sidebar-toggle .ham .line {
+  fill: none;
+  transition: stroke-dasharray var(--sidebar-expand-duration), stroke-dashoffset var(--sidebar-expand-duration);
+  stroke: #ff6b00;
+  stroke-width: 5.5;
+  stroke-linecap: round;
+}
+
+.sidebar-toggle .ham8 .top {
+  stroke-dasharray: 40 160;
+}
+
+.sidebar-toggle .ham8 .middle {
+  stroke-dasharray: 40 142;
+  transform-origin: 50%;
+  transition: transform var(--sidebar-expand-duration) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sidebar-toggle .ham8 .bottom {
+  stroke-dasharray: 40 85;
+  transform-origin: 50%;
+  transition: transform var(--sidebar-expand-duration) cubic-bezier(0.22, 1, 0.36, 1), stroke-dashoffset var(--sidebar-expand-duration);
+}
+
+.sidebar-toggle .ham8.active .top {
+  stroke-dashoffset: -64px;
+}
+
+.sidebar-toggle .ham8.active .middle {
+  transform: rotate(90deg);
+}
+
+.sidebar-toggle .ham8.active .bottom {
+  stroke-dashoffset: -64px;
+}
+
+.sidebar-content {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100%;
+  padding: 4.5rem 1.25rem 1.25rem;
+  pointer-events: none;
+}
+
+.sidebar-shell--open .sidebar-content {
+  pointer-events: auto;
+}
+
+.sidebar-reveal-item {
+  opacity: 0;
+  transform: translateY(5px);
+  transition:
+    opacity 0.18s ease var(--reveal-delay, 0s),
+    transform 0.18s ease var(--reveal-delay, 0s);
+}
+
+.sidebar-reveal-item--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.sidebar-reveal-item:not(.sidebar-reveal-item--visible) {
+  transition-delay: 0s;
+  transition-duration: 0.1s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-reveal-item {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  padding: 0 0.25rem;
+}
+
+.sidebar-brand-text {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: rgb(24 24 27);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.dark .sidebar-brand-text {
+  color: white;
+}
+
+.sidebar-brand-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  color: #ff6b00;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.875rem 1rem;
+  border-radius: 0.625rem;
+  font-size: 1.0625rem;
+  font-weight: 500;
+  line-height: 1.25;
+  transition: background 0.2s ease, color 0.2s ease;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font-size: inherit;
+}
+
+.sidebar-nav-label {
+  white-space: nowrap;
+}
+
+.sidebar-footer {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: 1rem;
+  padding-bottom: 0.25rem;
+}
+
+.sidebar-logout {
+  color: rgb(113 113 122);
+}
+
+.dark .sidebar-logout {
+  color: rgb(161 161 170);
+}
+
+.sidebar-logout:hover {
+  background: rgb(228 228 231);
+  color: rgb(24 24 27);
+}
+
+.dark .sidebar-logout:hover {
+  background: rgb(63 63 70 / 0.5);
+  color: white;
+}
+
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(24px); }
@@ -32,6 +352,26 @@ body {
 .scroll-stable {
   overflow-y: auto;
   scrollbar-gutter: stable;
+}
+
+/* Admin tabs (Users, Activity Log): fill viewport below page chrome */
+.admin-tab-panel {
+  height: calc(100dvh - 13.5rem);
+  min-height: 22rem;
+}
+
+@media (max-width: 767px) {
+  .admin-tab-panel {
+    height: calc(100dvh - 15.5rem);
+    min-height: 18rem;
+  }
+}
+
+.admin-table-viewport-scroll {
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* Fixed column widths on desktop; scroll wrapper sets min-width on small screens */

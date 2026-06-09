@@ -145,3 +145,13 @@ export function pfpRefFromArchivedHistory(historyId: string | null, hadCurrent: 
   if (hadCurrent) return { slot: "current" };
   return { slot: "unavailable" };
 }
+
+/** Audit ref for the PFP that was cleared — prefer archived history, else frozen URL. */
+export function pfpRefBeforeClear(
+  archivedHistoryId: string | null,
+  pfpUrlBefore: string | null,
+): PfpAuditRef {
+  if (archivedHistoryId) return { slot: "history", historyId: archivedHistoryId };
+  if (pfpUrlBefore) return { slot: "snapshot", url: pfpUrlBefore };
+  return { slot: "unavailable" };
+}

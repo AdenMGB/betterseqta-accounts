@@ -3,6 +3,7 @@ import type { PfpHistoryEntry } from "./pfpHistory";
 export type PfpAuditRef =
   | { slot: "current" }
   | { slot: "history"; historyId: string }
+  | { slot: "snapshot"; url: string }
   | { slot: "cleared" }
   | { slot: "unavailable" };
 
@@ -49,9 +50,16 @@ function resolveOneRef(userId: string, ref: PfpAuditRef, liveStack: LivePfpStack
       label: "Cleared",
     };
   }
+  if (ref.slot === "snapshot") {
+    return { available: true, url: ref.url, label: "Before" };
+  }
   if (ref.slot === "current") {
     if (liveStack.pfpUrl) {
       return { available: true, url: liveStack.pfpUrl, label: "Current" };
+    }
+    const newestHistory = liveStack.pfpHistory[0];
+    if (newestHistory) {
+      return { available: true, url: newestHistory.r2Key, label: "Past" };
     }
     return { available: false, label: "No longer available" };
   }
