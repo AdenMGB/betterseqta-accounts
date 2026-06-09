@@ -1,5 +1,5 @@
 <template>
-  <div class="relative">
+  <div ref="rootEl" class="relative">
     <div class="flex items-center gap-2">
       <button
         @click="isOpen = !isOpen"
@@ -39,7 +39,7 @@
 
       <!-- Hue Slider -->
       <div
-        class="relative w-full h-4 rounded-full mb-3 cursor-pointer"
+        class="relative w-full h-4 rounded-full cursor-pointer"
         style="background: linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%)"
         @mousedown.prevent="startDrag($event, 'hue')"
       >
@@ -48,15 +48,13 @@
           :style="{ left: `${(hue / 360) * 100}%` }"
         ></div>
       </div>
-
-      <!-- Backdrop -->
-      <div class="fixed inset-0 -z-10" @click="isOpen = false"></div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch } from 'vue'
+import { onClickOutside } from '@vueuse/core'
 
 const props = defineProps<{
   modelValue: string
@@ -64,8 +62,13 @@ const props = defineProps<{
 
 const emit = defineEmits(['update:modelValue'])
 
+const rootEl = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
 const hexInput = ref(props.modelValue)
+
+onClickOutside(rootEl, () => {
+  isOpen.value = false
+})
 
 // Color State (HSV)
 const hue = ref(0)

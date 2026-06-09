@@ -3,12 +3,12 @@
     <Sidebar />
 
     <!-- Main Content -->
-    <div class="relative z-10 flex-1 flex flex-col min-h-screen min-w-0 w-full">
+    <div class="relative z-10 flex min-h-screen w-full min-w-0 flex-col overflow-hidden">
       <MouseGlowBackground />
 
       <!-- Header -->
       <header
-        class="w-full min-w-0 flex items-center justify-end px-4 sm:px-6 md:pl-20 py-4 animate-slide-down main-header"
+        class="relative z-10 w-full min-w-0 flex items-center justify-end px-4 sm:px-6 md:pl-20 py-4 animate-slide-down main-header"
       >
         <div class="flex items-center gap-4 min-w-0">
           <button
@@ -23,7 +23,7 @@
         </div>
       </header>
       <!-- Page Content -->
-      <main class="flex-1 w-full min-w-0 overflow-x-hidden px-4 sm:px-6 lg:px-8 md:pl-20 py-4 sm:py-6 pb-24 md:pb-8">
+      <main class="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 md:pl-20 py-4 sm:py-6 pb-24 md:pb-8">
         <slot />
       </main>
     </div>
