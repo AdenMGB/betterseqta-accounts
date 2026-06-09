@@ -32,8 +32,8 @@
       <p v-if="activeTabDescription" class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">{{ activeTabDescription }}</p>
 
       <!-- Users Tab -->
-      <div v-if="activeTab === 'users'" class="space-y-4 sm:space-y-6 min-w-0">
-        <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center">
+      <div v-if="activeTab === 'users'" class="admin-tab-panel flex flex-col gap-4 sm:gap-6 min-w-0 min-h-0">
+        <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center shrink-0">
             <input 
                 v-model="searchQuery" 
                 @keyup.enter="handleSearch" 
@@ -57,19 +57,19 @@
             </button>
             </div>
         </div>
-        <p class="text-xs text-zinc-500 dark:text-zinc-400">Results update automatically as you type. Press Enter or Search to apply immediately.</p>
+        <p class="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">Results update automatically as you type. Press Enter or Search to apply immediately.</p>
 
-        <div v-if="searched" class="text-sm text-zinc-600 dark:text-zinc-400">
+        <div v-if="searched" class="text-sm text-zinc-600 dark:text-zinc-400 shrink-0">
             Total users: <span class="font-semibold text-zinc-900 dark:text-white">{{ totalUsers }}</span>
             <span v-if="users.length > 0" class="text-zinc-500"> · showing {{ users.length }}</span>
         </div>
 
-        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden min-w-0 relative">
+        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden min-w-0 relative flex-1 min-h-0 flex flex-col">
             <div v-if="usersLoading && !users.length" class="flex justify-center py-16">
               <LoadingSpinner size="lg" />
             </div>
-            <div v-else class="admin-table-scroll">
-            <div ref="usersScrollContainer" class="max-h-[600px] scroll-stable">
+            <div v-else class="admin-table-scroll flex-1 min-h-0">
+            <div ref="usersScrollContainer" class="admin-table-viewport-scroll scroll-stable">
                 <table class="admin-data-table w-full text-left">
                     <colgroup>
                         <col style="width: 32%" />
@@ -349,8 +349,8 @@
         </div>
       </div>
       <!-- Activity Log Tab -->
-      <div v-if="activeTab === 'activity-log'" class="space-y-4 sm:space-y-6 min-w-0">
-        <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center">
+      <div v-if="activeTab === 'activity-log'" class="admin-tab-panel flex flex-col gap-4 sm:gap-6 min-w-0 min-h-0">
+        <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center shrink-0">
           <input
             v-model="auditSearchQuery"
             type="text"
@@ -370,7 +370,7 @@
           </button>
           </div>
         </div>
-        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400 shrink-0">
           <span v-if="activeTab === 'activity-log'" class="inline-flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             Live · checks every 8s
@@ -379,9 +379,9 @@
           <span v-if="auditTotal">{{ auditTotal }} entries</span>
         </div>
 
-        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden min-w-0">
-          <div class="admin-table-scroll">
-          <div ref="auditScrollContainer" class="max-h-[600px] scroll-stable">
+        <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden min-w-0 flex-1 min-h-0 flex flex-col">
+          <div class="admin-table-scroll flex-1 min-h-0">
+          <div ref="auditScrollContainer" class="admin-table-viewport-scroll scroll-stable">
             <table class="admin-data-table admin-audit-table w-full text-left">
               <colgroup>
                 <col style="width: 15%" />

@@ -1,42 +1,16 @@
 <template>
-  <div class="min-h-screen w-full bg-zinc-100 dark:bg-zinc-900 text-zinc-800 dark:text-zinc-300">
-    <!-- Sidebar -->
-    <div class="hidden md:flex flex-col fixed top-0 left-0 w-64 h-full p-4 border-r border-zinc-200/60 dark:border-zinc-800/80 bg-zinc-100/90 dark:bg-zinc-900/90 backdrop-blur-sm z-30">
-      <div class="flex items-center gap-2 mb-8 animate-slide-down">
-        <UserCircleIcon class="w-8 h-8 text-primary-500" />
-        <span class="text-xl font-bold text-zinc-900 dark:text-white font-display">BetterSEQTA+</span>
-      </div>
-      <nav class="flex flex-col gap-2 flex-1 animate-fade-in delay-100 overflow-y-auto min-h-0">
-        <NuxtLink to="/" :class="getLinkClass('/')">
-          <HomeIcon class="w-5 h-5" />
-          Dashboard
-        </NuxtLink>
-        <NuxtLink to="/settings" :class="getLinkClass('/settings')">
-          <Cog6ToothIcon class="w-5 h-5" />
-          Settings
-        </NuxtLink>
-        <NuxtLink v-if="isAdmin" to="/admin" :class="getLinkClass('/admin')">
-          <ShieldCheckIcon class="w-5 h-5" />
-          Admin
-        </NuxtLink>
-      </nav>
-      <div class="animate-fade-in delay-200 flex-shrink-0 pt-4">
-        <button @click="auth.logout" class="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 hover:text-zinc-900 dark:hover:text-white w-full transition-all duration-200 cursor-pointer">
-          <ArrowRightOnRectangleIcon class="w-5 h-5 flex-shrink-0" />
-          <span>Logout</span>
-        </button>
-      </div>
-    </div>
+  <div class="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-zinc-100 dark:bg-zinc-900 text-zinc-800 dark:text-zinc-300">
+    <Sidebar />
 
     <!-- Main Content -->
-    <div class="md:ml-64 flex-1 flex flex-col min-h-screen min-w-0 w-full relative">
-       <div class="absolute inset-0 -z-10 h-full w-full bg-white dark:bg-zinc-900 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px]"></div>
+    <div class="relative z-10 flex-1 flex flex-col min-h-screen min-w-0 w-full">
+      <MouseGlowBackground />
 
       <!-- Header -->
       <header
-        class="w-full min-w-0 flex items-center justify-end px-4 sm:px-6 py-4 animate-slide-down main-header"
+        class="w-full min-w-0 flex items-center justify-end px-4 sm:px-6 md:pl-20 py-4 animate-slide-down main-header"
       >
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-4 min-w-0">
           <button
             @click="toggleDarkMode"
             :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
@@ -49,7 +23,7 @@
         </div>
       </header>
       <!-- Page Content -->
-      <main class="flex-1 w-full min-w-0 overflow-x-hidden px-4 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8 animate-fade-in delay-200">
+      <main class="flex-1 w-full min-w-0 overflow-x-hidden px-4 sm:px-6 lg:px-8 md:pl-20 py-4 sm:py-6 pb-24 md:pb-8">
         <slot />
       </main>
     </div>
@@ -59,32 +33,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, onMounted } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import UserAvatar from '~/components/UserAvatar.vue'
 import Toast from '~/components/ui/Toast.vue'
-import { HomeIcon, Cog6ToothIcon, UserCircleIcon, ArrowRightOnRectangleIcon, SunIcon, MoonIcon, ShieldCheckIcon } from '@heroicons/vue/24/outline'
+import Sidebar from '~/components/ui/Sidebar.vue'
+import MouseGlowBackground from '~/components/ui/MouseGlowBackground.vue'
+import { SunIcon, MoonIcon } from '@heroicons/vue/24/outline'
 import MobileNav from '~/components/ui/MobileNav.vue'
 
 const auth = useAuth()
-const route = useRoute()
 const isDark = ref(true)
-
-// Computed property to check if user is admin
-const isAdmin = computed(() => {
-  return auth.user.value && (auth.user.value?.admin_level ?? 0) > 0
-})
-
-const getLinkClass = (path: string) => {
-  const isActive = route.path === path
-  return [
-    'flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200',
-    isActive
-      ? 'bg-primary-500/10 text-primary-500 font-semibold'
-      : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700/50 hover:text-zinc-900 dark:hover:text-white'
-  ]
-}
 
 const toggleDarkMode = () => {
   isDark.value = !isDark.value
@@ -112,4 +71,4 @@ onMounted(async () => {
     document.documentElement.classList.remove('dark')
   }
 })
-</script> 
+</script>

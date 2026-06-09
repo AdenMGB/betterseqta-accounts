@@ -65,6 +65,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { resolvePfpAuditContextClient, type PfpAuditRef } from '~/utils/pfpAudit'
 import { withPfpCacheBust } from '~/utils/pfp'
 
 const props = defineProps<{
@@ -85,7 +86,12 @@ const props = defineProps<{
 defineEmits<{ view: [src: string] }>()
 
 const ctx = computed(() => (props.entry.details?.context ?? {}) as Record<string, any>)
-const pfpResolved = computed(() => props.entry.contextResolved)
+const pfpResolved = computed(() => {
+  if (props.entry.contextResolved) return props.entry.contextResolved
+  if (!props.entry.action.startsWith('pfp.')) return null
+  const context = ctx.value as { from?: PfpAuditRef; to?: PfpAuditRef }
+  return resolvePfpAuditContextClient(props.entry.targetId ?? '', context)
+})
 
 const hasFieldChanges = computed(() => {
   const changes = ctx.value.changes

@@ -78,6 +78,11 @@ body {
   transform: translateY(20px);
 }
 
+.page-enter-to {
+  opacity: 1;
+  transform: none;
+}
+
 .page-leave-to {
   opacity: 0;
   transform: translateY(-20px);
