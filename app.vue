@@ -14,16 +14,10 @@
 import { onMounted } from 'vue'
 import { useLoading } from '~/composables/useLoading'
 import { useAuth } from '~/composables/useAuth'
-import { useSettings } from '~/composables/useSettings'
-import { buildFullSnapshot, loadDraft } from '~/utils/settings/sparseSettings'
-import { desqtaSchema } from '~/utils/settings/desqtaSchema'
 import LoadingScreen from '~/components/ui/LoadingScreen.vue'
 
 const { isInitialLoading, stopInitialLoading } = useLoading()
 const auth = useAuth()
-const { getSettings, syncSettings } = useSettings()
-
-const defaultSettings = buildFullSnapshot({}, loadDraft({}, desqtaSchema), desqtaSchema)
 
 onMounted(async () => {
   const theme = localStorage.getItem('theme')
@@ -37,17 +31,6 @@ onMounted(async () => {
 
   try {
     await auth.fetchUser()
-
-    if (auth.user.value) {
-      try {
-        const settings = await getSettings()
-        if (Object.keys(settings).length === 0) {
-          await syncSettings(defaultSettings)
-        }
-      } catch (e) {
-        console.error('Failed to initialize settings', e)
-      }
-    }
   } catch (error) {
     console.error('Error during initial load:', error)
   } finally {

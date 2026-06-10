@@ -1,7 +1,46 @@
 import { corsHeaders } from "../constants";
 import { getUser } from "../lib/auth";
 import { sha256HexCanonicalJson, stableStringify } from "../lib/json-stable";
+import {
+  buildDesqtaDownloadSettings,
+  loadAndPersistHydratedDesqta,
+  mergeDesqtaPatch,
+} from "../lib/settings-store";
+import { parseSettingsJson } from "../lib/settings-patch";
 import type { RequestContext } from "../types/context";
+
+async function ensureSettingsMetadata(
+  env: RequestContext["env"],
+  userId: string,
+  settingsData: Record<string, unknown>,
+): Promise<{ settings_revision: number; settings_updated_at: string } | null> {
+  let metaRow = (await env.DB.prepare(
+    "SELECT settings_revision, settings_updated_at, content_hash FROM settings_metadata WHERE user_id = ?",
+  )
+    .bind(userId)
+    .first()) as {
+    settings_revision: number;
+    settings_updated_at: string;
+    content_hash: string;
+  } | null;
+
+  if (!metaRow) {
+    const hash = await sha256HexCanonicalJson(settingsData);
+    const isoNow = new Date().toISOString();
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO settings_metadata (user_id, settings_revision, settings_updated_at, content_hash) VALUES (?, 1, ?, ?)",
+    )
+      .bind(userId, isoNow, hash)
+      .run();
+    metaRow = (await env.DB.prepare(
+      "SELECT settings_revision, settings_updated_at, content_hash FROM settings_metadata WHERE user_id = ?",
+    )
+      .bind(userId)
+      .first()) as typeof metaRow;
+  }
+
+  return metaRow;
+}
 
 export async function handleSettingsSyncInit({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   const syncInitJsonHeaders = { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" };
@@ -29,7 +68,7 @@ export async function handleSettingsSyncInit({ env, request, jwtSecret }: Reques
 
   let body: {
     client?: { app?: string };
-    local?: { settings_revision?: number };
+    local?: { settings_revision?: number; settings?: unknown };
   };
   try {
     body = (await request.json()) as typeof body;
@@ -57,49 +96,9 @@ export async function handleSettingsSyncInit({ env, request, jwtSecret }: Reques
   rClient = Math.floor(rClient);
 
   try {
-    const settingsRow = await env.DB.prepare("SELECT data FROM settings WHERE user_id = ?").bind(userId).first();
-    let metaRow = (await env.DB.prepare(
-      "SELECT settings_revision, settings_updated_at, content_hash FROM settings_metadata WHERE user_id = ?",
-    )
-      .bind(userId)
-      .first()) as {
-      settings_revision: number;
-      settings_updated_at: string;
-      content_hash: string;
-    } | null;
+    const { hydrated, rowExists } = await loadAndPersistHydratedDesqta(env.DB, userId);
 
-    if (settingsRow && !metaRow) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(settingsRow.data as string);
-      } catch {
-        parsed = {};
-      }
-      const hash = await sha256HexCanonicalJson(parsed);
-      const isoNow = new Date().toISOString();
-      await env.DB.prepare(
-        "INSERT OR IGNORE INTO settings_metadata (user_id, settings_revision, settings_updated_at, content_hash) VALUES (?, 1, ?, ?)",
-      )
-        .bind(userId, isoNow, hash)
-        .run();
-      metaRow = (await env.DB.prepare(
-        "SELECT settings_revision, settings_updated_at, content_hash FROM settings_metadata WHERE user_id = ?",
-      )
-        .bind(userId)
-        .first()) as typeof metaRow;
-    }
-
-    if (settingsRow && !metaRow) {
-      return new Response(
-        JSON.stringify({
-          error: "Settings metadata unavailable",
-          detail: "settings_metadata row missing after insert; check migrations",
-        }),
-        { status: 500, headers: syncInitJsonHeaders },
-      );
-    }
-
-    if (!settingsRow) {
+    if (!rowExists) {
       return new Response(
         JSON.stringify({
           status: "no_remote_settings",
@@ -110,16 +109,19 @@ export async function handleSettingsSyncInit({ env, request, jwtSecret }: Reques
       );
     }
 
-    const rServer = metaRow ? metaRow.settings_revision : 0;
-    const serverUpdatedAt = metaRow ? metaRow.settings_updated_at : null;
-    const serverInfo = { settings_revision: rServer, settings_updated_at: serverUpdatedAt };
-
-    let parsedSettings: unknown;
-    try {
-      parsedSettings = JSON.parse((settingsRow as { data: string }).data);
-    } catch {
-      parsedSettings = {};
+    const metaRow = await ensureSettingsMetadata(env, userId, hydrated);
+    if (!metaRow) {
+      return new Response(
+        JSON.stringify({
+          error: "Settings metadata unavailable",
+          detail: "settings_metadata row missing after insert; check migrations",
+        }),
+        { status: 500, headers: syncInitJsonHeaders },
+      );
     }
+
+    const rServer = metaRow.settings_revision;
+    const serverInfo = { settings_revision: rServer, settings_updated_at: metaRow.settings_updated_at };
 
     if (rClient > rServer) {
       return new Response(
@@ -143,11 +145,14 @@ export async function handleSettingsSyncInit({ env, request, jwtSecret }: Reques
       );
     }
 
+    const download = buildDesqtaDownloadSettings(hydrated, body.local.settings);
+
     return new Response(
       JSON.stringify({
         status: "server_has_newer",
         server: serverInfo,
-        settings: parsedSettings,
+        settings: download.settings,
+        settings_format: download.settings_format,
       }),
       { headers: syncInitJsonHeaders },
     );
@@ -173,64 +178,74 @@ export async function handleSettings({ env, request, jwtSecret }: RequestContext
 
   try {
     if (request.method === "GET") {
-      const result = await env.DB.prepare("SELECT data FROM settings WHERE user_id = ?").bind(userId).first();
-
-      return new Response(result ? (result as { data: string }).data : "{}", {
+      const existing = await env.DB.prepare("SELECT data FROM settings WHERE user_id = ?").bind(userId).first();
+      if (!existing) {
+        return new Response("{}", {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { hydrated } = await loadAndPersistHydratedDesqta(env.DB, userId);
+      return new Response(JSON.stringify(hydrated), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     if (request.method === "POST") {
-      const newSettings = (await request.json()) as Record<string, unknown>;
-
+      const incoming = (await request.json()) as Record<string, unknown>;
       const existing = await env.DB.prepare("SELECT data FROM settings WHERE user_id = ?").bind(userId).first();
+      const stored = parseSettingsJson(existing ? (existing as { data: string }).data : null);
+      const { hydrated } = await loadAndPersistHydratedDesqta(env.DB, userId);
 
-      const currentData = existing ? JSON.parse((existing as { data: string }).data) : {};
+      const { merged, effectivePatch, changed } = mergeDesqtaPatch(hydrated, incoming);
 
-      const mergedData = { ...currentData, ...newSettings };
-      const mergedCanonical = stableStringify(mergedData);
-      let existingCanonical: string | null = null;
-      if (existing && (existing as { data: string }).data) {
-        try {
-          existingCanonical = stableStringify(JSON.parse((existing as { data: string }).data));
-        } catch {
-          existingCanonical = null;
-        }
-      }
-      const unchanged = existing && existingCanonical !== null && mergedCanonical === existingCanonical;
-
-      if (unchanged) {
-        let meta = await env.DB.prepare("SELECT settings_revision, settings_updated_at FROM settings_metadata WHERE user_id = ?")
-          .bind(userId)
-          .first();
-        if (!meta) {
-          const iso = new Date().toISOString();
-          const hash = await sha256HexCanonicalJson(mergedData);
-          await env.DB.prepare(
-            "INSERT OR IGNORE INTO settings_metadata (user_id, settings_revision, settings_updated_at, content_hash) VALUES (?, 1, ?, ?)",
-          )
-            .bind(userId, iso, hash)
-            .run();
-          meta = await env.DB.prepare("SELECT settings_revision, settings_updated_at FROM settings_metadata WHERE user_id = ?")
-            .bind(userId)
-            .first();
-        }
+      if (!changed) {
+        const meta = await ensureSettingsMetadata(env, userId, merged);
         const responseBody = {
           ok: true,
           server: {
-            settings_revision: (meta?.settings_revision as number) ?? 1,
-            settings_updated_at: (meta?.settings_updated_at as string) ?? null,
+            settings_revision: meta?.settings_revision ?? 1,
+            settings_updated_at: meta?.settings_updated_at ?? null,
           },
-          ...mergedData,
+          patch: effectivePatch,
+          ...merged,
         };
         return new Response(JSON.stringify(responseBody), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const mergedString = JSON.stringify(mergedData);
+      const mergedCanonical = stableStringify(merged);
+      let existingCanonical: string | null = null;
+      if (existing && (existing as { data: string }).data) {
+        try {
+          existingCanonical = stableStringify(JSON.parse((existing as { data: string }).data));
+        } catch {
+          existingCanonical = stableStringify(stored);
+        }
+      } else {
+        existingCanonical = stableStringify(stored);
+      }
+      const unchanged = existing && existingCanonical !== null && mergedCanonical === existingCanonical;
+
+      if (unchanged) {
+        const meta = await ensureSettingsMetadata(env, userId, merged);
+        const responseBody = {
+          ok: true,
+          server: {
+            settings_revision: meta?.settings_revision ?? 1,
+            settings_updated_at: meta?.settings_updated_at ?? null,
+          },
+          patch: effectivePatch,
+          ...merged,
+        };
+        return new Response(JSON.stringify(responseBody), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const mergedString = JSON.stringify(merged);
       const nowIso = new Date().toISOString();
-      const contentHash = await sha256HexCanonicalJson(mergedData);
+      const contentHash = await sha256HexCanonicalJson(merged);
 
       await env.DB.batch([
         env.DB.prepare("INSERT OR REPLACE INTO settings (user_id, data) VALUES (?, ?)").bind(userId, mergedString),
@@ -254,7 +269,8 @@ export async function handleSettings({ env, request, jwtSecret }: RequestContext
           settings_revision: (meta?.settings_revision as number) ?? 1,
           settings_updated_at: (meta?.settings_updated_at as string) ?? nowIso,
         },
-        ...mergedData,
+        patch: effectivePatch,
+        ...merged,
       };
 
       return new Response(JSON.stringify(responseBody), {

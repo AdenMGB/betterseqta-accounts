@@ -9,7 +9,7 @@
             <button
               v-for="tab in tabs"
               :key="tab.name"
-              @click="activeTab = tab.name"
+              @click="setActiveTab(tab.name)"
               :class="[
                 'flex shrink-0 items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-all duration-200 lg:w-full lg:shrink',
                 activeTab === tab.name
@@ -280,6 +280,7 @@ import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import PfpStack from '~/components/PfpStack.vue'
 import PfpEditorModal from '~/components/PfpEditorModal.vue'
 import { withPfpCacheBust } from '~/utils/pfp'
+import { useTabPageUrl, SETTINGS_TAB_PAGE } from '~/composables/useTabPageUrl'
 import { UserCircleIcon, ShieldCheckIcon, CogIcon, SparklesIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 
 const auth = useAuth()
@@ -332,7 +333,7 @@ const onSettingsPfpUpdated = async (payload: { pfpUrl: string | null; pfpHash: s
   await auth.fetchUser()
 }
 
-const activeTab = ref('profile')
+const { activeTab, setActiveTab } = useTabPageUrl(SETTINGS_TAB_PAGE)
 const tabs = [
   { name: 'profile', label: 'Profile', icon: UserCircleIcon },
   { name: 'account', label: 'Account', icon: ShieldCheckIcon },
@@ -401,14 +402,6 @@ const emailError = ref('')
 const emailSuccess = ref('')
 
 onMounted(async () => {
-  // Check for hash-based navigation
-  if (window.location.hash) {
-    const hash = window.location.hash.substring(1)
-    if (tabs.some(tab => tab.name === hash)) {
-      activeTab.value = hash
-    }
-  }
-  
   if (auth.user.value) {
     displayName.value = auth.user.value.displayName || ''
     username.value = auth.user.value.username || ''
@@ -500,6 +493,11 @@ const saveBsSettings = async () => {
 
   try {
     const patch = desqtaFormRef.value.buildPayload()
+    if (Object.keys(patch).length === 0) {
+      bsSuccess.value = 'No changes to save.'
+      setTimeout(() => (bsSuccess.value = ''), 3000)
+      return
+    }
     const saved = await syncSettings(patch)
     desqtaFormRef.value.commitSave(patch)
     if (saved && typeof saved === 'object') {
@@ -523,10 +521,13 @@ const saveBsPlusSettings = async () => {
 
   try {
     const payload = bsPlusFormRef.value.buildPayload()
+    if (Object.keys(payload).length === 0) {
+      bsPlusSuccess.value = 'No changes to save.'
+      setTimeout(() => (bsPlusSuccess.value = ''), 3000)
+      return
+    }
     await putBsPlusSync(payload)
-    const refreshed = await getBsPlusSync()
-    bsPlusData.value = refreshed.data
-    bsPlusFormRef.value.loadFromApi(refreshed.data)
+    bsPlusFormRef.value.commitSave(payload)
     bsPlusSuccess.value = 'BetterSEQTA+ cloud settings saved!'
     setTimeout(() => (bsPlusSuccess.value = ''), 3000)
   } catch (e) {

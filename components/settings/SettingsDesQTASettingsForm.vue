@@ -40,7 +40,7 @@ const {  draft,
   buildPayload,
   commitSave,
   discardChanges,
-} = useSparseSettingsForm(desqtaSchema, 'full')
+} = useSparseSettingsForm(desqtaSchema, 'sparse')
 
 watch(
   () => props.initialData,

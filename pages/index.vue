@@ -38,7 +38,7 @@
           </div>
         </div>
         <NuxtLink
-          to="/settings#profile"
+          :to="settingsTabUrl('profile')"
           class="inline-flex shrink-0 items-center justify-center rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 transition-colors hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-700/50"
         >
           Edit profile
@@ -89,6 +89,7 @@ import {
   ChevronRightIcon,
 } from '@heroicons/vue/24/outline'
 import type { CloudSummaryResponse } from '~/composables/useSettings'
+import { settingsTabUrl } from '~/composables/useTabPageUrl'
 
 const { getCloudSummary } = useSettings()
 const auth = useAuth()
@@ -160,20 +161,20 @@ type DashboardLink = {
 
 const dashboardLinks = computed((): DashboardLink[] => [
   {
-    to: '/settings#profile',
+    to: settingsTabUrl('profile'),
     title: 'Account settings',
     subtitle: 'Profile picture, display name, and username',
     icon: UserCircleIcon,
   },
   {
-    to: '/settings#bsplus-settings',
+    to: settingsTabUrl('bqsettings'),
     title: 'BetterSEQTA+ settings',
     subtitle: bsPlusSubtitle.value,
     icon: SparklesIcon,
     sync: true,
   },
   {
-    to: '/settings#bs-settings',
+    to: settingsTabUrl('dqsettings'),
     title: 'DesQTA settings',
     subtitle: desqtaSubtitle.value,
     icon: CogIcon,

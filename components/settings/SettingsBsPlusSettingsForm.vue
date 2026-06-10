@@ -41,7 +41,7 @@ const {
   buildPayload,
   commitSave,
   discardChanges,
-} = useSparseSettingsForm(bsplusSchema, 'full')
+} = useSparseSettingsForm(bsplusSchema, 'sparse')
 
 watch(
   () => props.initialData,

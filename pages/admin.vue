@@ -22,7 +22,7 @@
         <button
             v-for="tab in adminTabs"
             :key="tab.id"
-            @click="activeTab = tab.id"
+            @click="setActiveTab(tab.id)"
             :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === tab.id ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
         >
             {{ tab.label }}
@@ -638,6 +638,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
+import { useTabPageUrl, ADMIN_TAB_PAGE } from '~/composables/useTabPageUrl'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
 import { ShieldExclamationIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/vue/24/outline'
@@ -655,7 +656,7 @@ const CHAIN_CAP = 1
 
 const auth = useAuth()
 const { showToast } = useToast()
-const activeTab = ref<string>('users')
+const { activeTab, setActiveTab } = useTabPageUrl(ADMIN_TAB_PAGE)
 
 const adminTabs = [
   { id: 'users', label: 'Users', description: 'Search, edit, and manage user accounts and profile pictures.' },
@@ -1630,12 +1631,6 @@ const migratePfps = () => {
 }
 
 onMounted(async () => {
-    if (import.meta.client) {
-        const hash = window.location.hash.slice(1)
-        if (adminTabs.some(t => t.id === hash)) {
-            activeTab.value = hash
-        }
-    }
     if (auth.user.value && (auth.user.value?.admin_level || 0) > 0) {
         loadClients()
         loadDesqtaClientsCount()

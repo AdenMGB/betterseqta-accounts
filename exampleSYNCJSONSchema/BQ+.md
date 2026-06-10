@@ -132,6 +132,8 @@ Rules:
 
 ## Wire format (HTTP body)
 
+> **Patch semantics (current):** `data` in PUT is a **sparse patch** — only changed keys. The server shallow-merges into the stored document (replacing each key present in the patch). Keys omitted from the patch are **not** deleted. See [settings-sync-patching-clients.md](../docs/settings-sync-patching-clients.md).
+
 ### `PUT /api/bsplus/settings/sync` request
 
 ```http
@@ -140,6 +142,21 @@ Host: accounts.betterseqta.org
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
+
+**Sparse patch example (theme change only):**
+
+```json
+{
+  "schemaVersion": 1,
+  "themeId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "data": {
+    "DarkMode": true,
+    "selectedTheme": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  }
+}
+```
+
+**Full snapshot (legacy, still accepted — idempotent merge):**
 
 ```json
 {
@@ -165,21 +182,33 @@ Content-Type: application/json
 | Top-level field | JSON type | Rules |
 |-----------------|-----------|-------|
 | `schemaVersion` | `number` | Always `1` today (`CLOUD_SETTINGS_SYNC_SCHEMA_VERSION`) |
-| `themeId` | `string` | `normalizeThemeIdForSync(selectedTheme)` — trimmed; `""` if unset/invalid |
-| `data` | `object` | Flat map: storage key → value. Same types as `chrome.storage.local`. No nesting convention beyond whatever each key stores. |
+| `themeId` | `string` | `normalizeThemeIdForSync(selectedTheme)` — trimmed; `""` if unset/invalid. When non-empty and different from stored `selectedTheme`, applied as part of the merge. |
+| `data` | `object` | **Sparse patch** of storage key → value. Only include keys that changed since the last successful upload. Same types as `chrome.storage.local`. |
+
+**Response (200):**
+
+```json
+{
+  "updated_at": "2026-04-07T12:00:00.000Z",
+  "patch": { "DarkMode": true }
+}
+```
+
+`patch` lists keys actually applied. `updated_at` is unchanged when the patch is a no-op.
 
 ### `GET /api/bsplus/settings/sync` response
 
-Same shape as the PUT body, plus optional:
+Returns the **full hydrated** stored document (known schema defaults backfilled for missing keys). Same shape as a legacy full PUT body, plus optional metadata:
 
 ```json
 {
   "schemaVersion": 1,
-  "themeId": "…",
   "data": { },
   "updated_at": "2026-04-07T12:00:00.000Z"
 }
 ```
+
+Note: GET response uses `data` only (no top-level `themeId` envelope); `selectedTheme` is inside `data` when set.
 
 - `updated_at`: ISO 8601 UTC string; written to `bsplus_cloud_settings_known_remote_updated_at` locally (never re-uploaded).
 
