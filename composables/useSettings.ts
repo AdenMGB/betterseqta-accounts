@@ -1,6 +1,13 @@
 /** Matches extension `CLOUD_SETTINGS_SYNC_SCHEMA_VERSION` / server contract */
 export const CLOUD_SETTINGS_SYNC_SCHEMA_VERSION = 1
 
+/** Trim theme id for BS+ sync envelope; empty string when unset or invalid. */
+export function normalizeThemeIdForSync(selectedTheme: unknown): string {
+  if (typeof selectedTheme !== 'string') return ''
+  const trimmed = selectedTheme.trim()
+  return trimmed
+}
+
 export type CloudSummaryResponse = {
   desqta: { updated_at: string | null; revision: number } | null
   bsplus: { updated_at: string; schemaVersion: number } | null
@@ -115,6 +122,7 @@ export const useSettings = () => {
       },
       body: JSON.stringify({
         schemaVersion: CLOUD_SETTINGS_SYNC_SCHEMA_VERSION,
+        themeId: normalizeThemeIdForSync(flatData.selectedTheme),
         data: flatData,
       }),
     })

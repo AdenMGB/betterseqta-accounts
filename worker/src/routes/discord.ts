@@ -4,6 +4,7 @@ import { createAccessToken, getUser } from "../lib/auth";
 import { cleanEnvVar } from "../lib/env-util";
 import { validateDesqtaClient, touchDesqtaReservedClient } from "../lib/desqta-client";
 import { createSession } from "../lib/session";
+import { ensureUserDesqtaSettings } from "../lib/settings-bootstrap";
 import { REFRESH_COOKIE_NAME } from "../constants";
 import { createCookie as buildCookie } from "../lib/cookies";
 import type { RequestContext } from "../types/context";
@@ -150,6 +151,7 @@ export async function handleDiscordOAuthCallback({ env, request, url, jwtSecret 
       )
         .bind(userId, normalizedEmail, hashedPassword, username, displayName, pfpUrl, 0)
         .run();
+      await ensureUserDesqtaSettings(env.DB, userId);
 
       user = (await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first()) as Record<string, unknown>;
     } else {
@@ -384,6 +386,7 @@ export async function handleDesqtaDiscordCallback({ env, request, url, jwtSecret
       )
         .bind(userId, normalizedEmail, hashedPassword, username, displayName, pfpUrl, 0)
         .run();
+      await ensureUserDesqtaSettings(env.DB, userId);
 
       user = (await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first()) as Record<string, unknown>;
     } else {

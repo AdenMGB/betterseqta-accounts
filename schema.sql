@@ -27,6 +27,13 @@ CREATE TABLE IF NOT EXISTS settings_metadata (
 );
 CREATE INDEX IF NOT EXISTS idx_settings_metadata_user_id ON settings_metadata(user_id);
 
+-- Worker system metadata (settings bootstrap version tracking, etc.)
+CREATE TABLE IF NOT EXISTS system_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Desqta Reserved Clients (dynamic client_id reservation, no admin pre-registration)
 -- expires_at: 7-day TTL, refreshed on use (config, login, refresh, Discord OAuth)
 CREATE TABLE IF NOT EXISTS desqta_reserved_clients (

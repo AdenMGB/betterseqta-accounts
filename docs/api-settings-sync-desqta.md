@@ -59,6 +59,7 @@
 | `local.settings_revision` | Recommended | Last **server** revision the client applied; omit or non-number → treated as **0** (unknown) |
 | `local.settings_updated_at` | Optional | ISO 8601 UTC; informational / logging — **not** used as sole source of truth for equality |
 | `local.device_timezone` | Optional | IANA timezone; informational only |
+| `local.settings` | Optional | Local cloud-sync settings snapshot used to compute a **sparse download patch**. When provided and server is newer, `settings` in the response contains only keys that differ from this baseline. When omitted, legacy clients receive the **full** hydrated document. |
 
 ### Response envelope (always JSON, **200** for success paths below)
 
@@ -69,14 +70,17 @@
     "settings_revision": 42,
     "settings_updated_at": "2025-03-20T08:15:30.123Z"
   },
-  "settings": null
+  "settings": null,
+  "settings_format": "patch" | "full"
 }
 ```
+
+`settings_format` is present when `settings` is non-null. **`patch`** = apply via shallow merge of returned keys only. **`full`** = legacy full document (when `local.settings` was omitted).
 
 | `status` | Meaning | `settings` |
 |----------|---------|------------|
 | `no_remote_settings` | No saved cloud settings for this user | `null` (empty). `server.settings_revision` is **0**; `server.settings_updated_at` is **null** |
-| `server_has_newer` | Server revision is newer than the client’s known revision, or client revision unknown (**0**) but cloud data exists | **Full settings object** — same shape as `GET /api/settings` |
+| `server_has_newer` | Server revision is newer than the client’s known revision, or client revision unknown (**0**) but cloud data exists | **Sparse patch** when `local.settings` provided (`settings_format: "patch"`); otherwise **full hydrated** document (`settings_format: "full"`) |
 | `up_to_date` | Client revision **equals** server revision | `null` — **no** full blob |
 | `client_ahead` | Client revision **greater than** server (offline edits, restore, etc.). Server does not push a full blob | `null` — client should **upload** via `POST /api/settings` (existing merge behavior) |
 
@@ -141,7 +145,9 @@ Cache-Control: no-store
 
 ## 2. `POST /api/settings` (updated response)
 
-**Purpose:** Unchanged merge semantics — body is partial settings; server merges into existing JSON and stores.
+**Purpose:** Accept a **sparse top-level patch**; server shallow-merges into the stored JSON (replacing only keys present in the body). The stored document is hydrated with schema defaults (missing keys filled server-side without overwriting existing values).
+
+**Request body:** Partial settings object — only changed keys required. Full snapshots remain accepted (idempotent merge).
 
 **Response:** JSON object:
 
@@ -151,11 +157,12 @@ Cache-Control: no-store
   "server": {
     "settings_revision": 43,
     "settings_updated_at": "2025-03-20T09:00:00.000Z"
-  }
+  },
+  "patch": { "theme": "dark" }
 }
 ```
 
-**Plus** all merged setting keys are present at the **top level** (same names as before the sync-metadata change), so existing consumers that only read `theme`, `accent_color`, etc. keep working.
+**Plus** all merged setting keys are present at the **top level** (same names as before the sync-metadata change), so existing consumers that only read `theme`, `accent_color`, etc. keep working. The optional **`patch`** field lists keys actually applied in this request.
 
 **Rules:**
 
@@ -193,9 +200,11 @@ if (data.ok && data.server) {
 
 ---
 
-## 3. `GET /api/settings` (unchanged)
+## 3. `GET /api/settings`
 
-Still returns the raw stored JSON document (passwords / secrets are not in this document by design of your app). DesQTA should prefer **`sync-init`** for startup after this API is adopted; `GET` remains useful for debugging and legacy tools.
+Returns the stored JSON document hydrated with schema defaults (missing keys backfilled on read). Returns `{}` when no row exists for the user. DesQTA should prefer **`sync-init`** for startup after this API is adopted; `GET` remains useful for debugging and legacy tools.
+
+**See also:** [Settings sync patching — client requirements](./settings-sync-patching-clients.md)
 
 ---
 

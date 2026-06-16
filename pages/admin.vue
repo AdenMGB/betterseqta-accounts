@@ -1,6 +1,6 @@
 <template>
-  <div class="w-full min-w-0 space-y-6 sm:space-y-8">
-    <div class="animate-slide-down">
+  <div class="admin-page w-full min-w-0 flex flex-col gap-4 sm:gap-6 min-h-0">
+    <div class="animate-slide-down shrink-0">
       <h1 class="text-2xl sm:text-3xl font-bold text-zinc-900 dark:text-white font-display mb-2">Admin Dashboard</h1>
       <p class="text-zinc-600 dark:text-zinc-400">Manage users and OAuth clients</p>
     </div>
@@ -14,23 +14,24 @@
         <NuxtLink to="/" class="inline-block mt-6 px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors">Return Home</NuxtLink>
     </div>
 
-    <div v-else class="w-full min-w-0 backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 animate-fade-in overflow-hidden">
+    <div v-else class="admin-panel w-full min-w-0 flex flex-col min-h-0 backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 animate-fade-in overflow-hidden">
       
       <!-- Tabs -->
-      <div class="admin-table-scroll -mx-4 px-4 sm:mx-0 sm:px-0 mb-2">
+      <div class="admin-table-scroll -mx-4 px-4 sm:mx-0 sm:px-0 mb-2 shrink-0">
         <div class="flex gap-4 sm:gap-6 border-b border-zinc-200 dark:border-zinc-700 min-w-max sm:min-w-0">
         <button
             v-for="tab in adminTabs"
             :key="tab.id"
-            @click="activeTab = tab.id"
+            @click="setActiveTab(tab.id)"
             :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === tab.id ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
         >
             {{ tab.label }}
         </button>
         </div>
       </div>
-      <p v-if="activeTabDescription" class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">{{ activeTabDescription }}</p>
+      <p v-if="activeTabDescription" class="text-sm text-zinc-500 dark:text-zinc-400 mb-4 shrink-0">{{ activeTabDescription }}</p>
 
+      <div class="admin-panel-body min-h-0 flex-1 flex flex-col overflow-hidden">
       <!-- Users Tab -->
       <div v-if="activeTab === 'users'" class="admin-tab-panel flex flex-col gap-4 sm:gap-6 min-w-0 min-h-0">
         <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center shrink-0">
@@ -195,7 +196,7 @@
       </div>
 
       <!-- OAuth Clients Tab -->
-      <div v-if="activeTab === 'clients'" class="space-y-8">
+      <div v-if="activeTab === 'clients'" class="admin-scroll-tab space-y-8">
         <!-- DesQTA Clients -->
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700">
           <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">DesQTA Clients</h3>
@@ -277,7 +278,7 @@
       </div>
 
       <!-- API Keys Tab -->
-      <div v-if="activeTab === 'apikeys'" class="space-y-8">
+      <div v-if="activeTab === 'apikeys'" class="admin-scroll-tab space-y-8">
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-4">
           <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">API Key Endpoints</h3>
           <p class="text-zinc-600 dark:text-zinc-400 text-sm">
@@ -457,7 +458,7 @@
       </div>
 
       <!-- PFP Migration Tab -->
-      <div v-if="isTab('pfp-migration')" class="space-y-6">
+      <div v-if="isTab('pfp-migration')" class="admin-scroll-tab space-y-6">
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
           <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Migrate Profile Pictures to Cloudflare R2</h3>
           <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
@@ -589,6 +590,7 @@
           </div>
         </div>
       </div>
+      </div>
     </div>
   </div>
 
@@ -636,6 +638,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
+import { useTabPageUrl, ADMIN_TAB_PAGE } from '~/composables/useTabPageUrl'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
 import { ShieldExclamationIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/vue/24/outline'
@@ -653,7 +656,7 @@ const CHAIN_CAP = 1
 
 const auth = useAuth()
 const { showToast } = useToast()
-const activeTab = ref<string>('users')
+const { activeTab, setActiveTab } = useTabPageUrl(ADMIN_TAB_PAGE)
 
 const adminTabs = [
   { id: 'users', label: 'Users', description: 'Search, edit, and manage user accounts and profile pictures.' },
@@ -1628,12 +1631,6 @@ const migratePfps = () => {
 }
 
 onMounted(async () => {
-    if (import.meta.client) {
-        const hash = window.location.hash.slice(1)
-        if (adminTabs.some(t => t.id === hash)) {
-            activeTab.value = hash
-        }
-    }
     if (auth.user.value && (auth.user.value?.admin_level || 0) > 0) {
         loadClients()
         loadDesqtaClientsCount()

@@ -354,17 +354,30 @@ body {
   scrollbar-gutter: stable;
 }
 
-/* Admin tabs (Users, Activity Log): fill viewport below page chrome */
-.admin-tab-panel {
-  height: calc(100dvh - 13.5rem);
-  min-height: 22rem;
+/* Admin panel: cap height to viewport; tab bodies scroll inside */
+.admin-panel {
+  max-height: calc(100dvh - 14rem);
 }
 
 @media (max-width: 767px) {
-  .admin-tab-panel {
-    height: calc(100dvh - 15.5rem);
-    min-height: 18rem;
+  .admin-panel {
+    max-height: calc(100dvh - 17.5rem);
   }
+}
+
+/* Users / Activity Log tabs: fill remaining panel space, table scrolls internally */
+.admin-tab-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.admin-scroll-tab {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .admin-table-viewport-scroll {

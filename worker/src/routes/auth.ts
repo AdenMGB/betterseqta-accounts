@@ -20,6 +20,7 @@ import {
   revokeSessionById,
 } from "../lib/session";
 import { findUserByCredentialsLogin, findUserProfileByLogin } from "../lib/user-by-login";
+import { ensureUserDesqtaSettings } from "../lib/settings-bootstrap";
 import { mapUserPublic, publicUserFromCredentials, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
 
@@ -72,6 +73,7 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
       )
         .bind(id, normalizedEmail, hashedPassword, trimmedUsername, displayName || trimmedUsername, 0)
         .run();
+      await ensureUserDesqtaSettings(env.DB, id);
     } catch {
       return new Response(JSON.stringify({ error: "This email or username is already in use" }), {
         status: 409,
