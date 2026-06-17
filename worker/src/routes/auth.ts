@@ -13,11 +13,13 @@ import {
 } from "../lib/auth";
 import { parseCookies, createCookie, clearCookie } from "../lib/cookies";
 import { sendPasswordResetEmail } from "../lib/email";
+import { checkRateLimit } from "../lib/rate-limit";
 import {
   createSession,
   getSessionByRefreshToken,
   touchUserSession,
   revokeSessionById,
+  revokeAllUserSessions,
 } from "../lib/session";
 import { findUserByCredentialsLogin, findUserProfileByLogin } from "../lib/user-by-login";
 import { ensureUserDesqtaSettings } from "../lib/settings-bootstrap";
@@ -26,6 +28,9 @@ import type { RequestContext } from "../types/context";
 
 export async function handleRegister({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   try {
+    const rateLimited = await checkRateLimit(env, request, "auth-register", { limit: 10, windowSec: 900 });
+    if (rateLimited) return rateLimited;
+
     const { email, password, username, displayName } = (await request.json()) as {
       email?: string;
       password?: string;
@@ -111,6 +116,9 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
 
 export async function handleLogin({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   try {
+    const rateLimited = await checkRateLimit(env, request, "auth-login", { limit: 10, windowSec: 900 });
+    if (rateLimited) return rateLimited;
+
     const { login, password } = (await request.json()) as { login?: string; password?: string };
     const user = (await findUserByCredentialsLogin(env.DB, login!)) as Record<string, string> | null;
 
@@ -295,9 +303,14 @@ export async function handleChangePassword({ env, request, jwtSecret }: RequestC
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     await env.DB.prepare("UPDATE users SET password = ? WHERE id = ?").bind(hashedPassword, userPayload.id).run();
+    await revokeAllUserSessions(env, userPayload.id);
 
     return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+        "Set-Cookie": clearCookie(REFRESH_COOKIE_NAME),
+      },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -375,6 +388,9 @@ export async function handleChangeEmail({ env, request, jwtSecret }: RequestCont
 
 export async function handleForgotPassword({ env, request }: RequestContext): Promise<Response> {
   try {
+    const rateLimited = await checkRateLimit(env, request, "auth-forgot-password", { limit: 10, windowSec: 900 });
+    if (rateLimited) return rateLimited;
+
     const { login } = (await request.json()) as { login?: string };
     if (!login) {
       return new Response(JSON.stringify({ error: "Missing email or username" }), {
@@ -558,11 +574,16 @@ export async function handleResetPassword({ env, request }: RequestContext): Pro
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     await env.DB.prepare("UPDATE users SET password = ? WHERE id = ?").bind(hashedPassword, userId).run();
+    await revokeAllUserSessions(env, userId!);
 
     await env.DB.prepare("UPDATE password_reset_tokens SET used = 1 WHERE token = ?").bind(validToken.token).run();
 
     return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+        "Set-Cookie": clearCookie(REFRESH_COOKIE_NAME),
+      },
     });
   } catch (err) {
     console.error("Reset password error:", err);

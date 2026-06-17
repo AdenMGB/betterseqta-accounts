@@ -92,7 +92,10 @@ export async function handleOAuthApprove({ env, request, jwtSecret }: RequestCon
         });
       }
 
-      const accessToken = await createAccessToken(fullUser as { id: string; email?: string | null; username?: string | null }, jwtSecret);
+      const accessToken = await createAccessToken(
+        fullUser as { id: string; email?: string | null; username?: string | null },
+        jwtSecret,
+      );
       const platform = redirect_uri!.startsWith("desqta://") ? "desqta" : "bsplus";
       const session = await createSession(env, {
         userId: (fullUser as { id: string }).id,

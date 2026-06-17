@@ -124,3 +124,12 @@ export async function revokeSessionById(env: Env, sessionId: string): Promise<vo
     .bind(now, now, sessionId)
     .run();
 }
+
+export async function revokeAllUserSessions(env: Env, userId: string): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(
+    "UPDATE user_sessions SET revoked_at = ?, expires_at = MIN(expires_at, ?) WHERE user_id = ? AND revoked_at IS NULL",
+  )
+    .bind(now, now, userId)
+    .run();
+}

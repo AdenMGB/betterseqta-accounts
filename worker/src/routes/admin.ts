@@ -602,15 +602,25 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
     });
   }
 
-  const targetUser = (await env.DB.prepare("SELECT id, email, username, displayName FROM users WHERE id = ?").bind(userId).first()) as {
+  const targetUser = (await env.DB.prepare("SELECT id, email, username, displayName, admin_level FROM users WHERE id = ?").bind(userId).first()) as {
     id: string;
     email: string;
     username: string;
     displayName?: string | null;
+    admin_level: number;
   } | null;
   if (!targetUser) {
     return new Response(JSON.stringify({ error: "User not found" }), {
       status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const targetLevel = (targetUser.admin_level as number) || 0;
+  const adminLevelNum = admin.adminLevel || 0;
+  if (targetLevel >= adminLevelNum) {
+    return new Response(JSON.stringify({ error: "Cannot modify users at your level or higher" }), {
+      status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

@@ -1,6 +1,8 @@
 import { corsHeaders, WEBSITE_ACCESS_EXPIRES_IN, DESQTA_CLIENT_TTL_DAYS, APP_REFRESH_EXPIRY_DAYS } from "../constants";
 import { authJson, authError, createAccessToken } from "../lib/auth";
 import { getDesqtaClient, validateDesqtaClient, touchDesqtaReservedClient } from "../lib/desqta-client";
+import { isValidDesqtaRedirectUri, desqtaRedirectUriError } from "../lib/redirect-uri";
+import { checkRateLimit } from "../lib/rate-limit";
 import bcrypt from "bcryptjs";
 import { createSession, getSessionByRefreshToken, touchUserSession, revokeSessionById } from "../lib/session";
 import { findUserByCredentialsLogin } from "../lib/user-by-login";
@@ -9,6 +11,9 @@ import type { RequestContext } from "../types/context";
 
 export async function handleDesqtaReserve({ env, request }: RequestContext): Promise<Response> {
   try {
+    const rateLimited = await checkRateLimit(env, request, "desqta-reserve", { limit: 5, windowSec: 3600 });
+    if (rateLimited) return rateLimited;
+
     const body = (await request.json().catch(() => ({}))) as { redirect_uri?: string };
     const redirectUri = body?.redirect_uri || "desqta://auth/callback";
     if (typeof redirectUri !== "string" || !redirectUri.trim()) {
@@ -17,18 +22,25 @@ export async function handleDesqtaReserve({ env, request }: RequestContext): Pro
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    const trimmedUri = redirectUri.trim();
+    if (!isValidDesqtaRedirectUri(trimmedUri)) {
+      return new Response(JSON.stringify({ error: desqtaRedirectUriError() }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const clientId = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);
     const expiresAt = now + DESQTA_CLIENT_TTL_DAYS * 24 * 60 * 60;
     await env.DB.prepare("INSERT INTO desqta_reserved_clients (id, redirect_uri, expires_at) VALUES (?, ?, ?)")
-      .bind(clientId, redirectUri.trim(), expiresAt)
+      .bind(clientId, trimmedUri, expiresAt)
       .run();
 
     const baseUrl = env.APP_URL || "https://accounts.betterseqta.org";
     return new Response(
       JSON.stringify({
         client_id: clientId,
-        redirect_uri: redirectUri.trim(),
+        redirect_uri: trimmedUri,
         api_url: baseUrl,
         config_url: `${baseUrl}/api/desqta/config`,
         refresh_url: `${baseUrl}/api/desqta/refresh`,

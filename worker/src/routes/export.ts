@@ -1,9 +1,17 @@
 import { corsHeaders } from "../constants";
 import { verifyApiKey, apiKeyUnauthorized, apiKeyDbError } from "../lib/auth";
+import { checkRateLimit } from "../lib/rate-limit";
 import type { RequestContext } from "../types/context";
+
+async function exportRateLimit(env: RequestContext["env"], request: Request): Promise<Response | null> {
+  return checkRateLimit(env, request, "export", { limit: 30, windowSec: 3600 });
+}
 
 export async function handleExportUsersCount({ env, request }: RequestContext): Promise<Response> {
   try {
+    const rateLimited = await exportRateLimit(env, request);
+    if (rateLimited) return rateLimited;
+
     const apiKey = await verifyApiKey(env, request);
     if (!apiKey) return apiKeyUnauthorized();
     const totalResult = await env.DB.prepare("SELECT COUNT(*) as total FROM users").first();
@@ -17,6 +25,9 @@ export async function handleExportUsersCount({ env, request }: RequestContext): 
 
 export async function handleExportReservedClients({ env, request }: RequestContext): Promise<Response> {
   try {
+    const rateLimited = await exportRateLimit(env, request);
+    if (rateLimited) return rateLimited;
+
     const apiKey = await verifyApiKey(env, request);
     if (!apiKey) return apiKeyUnauthorized();
     const result = await env.DB.prepare("SELECT COUNT(*) as count FROM desqta_reserved_clients").first();
@@ -30,6 +41,9 @@ export async function handleExportReservedClients({ env, request }: RequestConte
 
 export async function handleExportUsersFull({ env, request }: RequestContext): Promise<Response> {
   try {
+    const rateLimited = await exportRateLimit(env, request);
+    if (rateLimited) return rateLimited;
+
     const apiKey = await verifyApiKey(env, request);
     if (!apiKey) return apiKeyUnauthorized();
     let rows: Record<string, unknown>[];
@@ -56,6 +70,9 @@ export async function handleExportUsersFull({ env, request }: RequestContext): P
 
 export async function handleExportUsersContact({ env, request, url }: RequestContext): Promise<Response> {
   try {
+    const rateLimited = await exportRateLimit(env, request);
+    if (rateLimited) return rateLimited;
+
     const apiKey = await verifyApiKey(env, request);
     if (!apiKey) return apiKeyUnauthorized();
 
