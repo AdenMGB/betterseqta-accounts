@@ -57,3 +57,8 @@ export function desqtaRedirectUriError(): string {
 export function bsplusRedirectUriError(): string {
   return "redirect_uri must be bsplus://, https://accounts.betterseqta.org/auth/bsplus/callback, or chrome-extension://<id>/auth/callback";
 }
+
+/** Reserved clients with known app redirect URIs do not expire. */
+export function isPersistentReservedRedirectUri(uri: string, appUrl?: string): boolean {
+  return isValidDesqtaRedirectUri(uri) || isValidBsplusRedirectUri(uri, appUrl);
+}

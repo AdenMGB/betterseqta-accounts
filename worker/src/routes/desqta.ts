@@ -1,6 +1,6 @@
-import { corsHeaders, WEBSITE_ACCESS_EXPIRES_IN, DESQTA_CLIENT_TTL_DAYS, APP_REFRESH_EXPIRY_DAYS } from "../constants";
+import { corsHeaders, WEBSITE_ACCESS_EXPIRES_IN, APP_REFRESH_EXPIRY_DAYS } from "../constants";
 import { authJson, authError, createAccessToken } from "../lib/auth";
-import { getDesqtaClient, validateDesqtaClient, touchDesqtaReservedClient } from "../lib/desqta-client";
+import { expiresAtForReservedClient, getDesqtaClient, validateDesqtaClient, touchDesqtaReservedClient } from "../lib/desqta-client";
 import { isValidDesqtaRedirectUri, desqtaRedirectUriError } from "../lib/redirect-uri";
 import { checkRateLimit } from "../lib/rate-limit";
 import bcrypt from "bcryptjs";
@@ -30,8 +30,7 @@ export async function handleDesqtaReserve({ env, request }: RequestContext): Pro
       });
     }
     const clientId = crypto.randomUUID();
-    const now = Math.floor(Date.now() / 1000);
-    const expiresAt = now + DESQTA_CLIENT_TTL_DAYS * 24 * 60 * 60;
+    const expiresAt = expiresAtForReservedClient(trimmedUri, env.APP_URL);
     await env.DB.prepare("INSERT INTO desqta_reserved_clients (id, redirect_uri, expires_at) VALUES (?, ?, ?)")
       .bind(clientId, trimmedUri, expiresAt)
       .run();
