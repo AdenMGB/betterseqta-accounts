@@ -1,7 +1,7 @@
 import { SignJWT } from "jose";
 import { corsHeaders, APP_REFRESH_EXPIRY_DAYS } from "../constants";
 import { getUser, createAccessToken } from "../lib/auth";
-import { touchDesqtaReservedClient } from "../lib/desqta-client";
+import { getDesqtaClient, isReservedClientExpired, touchDesqtaReservedClient } from "../lib/desqta-client";
 import { createSession } from "../lib/session";
 import { mapUserPublic, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
@@ -17,16 +17,9 @@ export async function handleOAuthClient({ env, url }: RequestContext): Promise<R
     });
   }
 
-  const reserved = await env.DB.prepare("SELECT id, redirect_uri, expires_at FROM desqta_reserved_clients WHERE id = ?")
-    .bind(clientId)
-    .first();
-  if (reserved) {
-    const now = Math.floor(Date.now() / 1000);
-    const expAt = reserved.expires_at as number | null;
-    if (expAt != null && expAt < now) {
-      return new Response("Invalid Client", { status: 404, headers: corsHeaders });
-    }
-    return new Response(JSON.stringify({ name: "BetterSEQTA+", redirect_uri: reserved.redirect_uri }), {
+  const reservedClient = await getDesqtaClient(env, clientId);
+  if (reservedClient.valid && reservedClient.isReserved) {
+    return new Response(JSON.stringify({ name: "BetterSEQTA+", redirect_uri: reservedClient.redirect_uri }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -72,9 +65,7 @@ export async function handleOAuthApprove({ env, request, jwtSecret }: RequestCon
       .bind(client_id, redirect_uri)
       .first();
     if (reserved) {
-      const now = Math.floor(Date.now() / 1000);
-      const expAtR = reserved.expires_at as number | null;
-      if (expAtR != null && expAtR < now) {
+      if (isReservedClientExpired(redirect_uri!, reserved.expires_at as number | null, env.APP_URL)) {
         return new Response(JSON.stringify({ error: "Client expired" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -92,7 +83,10 @@ export async function handleOAuthApprove({ env, request, jwtSecret }: RequestCon
         });
       }
 
-      const accessToken = await createAccessToken(fullUser as { id: string; email?: string | null; username?: string | null }, jwtSecret);
+      const accessToken = await createAccessToken(
+        fullUser as { id: string; email?: string | null; username?: string | null },
+        jwtSecret,
+      );
       const platform = redirect_uri!.startsWith("desqta://") ? "desqta" : "bsplus";
       const session = await createSession(env, {
         userId: (fullUser as { id: string }).id,

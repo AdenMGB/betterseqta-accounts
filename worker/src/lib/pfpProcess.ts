@@ -1,3 +1,4 @@
+import { ensureJsquashReady } from "./jsquashInit";
 import { sha256HexBytes } from "./sha256";
 
 const MAX_SIDE = 256;
@@ -86,6 +87,7 @@ export async function processPfpUpload(
   raw: ArrayBuffer,
   options?: { preCropped?: boolean },
 ): Promise<ProcessedPfp> {
+  await ensureJsquashReady();
   let image = await decodeImage(raw);
 
   const skipSquare =

@@ -1,4 +1,5 @@
 import type { Env } from "../types/env";
+import { escapeHtml } from "./html-escape";
 
 export async function sendPasswordResetEmail(
   email: string,
@@ -6,8 +7,9 @@ export async function sendPasswordResetEmail(
   env: Env,
   displayName: string | null = null,
 ): Promise<unknown> {
-  const resetUrl = `${env.APP_URL || "https://accounts.betterseqta.org"}/reset-password?token=${token}`;
-  const greeting = displayName ? `Hello ${displayName},` : "Hello,";
+  const resetUrl = `${env.APP_URL || "https://accounts.betterseqta.org"}/reset-password?token=${encodeURIComponent(token)}`;
+  const safeDisplayName = displayName ? escapeHtml(displayName) : null;
+  const greeting = safeDisplayName ? `Hello ${safeDisplayName},` : "Hello,";
 
   const emailHtml = `
 <!DOCTYPE html>
