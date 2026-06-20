@@ -15,16 +15,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useMouse, usePreferredReducedMotion, useDark } from '@vueuse/core'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { usePreferredReducedMotion, useDark } from '@vueuse/core'
 
 const TILE = 20
 const CURSOR_RADIUS_TILES = 1.35
 const CURSOR_MAX_FLIP = 0.38
-const TRAIL_DECAY = 0.89
+const TRAIL_DECAY = 0.905
 const TRAIL_STEP_PX = 4
-const TRAIL_STRENGTH = 0.72
-const POINTER_EASE = 0.2
+const TRAIL_STRENGTH = 0.78
+const TRAIL_GHOST_STRENGTH = 0.52
+/** Smoothed cursor — lags behind the real pointer. */
+const POINTER_EASE = 0.13
+/** Second, slower layer — the trailing “echo”. */
+const GHOST_EASE = 0.065
+const LAG_GLOW_STRENGTH = 0.62
+const GHOST_GLOW_STRENGTH = 0.38
+/** Lateral orbit of the ghost trail around the main path (px at full strength). */
+const GHOST_WOBBLE_AMPLITUDE = 70
+/** Main-trail speed (px/frame) at which wobble reaches full amplitude. */
+const GHOST_WOBBLE_SPEED_FULL = 0.2
+const GHOST_WOBBLE_PHASE_RATE = 0.0013
+const GHOST_WOBBLE_PHASE_PER_PX = 0.005
+const GHOST_WOBBLE_STRENGTH_EASE = 0.18
 const MAX_FLIP = 0.22
 const CLICK_RIPPLE_DURATION = 280
 const CLICK_RIPPLE_MAX_RADIUS = 10
@@ -48,17 +61,26 @@ const x = ref(0)
 const y = ref(0)
 const trailX = ref(0)
 const trailY = ref(0)
+const ghostX = ref(0)
+const ghostY = ref(0)
+const trailGhostX = ref(0)
+const trailGhostY = ref(0)
 const mouseOnScreen = ref(false)
+/** False until we have a real client position — avoids animating from (0, 0). */
+const pointerInitialized = ref(false)
 
 const tileFlips = new Map<string, number>()
 
-const { x: mouseX, y: mouseY } = useMouse({ type: 'client' })
 const reducedMotion = usePreferredReducedMotion()
 const isDark = useDark()
 const enabled = computed(() => reducedMotion.value !== 'reduce')
 
 let frame = 0
 let resizeObserver: ResizeObserver | null = null
+let ghostWobblePhase = 0
+let wobbleStrength = 0
+let trailGhostDrawX = 0
+let trailGhostDrawY = 0
 
 function tileKey(col: number, row: number) {
   return `${col},${row}`
@@ -135,8 +157,48 @@ function clearTrail() {
   tileFlips.clear()
   trailX.value = targetX.value
   trailY.value = targetY.value
+  trailGhostX.value = targetX.value
+  trailGhostY.value = targetY.value
   x.value = targetX.value
   y.value = targetY.value
+  ghostX.value = targetX.value
+  ghostY.value = targetY.value
+  ghostWobblePhase = 0
+  wobbleStrength = 0
+  trailGhostDrawX = targetX.value
+  trailGhostDrawY = targetY.value
+}
+
+function ghostWobbleOffset(
+  mainDx: number,
+  mainDy: number,
+  ghostDx: number,
+  ghostDy: number,
+) {
+  const mainSpeed = Math.hypot(mainDx, mainDy)
+  const targetStrength = Math.min(1, mainSpeed / GHOST_WOBBLE_SPEED_FULL)
+  wobbleStrength += (targetStrength - wobbleStrength) * GHOST_WOBBLE_STRENGTH_EASE
+  if (wobbleStrength < 0.015) {
+    wobbleStrength = 0
+    return { x: 0, y: 0 }
+  }
+
+  const ghostSpeed = Math.hypot(ghostDx, ghostDy)
+  let perpX = 0
+  let perpY = 0
+  if (ghostSpeed > 0.4) {
+    perpX = -ghostDy / ghostSpeed
+    perpY = ghostDx / ghostSpeed
+  } else if (mainSpeed > 0.4) {
+    perpX = -mainDy / mainSpeed
+    perpY = mainDx / mainSpeed
+  } else {
+    return { x: 0, y: 0 }
+  }
+
+  ghostWobblePhase += GHOST_WOBBLE_PHASE_RATE + mainSpeed * GHOST_WOBBLE_PHASE_PER_PX
+  const offset = GHOST_WOBBLE_AMPLITUDE * wobbleStrength * Math.sin(ghostWobblePhase)
+  return { x: perpX * offset, y: perpY * offset }
 }
 
 function updateTilesNear(mx: number, my: number, strength = 1) {
@@ -159,7 +221,13 @@ function updateTilesNear(mx: number, my: number, strength = 1) {
   }
 }
 
-function stampTrail(fromX: number, fromY: number, toX: number, toY: number) {
+function stampTrail(
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  strengthMul = TRAIL_STRENGTH,
+) {
   const dist = Math.hypot(toX - fromX, toY - fromY)
   if (dist < 0.5) return
 
@@ -168,7 +236,7 @@ function stampTrail(fromX: number, fromY: number, toX: number, toY: number) {
     const t = i / steps
     const sx = fromX + (toX - fromX) * t
     const sy = fromY + (toY - fromY) * t
-    const strength = TRAIL_STRENGTH * (0.3 + 0.7 * t)
+    const strength = strengthMul * (0.3 + 0.7 * t)
     updateTilesNear(sx, sy, strength)
   }
 }
@@ -226,6 +294,7 @@ function drawTiles(canvas: HTMLCanvasElement, now: number) {
 
   const hasRipples = clickRipples.some((r) => now - r.start < CLICK_RIPPLE_DURATION)
   if (!mouseOnScreen.value && tileFlips.size === 0 && !hasRipples) return
+  if (!pointerInitialized.value && tileFlips.size === 0 && !hasRipples) return
 
   for (const [key, flip] of tileFlips) {
     if (flip < 0.003) continue
@@ -240,7 +309,7 @@ function drawTiles(canvas: HTMLCanvasElement, now: number) {
 }
 
 function needsAnimation(now: number) {
-  if (mouseOnScreen.value) return true
+  if (mouseOnScreen.value && pointerInitialized.value) return true
   if (tileFlips.size > 0) return true
   return clickRipples.some((r) => now - r.start < CLICK_RIPPLE_DURATION)
 }
@@ -256,13 +325,29 @@ function tick(now: number) {
   const ease = POINTER_EASE
   x.value += (targetX.value - x.value) * ease
   y.value += (targetY.value - y.value) * ease
+  ghostX.value += (x.value - ghostX.value) * GHOST_EASE
+  ghostY.value += (y.value - ghostY.value) * GHOST_EASE
 
   decayTiles()
-  if (mouseOnScreen.value) {
+  if (mouseOnScreen.value && pointerInitialized.value) {
+    const mainDx = x.value - trailX.value
+    const mainDy = y.value - trailY.value
+    const ghostDx = ghostX.value - trailGhostX.value
+    const ghostDy = ghostY.value - trailGhostY.value
+    const wobble = ghostWobbleOffset(mainDx, mainDy, ghostDx, ghostDy)
+    const ghostDrawX = ghostX.value + wobble.x
+    const ghostDrawY = ghostY.value + wobble.y
+
     stampTrail(trailX.value, trailY.value, x.value, y.value)
-    updateTilesNear(targetX.value, targetY.value)
+    stampTrail(trailGhostDrawX, trailGhostDrawY, ghostDrawX, ghostDrawY, TRAIL_GHOST_STRENGTH)
+    updateTilesNear(x.value, y.value, LAG_GLOW_STRENGTH)
+    updateTilesNear(ghostDrawX, ghostDrawY, GHOST_GLOW_STRENGTH)
     trailX.value = x.value
     trailY.value = y.value
+    trailGhostX.value = ghostX.value
+    trailGhostY.value = ghostY.value
+    trailGhostDrawX = ghostDrawX
+    trailGhostDrawY = ghostDrawY
   }
 
   const canvas = canvasEl.value
@@ -289,25 +374,58 @@ function syncPointer(clientX: number, clientY: number) {
   targetY.value = clientY
   x.value = clientX
   y.value = clientY
+  ghostX.value = clientX
+  ghostY.value = clientY
   trailX.value = clientX
   trailY.value = clientY
+  trailGhostX.value = clientX
+  trailGhostY.value = clientY
+  ghostWobblePhase = 0
+  wobbleStrength = 0
+  trailGhostDrawX = clientX
+  trailGhostDrawY = clientY
 }
 
-function handleMouseEnter() {
+function armPointer(clientX: number, clientY: number) {
+  syncPointer(clientX, clientY)
+  pointerInitialized.value = true
   mouseOnScreen.value = true
-  syncPointer(mouseX.value, mouseY.value)
+}
+
+function handlePointerMove(event: PointerEvent) {
+  if (!enabled.value) return
+  if (!pointerInitialized.value) {
+    armPointer(event.clientX, event.clientY)
+    ensureTicking()
+    return
+  }
+  mouseOnScreen.value = true
+  targetX.value = event.clientX
+  targetY.value = event.clientY
+  ensureTicking()
+}
+
+function handlePointerEnter(event: PointerEvent) {
+  if (!enabled.value || pointerInitialized.value) return
+  armPointer(event.clientX, event.clientY)
+  ensureTicking()
+}
+
+function handleMouseEnter(event: MouseEvent) {
+  armPointer(event.clientX, event.clientY)
   ensureTicking()
 }
 
 function handleMouseLeave() {
   mouseOnScreen.value = false
-  clearTrail()
+  pointerInitialized.value = false
   ensureTicking()
 }
 
 function handleWindowBlur() {
   mouseOnScreen.value = false
-  clearTrail()
+  pointerInitialized.value = false
+  ensureTicking()
 }
 
 function handleScroll() {
@@ -332,6 +450,8 @@ onMounted(() => {
 
   document.documentElement.addEventListener('mouseenter', handleMouseEnter)
   document.documentElement.addEventListener('mouseleave', handleMouseLeave)
+  document.documentElement.addEventListener('pointerenter', handlePointerEnter)
+  window.addEventListener('pointermove', handlePointerMove, { passive: true })
   window.addEventListener('click', handleClick, { passive: true })
   window.addEventListener('blur', handleWindowBlur)
   window.addEventListener('scroll', handleScroll, { passive: true, capture: true })
@@ -343,17 +463,12 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
   document.documentElement.removeEventListener('mouseenter', handleMouseEnter)
   document.documentElement.removeEventListener('mouseleave', handleMouseLeave)
+  document.documentElement.removeEventListener('pointerenter', handlePointerEnter)
+  window.removeEventListener('pointermove', handlePointerMove)
   window.removeEventListener('click', handleClick)
   window.removeEventListener('blur', handleWindowBlur)
   window.removeEventListener('scroll', handleScroll, { capture: true })
   window.removeEventListener('resize', handleResize)
-})
-
-watch([mouseX, mouseY], ([mx, my]) => {
-  if (!enabled.value || !mouseOnScreen.value) return
-  targetX.value = mx
-  targetY.value = my
-  ensureTicking()
 })
 </script>
 
