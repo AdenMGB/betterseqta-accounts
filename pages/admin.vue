@@ -14,7 +14,7 @@
         <NuxtLink to="/" class="inline-block mt-6 px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors">Return Home</NuxtLink>
     </div>
 
-    <div v-else class="admin-panel w-full min-w-0 flex flex-col min-h-0 backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 animate-fade-in overflow-hidden">
+    <div v-else class="admin-panel admin-panel-mobile-scroll w-full min-w-0 flex flex-col min-h-0 backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 animate-fade-in md:overflow-hidden">
       
       <!-- Tabs -->
       <div class="admin-table-scroll -mx-4 px-4 sm:mx-0 sm:px-0 mb-2 shrink-0">
@@ -31,7 +31,7 @@
       </div>
       <p v-if="activeTabDescription" class="text-sm text-zinc-500 dark:text-zinc-400 mb-4 shrink-0">{{ activeTabDescription }}</p>
 
-      <div class="admin-panel-body min-h-0 flex-1 flex flex-col overflow-hidden">
+      <div class="admin-panel-body admin-panel-body-mobile-scroll min-h-0 flex-1 flex flex-col md:overflow-hidden">
       <!-- Users Tab -->
       <div v-if="activeTab === 'users'" class="admin-tab-panel flex flex-col gap-4 sm:gap-6 min-w-0 min-h-0">
         <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center shrink-0">

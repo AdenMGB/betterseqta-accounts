@@ -593,3 +593,126 @@ export async function handleResetPassword({ env, request }: RequestContext): Pro
     });
   }
 }
+
+function sessionIdFromRefreshToken(refreshToken: string | undefined): string | null {
+  if (!refreshToken) return null;
+  const colonIdx = refreshToken.indexOf(":");
+  if (colonIdx < 1) return null;
+  return refreshToken.substring(0, colonIdx);
+}
+
+function platformLabel(platform: string, clientName: string | null, deviceName: string | null): string {
+  switch (platform) {
+    case "web":
+      return "accounts.betterseqta.org";
+    case "oauth":
+      return clientName || deviceName || "OAuth app";
+    case "bsplus":
+      return "BetterSEQTA+ Extension";
+    case "desqta":
+      return "DesQTA";
+    default:
+      return deviceName || platform;
+  }
+}
+
+export async function handleListSessions({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const payload = await getUser(request, jwtSecret);
+  if (!payload) {
+    return authError("Unauthorized", 401);
+  }
+
+  const cookies = parseCookies(request);
+  const currentSessionId = sessionIdFromRefreshToken(cookies[REFRESH_COOKIE_NAME]);
+
+  const now = Math.floor(Date.now() / 1000);
+  const { results } = await env.DB.prepare(
+    `SELECT s.id, s.platform, s.client_id, s.device_name, s.user_agent,
+            s.created_at, s.last_used_at, s.last_ip,
+            o.name AS client_name
+     FROM user_sessions s
+     LEFT JOIN oauth_clients o ON s.platform = 'oauth' AND s.client_id = o.id
+     WHERE s.user_id = ? AND s.revoked_at IS NULL AND s.expires_at > ?
+     ORDER BY s.last_used_at DESC, s.created_at DESC`,
+  )
+    .bind(payload.id, now)
+    .all();
+
+  const sessions = (results || []).map((row) => {
+    const r = row as Record<string, unknown>;
+    const platform = String(r.platform || "");
+    const clientName = (r.client_name as string | null) || null;
+    const deviceName = (r.device_name as string | null) || null;
+    return {
+      id: r.id,
+      platform,
+      device_name: deviceName,
+      client_id: r.client_id,
+      client_name: clientName,
+      label: platformLabel(platform, clientName, deviceName),
+      user_agent: r.user_agent,
+      created_at: r.created_at,
+      last_used_at: r.last_used_at,
+      last_ip: r.last_ip,
+      is_current: currentSessionId !== null && r.id === currentSessionId,
+    };
+  });
+
+  return authJson({ sessions });
+}
+
+export async function handleRevokeSession({ env, request, jwtSecret, url }: RequestContext): Promise<Response> {
+  const payload = await getUser(request, jwtSecret);
+  if (!payload) {
+    return authError("Unauthorized", 401);
+  }
+
+  const parts = url.pathname.split("/");
+  const sessionId = parts[parts.length - 1];
+  if (!sessionId || sessionId === "sessions") {
+    return authError("Missing session id", 400);
+  }
+
+  const session = await env.DB.prepare(
+    "SELECT id, user_id, revoked_at FROM user_sessions WHERE id = ?",
+  )
+    .bind(sessionId)
+    .first();
+
+  if (!session) {
+    return authError("Session not found", 404);
+  }
+  if ((session.user_id as string) !== payload.id) {
+    return authError("Forbidden", 403);
+  }
+  if (session.revoked_at) {
+    return authJson({ success: true });
+  }
+
+  await revokeSessionById(env, sessionId);
+  return authJson({ success: true });
+}
+
+export async function handleRevokeOtherSessions({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const payload = await getUser(request, jwtSecret);
+  if (!payload) {
+    return authError("Unauthorized", 401);
+  }
+
+  const cookies = parseCookies(request);
+  const currentSessionId = sessionIdFromRefreshToken(cookies[REFRESH_COOKIE_NAME]);
+  const now = Math.floor(Date.now() / 1000);
+
+  if (currentSessionId) {
+    await env.DB.prepare(
+      `UPDATE user_sessions SET revoked_at = ?, expires_at = MIN(expires_at, ?)
+       WHERE user_id = ? AND id != ? AND revoked_at IS NULL`,
+    )
+      .bind(now, now, payload.id, currentSessionId)
+      .run();
+  } else {
+    await revokeAllUserSessions(env, payload.id);
+  }
+
+  return authJson({ success: true });
+}
