@@ -431,7 +431,7 @@
               <LoadingSpinner size="md" />
             </div>
             <div v-else-if="auditEntries.length === 0 && auditLoaded" class="text-center py-8 text-zinc-500">No activity logged yet.</div>
-            <div v-else class="flex flex-col items-center justify-center py-4 gap-3">
+            <div v-else ref="auditScrollSentinel" class="flex flex-col items-center justify-center py-4 gap-3">
               <LoadingSpinner v-if="auditLoadingMore" size="md" />
               <span v-else-if="auditLoadError" class="text-xs text-red-500">
                 Failed to load.
@@ -648,11 +648,11 @@ import PfpEditorModal from '~/components/PfpEditorModal.vue'
 import AuditContextCell from '~/components/admin/AuditContextCell.vue'
 import ConfirmDialog from '~/components/admin/ConfirmDialog.vue'
 import UserActionsMenu from '~/components/admin/UserActionsMenu.vue'
-import { useInfiniteScroll, watchDebounced } from '@vueuse/core'
+import { useIntersectionObserver, watchDebounced } from '@vueuse/core'
 import { withPfpCacheBust, formatRelativeTime } from '~/utils/pfp'
 
 const SCROLL_BUFFER = 400
-const CHAIN_CAP = 1
+const SCROLL_CHAIN_CAP = 20
 
 const auth = useAuth()
 const { showToast } = useToast()
@@ -824,6 +824,7 @@ const auditLoadingMore = ref(false)
 const auditRefreshing = ref(false)
 const auditLoadError = ref(false)
 const auditScrollContainer = ref<HTMLElement | null>(null)
+const auditScrollSentinel = ref<HTMLElement | null>(null)
 const auditSearchQuery = ref('')
 const auditActionFilter = ref('')
 const auditLastUpdated = ref<number | null>(null)
@@ -867,26 +868,30 @@ const auditLastUpdatedLabel = computed(() => {
 
 const touchAuditUpdated = () => { auditLastUpdated.value = Date.now() }
 
-const auditListOverflows = () => {
-  const el = auditScrollContainer.value
-  if (!el) return false
-  return el.scrollHeight > el.clientHeight + 1
+const scrollContainerOverflows = (el: HTMLElement | null) =>
+  !!el && el.scrollHeight > el.clientHeight + 1
+
+const scrollRoot = (el: HTMLElement | null) =>
+  scrollContainerOverflows(el) ? el : null
+
+const getScrollRemaining = (el: HTMLElement | null) => {
+  if (!el) return Infinity
+  if (scrollContainerOverflows(el)) {
+    return el.scrollHeight - el.scrollTop - el.clientHeight
+  }
+  return el.getBoundingClientRect().bottom - window.innerHeight
 }
+
+const auditHasMore = () =>
+  auditNextCursor.value != null || auditPage.value < auditTotalPages.value
 
 const auditShowLoadMoreButton = computed(() =>
   auditLoaded.value &&
   !auditLoadingMore.value &&
   !auditLoadingInitial.value &&
-  (auditNextCursor.value != null || auditPage.value < auditTotalPages.value) &&
-  !auditListOverflows(),
+  auditHasMore() &&
+  getScrollRemaining(auditScrollContainer.value) >= SCROLL_BUFFER,
 )
-
-const auditCanLoadMore = () =>
-  !auditLoadingMore.value &&
-  !auditLoadingInitial.value &&
-  auditLoaded.value &&
-  (auditNextCursor.value != null || auditPage.value < auditTotalPages.value) &&
-  auditListOverflows()
 
 const auditFetchParams = (extra: Record<string, string | number | undefined> = {}, opts: { light?: boolean } = {}) => ({
   limit: 25,
@@ -989,6 +994,7 @@ const onActivityLogTabActivated = async () => {
   auditPage.value = 1
   auditNextCursor.value = null
   await loadAuditLog({ append: false })
+  await ensureAuditScrollBuffer()
   startAuditAutoRefresh()
   void pollAuditLog()
 }
@@ -999,7 +1005,7 @@ const onActivityLogTabDeactivated = () => {
 
 const loadMoreAudit = async () => {
   if (auditLoadingMore.value || !auditLoaded.value) return
-  if (!auditNextCursor.value && auditPage.value >= auditTotalPages.value) return
+  if (!auditHasMore()) return
   auditLoadingMore.value = true
   try {
     if (auditNextCursor.value) {
@@ -1010,14 +1016,39 @@ const loadMoreAudit = async () => {
     }
   } finally {
     auditLoadingMore.value = false
+    await nextTick()
+    await ensureAuditScrollBuffer()
   }
 }
 
 const retryAuditLoad = () => loadAuditLog({ append: auditEntries.value.length > 0, cursor: auditNextCursor.value })
 
-useInfiniteScroll(auditScrollContainer, () => {
-  if (activeTab.value === 'activity-log') loadMoreAudit()
-}, { distance: SCROLL_BUFFER, canLoadMore: auditCanLoadMore })
+const ensureAuditScrollBuffer = async () => {
+  await nextTick()
+  let chained = 0
+  while (
+    auditLoaded.value &&
+    auditHasMore() &&
+    getScrollRemaining(auditScrollContainer.value) < SCROLL_BUFFER &&
+    chained < SCROLL_CHAIN_CAP &&
+    !auditLoadingMore.value
+  ) {
+    await loadMoreAudit()
+    await nextTick()
+    chained++
+  }
+}
+
+useIntersectionObserver(
+  auditScrollSentinel,
+  ([entry]) => {
+    if (entry?.isIntersecting && activeTab.value === 'activity-log') loadMoreAudit()
+  },
+  {
+    root: computed(() => scrollRoot(auditScrollContainer.value)),
+    rootMargin: `${SCROLL_BUFFER}px`,
+  },
+)
 
 watch(activeTab, (tab, prevTab) => {
   if (import.meta.client) {
@@ -1108,12 +1139,6 @@ const isTab = (tab: string) => activeTab.value === tab
 
 // PFP Migration State
 // Actions
-const getScrollRemaining = () => {
-  const el = usersScrollContainer.value
-  if (!el) return Infinity
-  return el.scrollHeight - el.scrollTop - el.clientHeight
-}
-
 const searchUsers = async (page: number = 1, append: boolean = false) => {
     loadMoreError.value = false
     if (!append) usersLoading.value = true
@@ -1150,8 +1175,8 @@ const ensureScrollBuffer = async () => {
   while (
     searched.value &&
     currentPage.value < totalPages.value &&
-    getScrollRemaining() < SCROLL_BUFFER &&
-    chained < CHAIN_CAP &&
+    getScrollRemaining(usersScrollContainer.value) < SCROLL_BUFFER &&
+    chained < SCROLL_CHAIN_CAP &&
     !loadingMore.value
   ) {
     await loadMore()
@@ -1172,10 +1197,10 @@ const loadMore = async () => {
     loadingMore.value = true
     try {
         await searchUsers(currentPage.value + 1, true)
-        await nextTick()
-        await ensureScrollBuffer()
     } finally {
         loadingMore.value = false
+        await nextTick()
+        await ensureScrollBuffer()
     }
 }
 
@@ -1191,14 +1216,14 @@ watchDebounced([searchQuery, sortOption, hasPfpFilter], () => {
     if (searched.value) handleSearch()
 }, { debounce: 300 })
 
-useInfiniteScroll(
-  usersScrollContainer,
-  () => {
-    if (searched.value) loadMore()
+useIntersectionObserver(
+  scrollSentinel,
+  ([entry]) => {
+    if (entry?.isIntersecting && searched.value) loadMore()
   },
   {
-    distance: SCROLL_BUFFER,
-    canLoadMore: () => !loadingMore.value && currentPage.value < totalPages.value && searched.value,
+    root: computed(() => scrollRoot(usersScrollContainer.value)),
+    rootMargin: `${SCROLL_BUFFER}px`,
   },
 )
 
