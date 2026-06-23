@@ -1,10 +1,29 @@
-import { SignJWT } from "jose";
-import { corsHeaders, APP_REFRESH_EXPIRY_DAYS } from "../constants";
-import { getUser, createAccessToken } from "../lib/auth";
+import { corsHeaders, APP_REFRESH_EXPIRY_DAYS, WEBSITE_ACCESS_EXPIRES_IN } from "../constants";
+import { getUser, createAccessToken, authJson, authError } from "../lib/auth";
 import { getDesqtaClient, isReservedClientExpired, touchDesqtaReservedClient } from "../lib/desqta-client";
-import { createSession } from "../lib/session";
+import { checkRateLimit } from "../lib/rate-limit";
+import { createSession, getSessionByRefreshToken, touchUserSession, revokeSessionById } from "../lib/session";
 import { mapUserPublic, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
+
+function deviceNameFromRequest(request: Request, fallback: string): string {
+  const ua = request.headers.get("User-Agent") || "";
+  if (!ua) return fallback;
+  const trimmed = ua.length > 80 ? `${ua.slice(0, 77)}...` : ua;
+  return trimmed;
+}
+
+async function validateOAuthClient(
+  env: RequestContext["env"],
+  clientId: string | undefined,
+  clientSecret: string | undefined,
+): Promise<{ id: string; name: string } | null> {
+  if (!clientId || !clientSecret) return null;
+  const client = await env.DB.prepare("SELECT id, name FROM oauth_clients WHERE id = ? AND secret = ?")
+    .bind(clientId, clientSecret)
+    .first();
+  return client ? (client as { id: string; name: string }) : null;
+}
 
 export async function handleOAuthClient({ env, url }: RequestContext): Promise<Response> {
   const clientId = url.searchParams.get("client_id");
@@ -121,63 +140,176 @@ export async function handleOAuthApprove({ env, request, jwtSecret }: RequestCon
 }
 
 export async function handleOAuthToken({ env, request, jwtSecret }: RequestContext): Promise<Response> {
-  const { code, client_id, client_secret } = (await request.json()) as {
-    code?: string;
-    client_id?: string;
-    client_secret?: string;
-  };
+  try {
+    const rateLimited = await checkRateLimit(env, request, "oauth-token", { limit: 30, windowSec: 900 });
+    if (rateLimited) return rateLimited;
 
-  const client = await env.DB.prepare("SELECT id FROM oauth_clients WHERE id = ? AND secret = ?")
-    .bind(client_id, client_secret)
-    .first();
-  if (!client) {
-    return new Response(JSON.stringify({ error: "invalid_client" }), {
-      status: 401,
+    const { code, client_id, client_secret } = (await request.json()) as {
+      code?: string;
+      client_id?: string;
+      client_secret?: string;
+    };
+
+    const client = await validateOAuthClient(env, client_id, client_secret);
+    if (!client) {
+      return new Response(JSON.stringify({ error: "invalid_client" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const oauthCode = await env.DB.prepare("SELECT user_id, expires_at FROM oauth_codes WHERE code = ? AND client_id = ?")
+      .bind(code, client_id)
+      .first();
+    if (!oauthCode) {
+      return new Response(JSON.stringify({ error: "invalid_grant" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if ((oauthCode.expires_at as number) < Math.floor(Date.now() / 1000)) {
+      return new Response(JSON.stringify({ error: "code_expired" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    await env.DB.prepare("DELETE FROM oauth_codes WHERE code = ?").bind(code).run();
+
+    const user = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)
+      .bind(oauthCode.user_id as string)
+      .first();
+    if (!user) {
+      return new Response(JSON.stringify({ error: "invalid_grant" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const access_token = await createAccessToken(
+      user as { id: string; email?: string | null; username?: string | null },
+      jwtSecret,
+    );
+    const session = await createSession(env, {
+      userId: (user as { id: string }).id,
+      platform: "oauth",
+      clientId: client_id!,
+      deviceName: deviceNameFromRequest(request, client.name),
+      request,
+      refreshDays: APP_REFRESH_EXPIRY_DAYS,
+    });
+
+    return new Response(
+      JSON.stringify({
+        access_token,
+        refresh_token: session.refreshToken,
+        token_type: "Bearer",
+        expires_in: WEBSITE_ACCESS_EXPIRES_IN,
+        user: {
+          id: (user as { id: string }).id,
+          username: (user as { username: string }).username,
+        },
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (err) {
+    console.error("OAuth token error:", err);
+    return new Response(JSON.stringify({ error: "token_exchange_failed" }), {
+      status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+}
 
-  const oauthCode = await env.DB.prepare("SELECT user_id, expires_at FROM oauth_codes WHERE code = ? AND client_id = ?")
-    .bind(code, client_id)
-    .first();
-  if (!oauthCode) {
-    return new Response(JSON.stringify({ error: "invalid_grant" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+export async function handleOAuthRefresh({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  try {
+    const rateLimited = await checkRateLimit(env, request, "oauth-refresh", { limit: 60, windowSec: 900 });
+    if (rateLimited) return rateLimited;
 
-  if ((oauthCode.expires_at as number) < Math.floor(Date.now() / 1000)) {
-    return new Response(JSON.stringify({ error: "code_expired" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+    const body = (await request.json()) as {
+      refresh_token?: string;
+      client_id?: string;
+      client_secret?: string;
+    };
+    const { refresh_token, client_id, client_secret } = body || {};
 
-  await env.DB.prepare("DELETE FROM oauth_codes WHERE code = ?").bind(code).run();
+    const client = await validateOAuthClient(env, client_id, client_secret);
+    if (!client) {
+      return authError("invalid_client", 401);
+    }
 
-  const user = await env.DB.prepare("SELECT id, email, username FROM users WHERE id = ?")
-    .bind(oauthCode.user_id as string)
-    .first();
+    const sessionResult = await getSessionByRefreshToken(env, refresh_token);
+    if ("error" in sessionResult) {
+      return authError(sessionResult.error, sessionResult.status);
+    }
 
-  const access_token = await new SignJWT({
-    id: (user as { id: string }).id,
-    email: (user as { email: string }).email,
-    username: (user as { username: string }).username,
-  })
-    .setProtectedHeader({ alg: "HS256" })
-    .setExpirationTime("1h")
-    .sign(jwtSecret);
+    const { session, sessionId, now } = sessionResult;
+    if (session.platform !== "oauth") {
+      return authError("Invalid refresh_token", 401);
+    }
+    if ((session.client_id as string | null) !== client_id) {
+      return authError("Invalid refresh_token", 401);
+    }
 
-  return new Response(
-    JSON.stringify({
-      access_token,
+    const user = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)
+      .bind(session.user_id as string)
+      .first();
+    if (!user) {
+      await revokeSessionById(env, sessionId);
+      return authError("User not found", 401);
+    }
+
+    const newExpiresAt = now + APP_REFRESH_EXPIRY_DAYS * 24 * 60 * 60;
+    await touchUserSession(env, sessionId, now, request, { expiresAt: newExpiresAt, clientId: client_id });
+
+    const accessToken = await createAccessToken(
+      user as { id: string; email?: string | null; username?: string | null },
+      jwtSecret,
+    );
+
+    return authJson({
+      access_token: accessToken,
+      refresh_token: refresh_token,
       token_type: "Bearer",
-      expires_in: 3600,
-      user: { id: (user as { id: string }).id, username: (user as { username: string }).username },
-    }),
-    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-  );
+      expires_in: WEBSITE_ACCESS_EXPIRES_IN,
+    });
+  } catch (err) {
+    console.error("OAuth refresh error:", err);
+    return authError("Refresh failed", 500);
+  }
+}
+
+export async function handleOAuthRevoke({ env, request }: RequestContext): Promise<Response> {
+  try {
+    const rateLimited = await checkRateLimit(env, request, "oauth-revoke", { limit: 30, windowSec: 900 });
+    if (rateLimited) return rateLimited;
+
+    const body = (await request.json()) as {
+      refresh_token?: string;
+      client_id?: string;
+      client_secret?: string;
+    };
+    const { refresh_token, client_id, client_secret } = body || {};
+
+    const client = await validateOAuthClient(env, client_id, client_secret);
+    if (!client) {
+      return authError("invalid_client", 401);
+    }
+
+    const sessionResult = await getSessionByRefreshToken(env, refresh_token);
+    if (!("error" in sessionResult)) {
+      const { session, sessionId } = sessionResult;
+      if (session.platform === "oauth" && (session.client_id as string | null) === client_id) {
+        await revokeSessionById(env, sessionId);
+      }
+    }
+
+    return authJson({ success: true });
+  } catch (err) {
+    console.error("OAuth revoke error:", err);
+    return authJson({ success: true });
+  }
 }
 
 export async function handleOAuthUserinfo({ env, request, jwtSecret }: RequestContext): Promise<Response> {
