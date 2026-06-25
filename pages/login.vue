@@ -115,16 +115,18 @@ const handleLogin = async () => {
   try {
     const res: any = await $fetch('/api/auth/login', {
       method: 'POST',
-      body: { login: login.value, password: password.value },
+      body: { login: login.value.trim(), password: password.value },
     })
     if (res.token) {
       setStoredToken(res.token)
       await fetchUser()
       const redirect = route.query.redirect as string || '/'
       router.push(redirect)
+      return
     }
+    error.value = 'Sign in failed. Please try again.'
   } catch (err: any) {
-    error.value = err?.data?.statusMessage || 'An unknown error occurred'
+    error.value = err?.data?.error || err?.data?.statusMessage || err?.message || 'An unknown error occurred'
   } finally {
     loading.value = false
   }

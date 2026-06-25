@@ -3,15 +3,9 @@ import { getUser, createAccessToken, authJson, authError } from "../lib/auth";
 import { getDesqtaClient, isReservedClientExpired, touchDesqtaReservedClient } from "../lib/desqta-client";
 import { checkRateLimit } from "../lib/rate-limit";
 import { createSession, getSessionByRefreshToken, touchUserSession, revokeSessionById } from "../lib/session";
+import { deviceNameForNewSession } from "../lib/session-display";
 import { mapUserPublic, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
-
-function deviceNameFromRequest(request: Request, fallback: string): string {
-  const ua = request.headers.get("User-Agent") || "";
-  if (!ua) return fallback;
-  const trimmed = ua.length > 80 ? `${ua.slice(0, 77)}...` : ua;
-  return trimmed;
-}
 
 async function validateOAuthClient(
   env: RequestContext["env"],
@@ -111,7 +105,7 @@ export async function handleOAuthApprove({ env, request, jwtSecret }: RequestCon
         userId: (fullUser as { id: string }).id,
         platform,
         clientId: client_id!,
-        deviceName: "BetterSEQTA Plus",
+        deviceName: deviceNameForNewSession(request),
         request,
         refreshDays: APP_REFRESH_EXPIRY_DAYS,
       });
@@ -195,7 +189,7 @@ export async function handleOAuthToken({ env, request, jwtSecret }: RequestConte
       userId: (user as { id: string }).id,
       platform: "oauth",
       clientId: client_id!,
-      deviceName: deviceNameFromRequest(request, client.name),
+      deviceName: deviceNameForNewSession(request),
       request,
       refreshDays: APP_REFRESH_EXPIRY_DAYS,
     });

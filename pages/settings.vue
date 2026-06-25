@@ -144,7 +144,7 @@
           <div v-else-if="activeTab === 'sessions'" class="space-y-4">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <p class="text-sm text-zinc-600 dark:text-zinc-400">
-                Devices and apps signed in to your account. Revoke any session you do not recognize.
+                Devices and apps signed in to your account. Revoke a session if you do not recognize it.
               </p>
               <button
                 type="button"
@@ -178,7 +178,7 @@
                 <div class="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                   <div class="min-w-0">
                     <div class="flex flex-wrap items-center gap-2">
-                      <p class="font-medium text-zinc-900 dark:text-white">{{ session.label }}</p>
+                      <p class="font-semibold text-zinc-900 dark:text-white">{{ sessionDisplayLabel(session) }}</p>
                       <span
                         v-if="session.is_current"
                         class="rounded-full bg-primary-500/10 px-2 py-0.5 text-xs font-medium text-primary-600 dark:text-primary-400"
@@ -186,12 +186,17 @@
                         This device
                       </span>
                     </div>
-                    <p v-if="session.device_name && session.device_name !== session.label" class="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
-                      {{ session.device_name }}
+                    <p class="mt-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">
+                      {{ sessionDisplaySubtitle(session) }}
                     </p>
-                    <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                      Last active {{ formatSessionTime(session.last_used_at || session.created_at) }}
-                      <span v-if="session.last_ip"> · {{ session.last_ip }}</span>
+                    <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                      Last seen {{ formatSessionTime(session.last_used_at || session.created_at) }}
+                    </p>
+                    <p v-if="session.last_ip" class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                      IP: {{ session.last_ip }}
+                    </p>
+                    <p v-if="sessionDisplayDeviceName(session)" class="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
+                      {{ sessionDisplayDeviceName(session) }}
                     </p>
                   </div>
                   <button
@@ -349,7 +354,7 @@ import PfpStack from '~/components/PfpStack.vue'
 import PfpEditorModal from '~/components/PfpEditorModal.vue'
 import { withPfpCacheBust } from '~/utils/pfp'
 import { useTabPageUrl, SETTINGS_TAB_PAGE } from '~/composables/useTabPageUrl'
-import { UserCircleIcon, ShieldCheckIcon, CogIcon, SparklesIcon, XMarkIcon, DevicePhoneMobileIcon } from '@heroicons/vue/24/outline'
+import { UserCircleIcon, ShieldCheckIcon, CogIcon, SparklesIcon, XMarkIcon, ComputerDesktopIcon } from '@heroicons/vue/24/outline'
 
 const auth = useAuth()
 const { getSettings, syncSettings, getBsPlusSync, putBsPlusSync } = useSettings()
@@ -404,8 +409,8 @@ const onSettingsPfpUpdated = async (payload: { pfpUrl: string | null; pfpHash: s
 const { activeTab, setActiveTab } = useTabPageUrl(SETTINGS_TAB_PAGE)
 const tabs = [
   { name: 'profile', label: 'Profile', icon: UserCircleIcon },
-  { name: 'account', label: 'Account', icon: ShieldCheckIcon },
-  { name: 'sessions', label: 'Sessions', icon: DevicePhoneMobileIcon },
+  { name: 'account', label: 'Account Security', icon: ShieldCheckIcon },
+  { name: 'sessions', label: 'Active Sessions', icon: ComputerDesktopIcon },
   { name: 'bsplus-settings', label: 'BetterSEQTA+ Settings', icon: SparklesIcon },
   { name: 'bs-settings', label: 'DesQTA Settings', icon: CogIcon },
 ]
@@ -482,6 +487,7 @@ type SessionRow = {
   client_id: string | null
   client_name: string | null
   label: string
+  subtitle?: string
   user_agent: string | null
   created_at: number
   last_used_at: number | null
@@ -495,6 +501,54 @@ const sessionsError = ref('')
 const revokingSessionId = ref<string | null>(null)
 const revokingOthers = ref(false)
 
+const SESSION_TITLES: Record<string, string> = {
+  web: 'BetterSEQTA Accounts',
+  oauth: 'BetterSEQTA Site',
+  desqta: 'DesQTA',
+  bsplus: 'BetterSEQTA+',
+}
+
+const SESSION_SUBTITLES: Record<string, string> = {
+  web: 'Website',
+  oauth: 'Website',
+  desqta: 'Desktop Client',
+  bsplus: 'Extension',
+}
+
+const GENERIC_SESSION_DEVICE_NAMES = new Set([
+  'Website',
+  'Website (Discord)',
+  'Desktop Client',
+  'Extension',
+  'DesQTA',
+  'DesQTA (Discord)',
+  'BetterSEQTA Plus',
+  'BetterSEQTA Plus (Discord)',
+  'BetterSEQTA Accounts',
+  'BetterSEQTA Site',
+  'BetterSEQTA+',
+  'accounts.betterseqta.org',
+])
+
+const sessionDisplayLabel = (session: SessionRow) => {
+  const fromPlatform = SESSION_TITLES[session.platform]
+  if (fromPlatform) return fromPlatform
+  if (session.label && !session.label.includes('betterseqta.org')) return session.label
+  return session.label || session.platform
+}
+
+const sessionDisplaySubtitle = (session: SessionRow) =>
+  session.subtitle || SESSION_SUBTITLES[session.platform] || 'Unknown'
+
+const sessionDisplayDeviceName = (session: SessionRow) => {
+  const name = session.device_name?.trim()
+  if (!name) return null
+  const subtitle = sessionDisplaySubtitle(session)
+  if (GENERIC_SESSION_DEVICE_NAMES.has(name) || name === subtitle) return null
+  if (name.includes('betterseqta.org')) return null
+  return name
+}
+
 const formatSessionTime = (unixSec: number | null) => {
   if (!unixSec) return 'unknown'
   return new Date(unixSec * 1000).toLocaleString()
@@ -505,6 +559,14 @@ const sessionAuthHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+const sortSessions = (rows: SessionRow[]) =>
+  [...rows].sort((a, b) => {
+    if (a.is_current !== b.is_current) return a.is_current ? -1 : 1
+    const aTime = a.last_used_at ?? a.created_at
+    const bTime = b.last_used_at ?? b.created_at
+    return bTime - aTime
+  })
+
 const loadSessions = async () => {
   sessionsLoading.value = true
   sessionsError.value = ''
@@ -513,7 +575,7 @@ const loadSessions = async () => {
       credentials: 'include',
       headers: sessionAuthHeaders(),
     })
-    sessions.value = res.sessions || []
+    sessions.value = sortSessions(res.sessions || [])
   } catch (err: any) {
     sessionsError.value = err?.data?.error || err?.message || 'Failed to load sessions'
     sessions.value = []

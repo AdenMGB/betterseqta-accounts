@@ -4,6 +4,7 @@ import { createAccessToken, getUser } from "../lib/auth";
 import { cleanEnvVar } from "../lib/env-util";
 import { validateDesqtaClient, touchDesqtaReservedClient } from "../lib/desqta-client";
 import { createSession } from "../lib/session";
+import { deviceNameForNewSession } from "../lib/session-display";
 import { ensureUserDesqtaSettings } from "../lib/settings-bootstrap";
 import { REFRESH_COOKIE_NAME } from "../constants";
 import { createCookie as buildCookie } from "../lib/cookies";
@@ -173,7 +174,7 @@ export async function handleDiscordOAuthCallback({ env, request, url, jwtSecret 
     const session = await createSession(env, {
       userId: user.id as string,
       platform: "web",
-      deviceName: "Website (Discord)",
+      deviceName: deviceNameForNewSession(request),
       request,
       refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
     });
@@ -406,12 +407,11 @@ export async function handleDesqtaDiscordCallback({ env, request, url, jwtSecret
       jwtSecret,
     );
     const platform = redirect_uri.startsWith("desqta://") ? "desqta" : "bsplus";
-    const deviceName = platform === "desqta" ? "DesQTA (Discord)" : "BetterSEQTA Plus (Discord)";
     const session = await createSession(env, {
       userId: user.id as string,
       platform,
       clientId: client_id,
-      deviceName,
+      deviceName: deviceNameForNewSession(request),
       request,
       refreshDays: APP_REFRESH_EXPIRY_DAYS,
     });
