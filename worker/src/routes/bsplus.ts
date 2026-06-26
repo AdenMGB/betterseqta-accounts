@@ -5,6 +5,7 @@ import { isValidBsplusRedirectUri, bsplusRedirectUriError } from "../lib/redirec
 import { checkRateLimit } from "../lib/rate-limit";
 import bcrypt from "bcryptjs";
 import { createSession, getSessionByRefreshToken, touchUserSession, revokeSessionById } from "../lib/session";
+import { deviceNameForNewSession } from "../lib/session-display";
 import { findUserByCredentialsLogin } from "../lib/user-by-login";
 import { mapUserPublic, publicUserFromCredentials, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
@@ -135,8 +136,9 @@ export async function handleBsplusLogin({ env, request, jwtSecret }: RequestCont
       redirect_uri?: string;
       login?: string;
       password?: string;
+      device_name?: string;
     };
-    const { client_id, redirect_uri, login, password } = body || {};
+    const { client_id, redirect_uri, login, password, device_name } = body || {};
     if (!client_id || !redirect_uri || !login || !password) {
       return new Response(JSON.stringify({ error: "Missing client_id, redirect_uri, login, or password" }), {
         status: 400,
@@ -170,7 +172,7 @@ export async function handleBsplusLogin({ env, request, jwtSecret }: RequestCont
       userId: user.id,
       platform: "bsplus",
       clientId: client_id,
-      deviceName: "BetterSEQTA Plus",
+      deviceName: deviceNameForNewSession(request, device_name),
       request,
       refreshDays: APP_REFRESH_EXPIRY_DAYS,
     });

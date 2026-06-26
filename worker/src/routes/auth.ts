@@ -23,6 +23,12 @@ import {
 } from "../lib/session";
 import { findUserByCredentialsLogin, findUserProfileByLogin } from "../lib/user-by-login";
 import { ensureUserDesqtaSettings } from "../lib/settings-bootstrap";
+import {
+  deviceNameForNewSession,
+  resolveSessionDeviceName,
+  sessionSubtitle,
+  sessionTitle,
+} from "../lib/session-display";
 import { mapUserPublic, publicUserFromCredentials, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
 
@@ -90,7 +96,7 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
     const session = await createSession(env, {
       userId: id,
       platform: "web",
-      deviceName: "Website",
+      deviceName: deviceNameForNewSession(request),
       request,
       refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
     });
@@ -136,7 +142,7 @@ export async function handleLogin({ env, request, jwtSecret }: RequestContext): 
     const session = await createSession(env, {
       userId: user.id,
       platform: "web",
-      deviceName: "Website",
+      deviceName: deviceNameForNewSession(request),
       request,
       refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
     });
@@ -601,21 +607,6 @@ function sessionIdFromRefreshToken(refreshToken: string | undefined): string | n
   return refreshToken.substring(0, colonIdx);
 }
 
-function platformLabel(platform: string, clientName: string | null, deviceName: string | null): string {
-  switch (platform) {
-    case "web":
-      return "accounts.betterseqta.org";
-    case "oauth":
-      return clientName || deviceName || "OAuth app";
-    case "bsplus":
-      return "BetterSEQTA+ Extension";
-    case "desqta":
-      return "DesQTA";
-    default:
-      return deviceName || platform;
-  }
-}
-
 export async function handleListSessions({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   const payload = await getUser(request, jwtSecret);
   if (!payload) {
@@ -642,20 +633,29 @@ export async function handleListSessions({ env, request, jwtSecret }: RequestCon
     const r = row as Record<string, unknown>;
     const platform = String(r.platform || "");
     const clientName = (r.client_name as string | null) || null;
-    const deviceName = (r.device_name as string | null) || null;
+    const storedDeviceName = (r.device_name as string | null) || null;
+    const userAgent = (r.user_agent as string | null) || null;
     return {
       id: r.id,
       platform,
-      device_name: deviceName,
+      device_name: resolveSessionDeviceName(storedDeviceName, userAgent, platform),
       client_id: r.client_id,
       client_name: clientName,
-      label: platformLabel(platform, clientName, deviceName),
+      label: sessionTitle(platform),
+      subtitle: sessionSubtitle(platform),
       user_agent: r.user_agent,
       created_at: r.created_at,
       last_used_at: r.last_used_at,
       last_ip: r.last_ip,
       is_current: currentSessionId !== null && r.id === currentSessionId,
     };
+  });
+
+  sessions.sort((a, b) => {
+    if (a.is_current !== b.is_current) return a.is_current ? -1 : 1;
+    const aTime = (a.last_used_at as number | null) ?? (a.created_at as number);
+    const bTime = (b.last_used_at as number | null) ?? (b.created_at as number);
+    return bTime - aTime;
   });
 
   return authJson({ sessions });
