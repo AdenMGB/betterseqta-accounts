@@ -361,7 +361,26 @@ body {
 
 @media (max-width: 767px) {
   .admin-panel {
-    max-height: calc(100dvh - 17.5rem);
+    max-height: none;
+  }
+
+  .admin-panel-mobile-scroll {
+    overflow: visible !important;
+  }
+
+  .admin-panel-body-mobile-scroll {
+    overflow: visible !important;
+  }
+
+  .admin-table-viewport-scroll {
+    height: auto;
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .admin-scroll-tab {
+    overflow-y: visible;
+    overscroll-behavior: auto;
   }
 }
 

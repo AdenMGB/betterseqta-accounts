@@ -25,10 +25,11 @@ export function createTabPageConfig(options: {
 
 export const SETTINGS_TAB_PAGE = createTabPageConfig({
   defaultTab: 'profile',
-  tabs: ['profile', 'account', 'bsplus-settings', 'bs-settings'],
+  tabs: ['profile', 'account', 'sessions', 'bsplus-settings', 'bs-settings'],
   tabToP: {
     profile: 'profile',
     account: 'account',
+    sessions: 'sessions',
     'bsplus-settings': 'bqsettings',
     'bs-settings': 'dqsettings',
   },

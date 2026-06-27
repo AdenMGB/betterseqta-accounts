@@ -23,6 +23,12 @@ import {
 } from "../lib/session";
 import { findUserByCredentialsLogin, findUserProfileByLogin } from "../lib/user-by-login";
 import { ensureUserDesqtaSettings } from "../lib/settings-bootstrap";
+import {
+  deviceNameForNewSession,
+  resolveSessionDeviceName,
+  sessionSubtitle,
+  sessionTitle,
+} from "../lib/session-display";
 import { mapUserPublic, publicUserFromCredentials, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
 
@@ -90,7 +96,7 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
     const session = await createSession(env, {
       userId: id,
       platform: "web",
-      deviceName: "Website",
+      deviceName: deviceNameForNewSession(request),
       request,
       refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
     });
@@ -136,7 +142,7 @@ export async function handleLogin({ env, request, jwtSecret }: RequestContext): 
     const session = await createSession(env, {
       userId: user.id,
       platform: "web",
-      deviceName: "Website",
+      deviceName: deviceNameForNewSession(request),
       request,
       refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
     });
@@ -592,4 +598,121 @@ export async function handleResetPassword({ env, request }: RequestContext): Pro
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+}
+
+function sessionIdFromRefreshToken(refreshToken: string | undefined): string | null {
+  if (!refreshToken) return null;
+  const colonIdx = refreshToken.indexOf(":");
+  if (colonIdx < 1) return null;
+  return refreshToken.substring(0, colonIdx);
+}
+
+export async function handleListSessions({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const payload = await getUser(request, jwtSecret);
+  if (!payload) {
+    return authError("Unauthorized", 401);
+  }
+
+  const cookies = parseCookies(request);
+  const currentSessionId = sessionIdFromRefreshToken(cookies[REFRESH_COOKIE_NAME]);
+
+  const now = Math.floor(Date.now() / 1000);
+  const { results } = await env.DB.prepare(
+    `SELECT s.id, s.platform, s.client_id, s.device_name, s.user_agent,
+            s.created_at, s.last_used_at, s.last_ip,
+            o.name AS client_name
+     FROM user_sessions s
+     LEFT JOIN oauth_clients o ON s.platform = 'oauth' AND s.client_id = o.id
+     WHERE s.user_id = ? AND s.revoked_at IS NULL AND s.expires_at > ?
+     ORDER BY s.last_used_at DESC, s.created_at DESC`,
+  )
+    .bind(payload.id, now)
+    .all();
+
+  const sessions = (results || []).map((row) => {
+    const r = row as Record<string, unknown>;
+    const platform = String(r.platform || "");
+    const clientName = (r.client_name as string | null) || null;
+    const storedDeviceName = (r.device_name as string | null) || null;
+    const userAgent = (r.user_agent as string | null) || null;
+    return {
+      id: r.id,
+      platform,
+      device_name: resolveSessionDeviceName(storedDeviceName, userAgent, platform),
+      client_id: r.client_id,
+      client_name: clientName,
+      label: sessionTitle(platform),
+      subtitle: sessionSubtitle(platform),
+      user_agent: r.user_agent,
+      created_at: r.created_at,
+      last_used_at: r.last_used_at,
+      last_ip: r.last_ip,
+      is_current: currentSessionId !== null && r.id === currentSessionId,
+    };
+  });
+
+  sessions.sort((a, b) => {
+    if (a.is_current !== b.is_current) return a.is_current ? -1 : 1;
+    const aTime = (a.last_used_at as number | null) ?? (a.created_at as number);
+    const bTime = (b.last_used_at as number | null) ?? (b.created_at as number);
+    return bTime - aTime;
+  });
+
+  return authJson({ sessions });
+}
+
+export async function handleRevokeSession({ env, request, jwtSecret, url }: RequestContext): Promise<Response> {
+  const payload = await getUser(request, jwtSecret);
+  if (!payload) {
+    return authError("Unauthorized", 401);
+  }
+
+  const parts = url.pathname.split("/");
+  const sessionId = parts[parts.length - 1];
+  if (!sessionId || sessionId === "sessions") {
+    return authError("Missing session id", 400);
+  }
+
+  const session = await env.DB.prepare(
+    "SELECT id, user_id, revoked_at FROM user_sessions WHERE id = ?",
+  )
+    .bind(sessionId)
+    .first();
+
+  if (!session) {
+    return authError("Session not found", 404);
+  }
+  if ((session.user_id as string) !== payload.id) {
+    return authError("Forbidden", 403);
+  }
+  if (session.revoked_at) {
+    return authJson({ success: true });
+  }
+
+  await revokeSessionById(env, sessionId);
+  return authJson({ success: true });
+}
+
+export async function handleRevokeOtherSessions({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const payload = await getUser(request, jwtSecret);
+  if (!payload) {
+    return authError("Unauthorized", 401);
+  }
+
+  const cookies = parseCookies(request);
+  const currentSessionId = sessionIdFromRefreshToken(cookies[REFRESH_COOKIE_NAME]);
+  const now = Math.floor(Date.now() / 1000);
+
+  if (currentSessionId) {
+    await env.DB.prepare(
+      `UPDATE user_sessions SET revoked_at = ?, expires_at = MIN(expires_at, ?)
+       WHERE user_id = ? AND id != ? AND revoked_at IS NULL`,
+    )
+      .bind(now, now, payload.id, currentSessionId)
+      .run();
+  } else {
+    await revokeAllUserSessions(env, payload.id);
+  }
+
+  return authJson({ success: true });
 }

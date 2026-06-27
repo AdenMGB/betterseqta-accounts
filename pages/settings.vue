@@ -140,6 +140,79 @@
             </section>
           </div>
 
+          <!-- Sessions -->
+          <div v-else-if="activeTab === 'sessions'" class="space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <p class="text-sm text-zinc-600 dark:text-zinc-400">
+                Devices and apps signed in to your account. Revoke a session if you do not recognize it.
+              </p>
+              <button
+                type="button"
+                @click="revokeOtherSessions"
+                :disabled="sessionsLoading || revokingOthers || sessions.length <= 1"
+                class="shrink-0 rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                {{ revokingOthers ? 'Signing out…' : 'Sign out all other devices' }}
+              </button>
+            </div>
+
+            <div v-if="sessionsLoading" class="flex justify-center py-12">
+              <LoadingSpinner size="lg" />
+            </div>
+
+            <div v-else-if="sessionsError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+              {{ sessionsError }}
+              <button type="button" @click="loadSessions" class="ml-2 underline">Retry</button>
+            </div>
+
+            <div v-else-if="!sessions.length" class="rounded-xl border border-zinc-200/80 bg-white/40 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-700/60 dark:bg-zinc-950/20 dark:text-zinc-400">
+              No active sessions found.
+            </div>
+
+            <ul v-else class="space-y-3">
+              <li
+                v-for="session in sessions"
+                :key="session.id"
+                class="overflow-hidden rounded-xl border border-zinc-200/80 bg-white/40 dark:border-zinc-700/60 dark:bg-zinc-950/20"
+              >
+                <div class="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                  <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <p class="font-semibold text-zinc-900 dark:text-white">{{ sessionDisplayLabel(session) }}</p>
+                      <span
+                        v-if="session.is_current"
+                        class="rounded-full bg-primary-500/10 px-2 py-0.5 text-xs font-medium text-primary-600 dark:text-primary-400"
+                      >
+                        This device
+                      </span>
+                    </div>
+                    <p class="mt-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">
+                      {{ sessionDisplaySubtitle(session) }}
+                    </p>
+                    <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                      Last seen {{ formatSessionTime(session.last_used_at || session.created_at) }}
+                    </p>
+                    <p v-if="session.last_ip" class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                      IP: {{ session.last_ip }}
+                    </p>
+                    <p v-if="sessionDisplayDeviceName(session)" class="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
+                      {{ sessionDisplayDeviceName(session) }}
+                    </p>
+                  </div>
+                  <button
+                    v-if="!session.is_current"
+                    type="button"
+                    @click="revokeSession(session.id)"
+                    :disabled="revokingSessionId === session.id"
+                    class="shrink-0 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
+                  >
+                    {{ revokingSessionId === session.id ? 'Signing out…' : 'Sign out' }}
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </div>
+
           <!-- BetterSEQTA+ Settings -->
           <div v-else-if="activeTab === 'bsplus-settings'" class="flex min-h-0 flex-1 flex-col">
             <div v-if="bsPlusLoading && !bsPlusFormReady" class="flex flex-1 items-center justify-center py-12">
@@ -273,7 +346,7 @@
 </style>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, type ComponentPublicInstance } from 'vue'
+import { ref, computed, onMounted, watch, type ComponentPublicInstance } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useSettings } from '~/composables/useSettings'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
@@ -281,7 +354,7 @@ import PfpStack from '~/components/PfpStack.vue'
 import PfpEditorModal from '~/components/PfpEditorModal.vue'
 import { withPfpCacheBust } from '~/utils/pfp'
 import { useTabPageUrl, SETTINGS_TAB_PAGE } from '~/composables/useTabPageUrl'
-import { UserCircleIcon, ShieldCheckIcon, CogIcon, SparklesIcon, XMarkIcon } from '@heroicons/vue/24/outline'
+import { UserCircleIcon, ShieldCheckIcon, CogIcon, SparklesIcon, XMarkIcon, ComputerDesktopIcon } from '@heroicons/vue/24/outline'
 
 const auth = useAuth()
 const { getSettings, syncSettings, getBsPlusSync, putBsPlusSync } = useSettings()
@@ -336,7 +409,8 @@ const onSettingsPfpUpdated = async (payload: { pfpUrl: string | null; pfpHash: s
 const { activeTab, setActiveTab } = useTabPageUrl(SETTINGS_TAB_PAGE)
 const tabs = [
   { name: 'profile', label: 'Profile', icon: UserCircleIcon },
-  { name: 'account', label: 'Account', icon: ShieldCheckIcon },
+  { name: 'account', label: 'Account Security', icon: ShieldCheckIcon },
+  { name: 'sessions', label: 'Active Sessions', icon: ComputerDesktopIcon },
   { name: 'bsplus-settings', label: 'BetterSEQTA+ Settings', icon: SparklesIcon },
   { name: 'bs-settings', label: 'DesQTA Settings', icon: CogIcon },
 ]
@@ -347,6 +421,11 @@ const activeTabMeta = computed(() => {
       return { title: 'Profile Settings', description: null }
     case 'account':
       return { title: 'Account Security', description: null }
+    case 'sessions':
+      return {
+        title: 'Active Sessions',
+        description: 'Manage devices and apps that are signed in to your account.',
+      }
     case 'bsplus-settings':
       return {
         title: 'BetterSEQTA+ Settings',
@@ -401,6 +480,149 @@ const emailLoading = ref(false)
 const emailError = ref('')
 const emailSuccess = ref('')
 
+type SessionRow = {
+  id: string
+  platform: string
+  device_name: string | null
+  client_id: string | null
+  client_name: string | null
+  label: string
+  subtitle?: string
+  user_agent: string | null
+  created_at: number
+  last_used_at: number | null
+  last_ip: string | null
+  is_current: boolean
+}
+
+const sessions = ref<SessionRow[]>([])
+const sessionsLoading = ref(false)
+const sessionsError = ref('')
+const revokingSessionId = ref<string | null>(null)
+const revokingOthers = ref(false)
+
+const SESSION_TITLES: Record<string, string> = {
+  web: 'BetterSEQTA Accounts',
+  oauth: 'BetterSEQTA Site',
+  desqta: 'DesQTA',
+  bsplus: 'BetterSEQTA+',
+}
+
+const SESSION_SUBTITLES: Record<string, string> = {
+  web: 'Website',
+  oauth: 'Website',
+  desqta: 'Desktop Client',
+  bsplus: 'Extension',
+}
+
+const GENERIC_SESSION_DEVICE_NAMES = new Set([
+  'Website',
+  'Website (Discord)',
+  'Desktop Client',
+  'Extension',
+  'DesQTA',
+  'DesQTA (Discord)',
+  'BetterSEQTA Plus',
+  'BetterSEQTA Plus (Discord)',
+  'BetterSEQTA Accounts',
+  'BetterSEQTA Site',
+  'BetterSEQTA+',
+  'accounts.betterseqta.org',
+])
+
+const sessionDisplayLabel = (session: SessionRow) => {
+  const fromPlatform = SESSION_TITLES[session.platform]
+  if (fromPlatform) return fromPlatform
+  if (session.label && !session.label.includes('betterseqta.org')) return session.label
+  return session.label || session.platform
+}
+
+const sessionDisplaySubtitle = (session: SessionRow) =>
+  session.subtitle || SESSION_SUBTITLES[session.platform] || 'Unknown'
+
+const sessionDisplayDeviceName = (session: SessionRow) => {
+  const name = session.device_name?.trim()
+  if (!name) return null
+  const subtitle = sessionDisplaySubtitle(session)
+  if (GENERIC_SESSION_DEVICE_NAMES.has(name) || name === subtitle) return null
+  if (name.includes('betterseqta.org')) return null
+  return name
+}
+
+const formatSessionTime = (unixSec: number | null) => {
+  if (!unixSec) return 'unknown'
+  return new Date(unixSec * 1000).toLocaleString()
+}
+
+const sessionAuthHeaders = () => {
+  const token = localStorage.getItem('token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+const sortSessions = (rows: SessionRow[]) =>
+  [...rows].sort((a, b) => {
+    if (a.is_current !== b.is_current) return a.is_current ? -1 : 1
+    const aTime = a.last_used_at ?? a.created_at
+    const bTime = b.last_used_at ?? b.created_at
+    return bTime - aTime
+  })
+
+const loadSessions = async () => {
+  sessionsLoading.value = true
+  sessionsError.value = ''
+  try {
+    const res = await $fetch<{ sessions: SessionRow[] }>('/api/auth/sessions', {
+      credentials: 'include',
+      headers: sessionAuthHeaders(),
+    })
+    sessions.value = sortSessions(res.sessions || [])
+  } catch (err: any) {
+    sessionsError.value = err?.data?.error || err?.message || 'Failed to load sessions'
+    sessions.value = []
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+const revokeSession = async (sessionId: string) => {
+  revokingSessionId.value = sessionId
+  try {
+    await $fetch(`/api/auth/sessions/${sessionId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: sessionAuthHeaders(),
+    })
+    await loadSessions()
+  } catch (err: any) {
+    sessionsError.value = err?.data?.error || err?.message || 'Failed to revoke session'
+  } finally {
+    revokingSessionId.value = null
+  }
+}
+
+const revokeOtherSessions = async () => {
+  revokingOthers.value = true
+  sessionsError.value = ''
+  try {
+    await $fetch('/api/auth/sessions/revoke-others', {
+      method: 'POST',
+      credentials: 'include',
+      headers: sessionAuthHeaders(),
+    })
+    await loadSessions()
+  } catch (err: any) {
+    sessionsError.value = err?.data?.error || err?.message || 'Failed to sign out other devices'
+  } finally {
+    revokingOthers.value = false
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'sessions') {
+    loadSessions()
+  }
+})
+
 onMounted(async () => {
   if (auth.user.value) {
     displayName.value = auth.user.value.displayName || ''
@@ -413,6 +635,9 @@ onMounted(async () => {
   }
   
   await Promise.all([loadBsSettings(), loadBsPlusSettings(), loadPfpHistory()])
+  if (activeTab.value === 'sessions') {
+    await loadSessions()
+  }
 })
 
 const loadBsSettings = async () => {
