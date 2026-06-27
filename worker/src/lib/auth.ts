@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import type { Env } from "../types/env";
-import { ACCESS_TOKEN_TTL, corsHeaders } from "../constants";
+import { ACCESS_COOKIE_NAME, ACCESS_TOKEN_TTL, corsHeaders } from "../constants";
+import { parseCookies } from "./cookies";
 
 export type JwtUserPayload = {
   id: string;
@@ -9,10 +10,20 @@ export type JwtUserPayload = {
   adminLevel?: number;
 };
 
-export async function getUser(req: Request, jwtSecret: Uint8Array): Promise<JwtUserPayload | null> {
+function extractAccessToken(req: Request): string | null {
   const authHeader = req.headers.get("Authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-  const token = authHeader.split(" ")[1];
+  if (authHeader?.startsWith("Bearer ")) {
+    const bearer = authHeader.slice(7).trim();
+    if (bearer) return bearer;
+  }
+  const cookies = parseCookies(req);
+  const cookieToken = cookies[ACCESS_COOKIE_NAME];
+  return cookieToken?.trim() || null;
+}
+
+export async function getUser(req: Request, jwtSecret: Uint8Array): Promise<JwtUserPayload | null> {
+  const token = extractAccessToken(req);
+  if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, jwtSecret);
     return payload as JwtUserPayload;
@@ -101,15 +112,29 @@ export function apiKeyDbError(e: unknown): Response {
   });
 }
 
-export function authJson(data: unknown, extraHeaders: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    headers: { ...corsHeaders, "Content-Type": "application/json", ...extraHeaders },
-  });
+function applyExtraHeaders(headers: Headers, extraHeaders: Record<string, string | string[]>): void {
+  for (const [key, value] of Object.entries(extraHeaders)) {
+    if (key.toLowerCase() === "set-cookie") {
+      const cookies = Array.isArray(value) ? value : [value];
+      for (const cookie of cookies) {
+        headers.append("Set-Cookie", cookie);
+      }
+      continue;
+    }
+    if (typeof value === "string") {
+      headers.set(key, value);
+    }
+  }
 }
 
-export function authError(message: string, status = 401, extraHeaders: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json", ...extraHeaders },
-  });
+export function authJson(data: unknown, extraHeaders: Record<string, string | string[]> = {}): Response {
+  const headers = new Headers({ ...corsHeaders, "Content-Type": "application/json" });
+  applyExtraHeaders(headers, extraHeaders);
+  return new Response(JSON.stringify(data), { headers });
+}
+
+export function authError(message: string, status = 401, extraHeaders: Record<string, string | string[]> = {}): Response {
+  const headers = new Headers({ ...corsHeaders, "Content-Type": "application/json" });
+  applyExtraHeaders(headers, extraHeaders);
+  return new Response(JSON.stringify({ error: message }), { status, headers });
 }

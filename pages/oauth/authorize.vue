@@ -89,8 +89,8 @@ const approve = async () => {
     try {
         const res = await $fetch<{ redirectUrl: string }>('/api/oauth/approve', {
             method: 'POST',
+            credentials: 'include',
             body: { client_id: clientId, redirect_uri: redirectUri },
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
         window.location.href = res.redirectUrl
     } catch (e) {

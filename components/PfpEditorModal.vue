@@ -242,7 +242,7 @@ const bustVersion = computed(() => localPfpHash.value || props.cacheVersion)
 const bust = (url: string) => withPfpCacheBust(url, bustVersion.value)
 const bumpView = () => { localViewVersion.value = Date.now() }
 
-const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` })
+const authFetchInit = () => ({ credentials: 'include' as const })
 
 watch(
   () => [props.isOpen, props.user?.id, props.user?.pfpUrl, props.user?.pfpHistory] as const,
@@ -302,7 +302,7 @@ const onCropConfirm = async (file: File) => {
     const url = mode.value === 'admin' ? '/api/admin/user/pfp' : '/api/user/pfp'
     const res = await $fetch<{ pfpUrl: string; pfpHash: string; pfpHistory: PfpHistoryItem[] }>(url, {
       method: 'POST',
-      headers: authHeaders(),
+      ...authFetchInit(),
       body: formData,
     })
     localHistory.value = res.pfpHistory
@@ -338,7 +338,7 @@ const doRestore = async (history: PfpHistoryItem) => {
       : { historyId: history.id }
     const res = await $fetch<{ pfpUrl: string; pfpHash: string; pfpHistory: PfpHistoryItem[] }>(url, {
       method: 'POST',
-      headers: authHeaders(),
+      ...authFetchInit(),
       body,
     })
     localHistory.value = res.pfpHistory
@@ -373,7 +373,7 @@ const doClearPfp = async () => {
     const body = mode.value === 'admin' ? { userId: props.user.id } : undefined
     const res = await $fetch<{ pfpUrl: null; pfpHash: null; pfpHistory: PfpHistoryItem[] }>(url, {
       method: 'POST',
-      headers: authHeaders(),
+      ...authFetchInit(),
       body,
     })
     localHistory.value = res.pfpHistory

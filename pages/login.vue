@@ -97,7 +97,7 @@ const loading = ref(false)
 const checkingSession = ref(true)
 const router = useRouter()
 const route = useRoute()
-const { setStoredToken, fetchUser, isLoggedIn, user } = useAuth()
+const { fetchUser, isLoggedIn } = useAuth()
 
 onMounted(async () => {
   await fetchUser()
@@ -115,10 +115,10 @@ const handleLogin = async () => {
   try {
     const res: any = await $fetch('/api/auth/login', {
       method: 'POST',
+      credentials: 'include',
       body: { login: login.value.trim(), password: password.value },
     })
-    if (res.token) {
-      setStoredToken(res.token)
+    if (res?.user) {
       await fetchUser()
       const redirect = route.query.redirect as string || '/'
       router.push(redirect)

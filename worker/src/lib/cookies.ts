@@ -44,3 +44,10 @@ export function createCookie(name: string, value: string, options: CookieOptions
 export function clearCookie(name: string): string {
   return createCookie(name, "", { maxAge: 0, expires: new Date(0) });
 }
+
+export function appendSetCookieHeaders(headers: Headers, cookies: string | string[]): void {
+  const list = Array.isArray(cookies) ? cookies : [cookies];
+  for (const cookie of list) {
+    headers.append("Set-Cookie", cookie);
+  }
+}

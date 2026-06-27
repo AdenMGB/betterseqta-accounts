@@ -32,6 +32,7 @@ const routes: Route[] = [
   { test: (m, p) => m === "POST" && p === "/api/auth/login", handle: (c) => auth.handleLogin(c) },
   { test: (m, p) => m === "GET" && p === "/api/auth/me", handle: (c) => auth.handleMe(c) },
   { test: (m, p) => m === "POST" && p === "/api/auth/refresh", handle: (c) => auth.handleRefresh(c) },
+  { test: (m, p) => m === "POST" && p === "/api/auth/migrate-session", handle: (c) => auth.handleMigrateSession(c) },
   { test: (m, p) => m === "POST" && p === "/api/auth/logout", handle: (c) => auth.handleLogout(c) },
   { test: (m, p) => m === "POST" && p === "/api/auth/logout-all", handle: (c) => auth.handleLogoutAll(c) },
   { test: (m, p) => m === "GET" && p === "/api/auth/sessions", handle: (c) => auth.handleListSessions(c) },

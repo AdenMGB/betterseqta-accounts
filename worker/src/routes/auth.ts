@@ -11,7 +11,13 @@ import {
   authJson,
   authError,
 } from "../lib/auth";
-import { parseCookies, createCookie, clearCookie } from "../lib/cookies";
+import { parseCookies } from "../lib/cookies";
+import {
+  clearWebsiteSessionCookies,
+  createAccessTokenCookie,
+  createRefreshTokenCookie,
+  websiteSessionCookies,
+} from "../lib/session-cookies";
 import { sendPasswordResetEmail } from "../lib/email";
 import { checkRateLimit } from "../lib/rate-limit";
 import {
@@ -100,18 +106,15 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
       request,
       refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
     });
-    const refreshCookie = createCookie(REFRESH_COOKIE_NAME, session.refreshToken, {
-      maxAge: WEBSITE_REFRESH_EXPIRY_DAYS * 24 * 60 * 60,
-    });
+    const refreshCookie = createRefreshTokenCookie(session.refreshToken);
 
     return authJson(
       {
-        token,
         expires_in: WEBSITE_ACCESS_EXPIRES_IN,
         user: { id, email: normalizedEmail, username: trimmedUsername, displayName, admin_level: 0 },
       },
       {
-        "Set-Cookie": refreshCookie,
+        "Set-Cookie": [createAccessTokenCookie(token), refreshCookie],
       },
     );
   } catch (err) {
@@ -146,18 +149,13 @@ export async function handleLogin({ env, request, jwtSecret }: RequestContext): 
       request,
       refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
     });
-    const refreshCookie = createCookie(REFRESH_COOKIE_NAME, session.refreshToken, {
-      maxAge: WEBSITE_REFRESH_EXPIRY_DAYS * 24 * 60 * 60,
-    });
-
     return authJson(
       {
-        token,
         expires_in: WEBSITE_ACCESS_EXPIRES_IN,
         user: publicUserFromCredentials(user),
       },
       {
-        "Set-Cookie": refreshCookie,
+        "Set-Cookie": websiteSessionCookies(token, session.refreshToken),
       },
     );
   } catch (err) {
@@ -185,14 +183,14 @@ export async function handleRefresh({ env, request, jwtSecret }: RequestContext)
     const sessionResult = await getSessionByRefreshToken(env, refreshToken);
     if ("error" in sessionResult) {
       return authError(sessionResult.error, sessionResult.status, {
-        "Set-Cookie": clearCookie(REFRESH_COOKIE_NAME),
+        "Set-Cookie": clearWebsiteSessionCookies(),
       });
     }
 
     const { session, sessionId, now } = sessionResult;
     if (session.platform !== "web") {
       return authError("Invalid session platform", 401, {
-        "Set-Cookie": clearCookie(REFRESH_COOKIE_NAME),
+        "Set-Cookie": clearWebsiteSessionCookies(),
       });
     }
 
@@ -202,31 +200,26 @@ export async function handleRefresh({ env, request, jwtSecret }: RequestContext)
     if (!user) {
       await revokeSessionById(env, sessionId);
       return authError("User not found", 401, {
-        "Set-Cookie": clearCookie(REFRESH_COOKIE_NAME),
+        "Set-Cookie": clearWebsiteSessionCookies(),
       });
     }
 
     const newExpiresAt = now + WEBSITE_REFRESH_EXPIRY_DAYS * 24 * 60 * 60;
     await touchUserSession(env, sessionId, now, request, { expiresAt: newExpiresAt });
     const accessToken = await createAccessToken(user as { id: string; email?: string | null; username?: string | null }, jwtSecret);
-    const refreshCookie = createCookie(REFRESH_COOKIE_NAME, refreshToken!, {
-      maxAge: WEBSITE_REFRESH_EXPIRY_DAYS * 24 * 60 * 60,
-    });
-
     return authJson(
       {
-        token: accessToken,
         expires_in: WEBSITE_ACCESS_EXPIRES_IN,
         user: mapUserPublic(user as Record<string, unknown>),
       },
       {
-        "Set-Cookie": refreshCookie,
+        "Set-Cookie": [createAccessTokenCookie(accessToken), createRefreshTokenCookie(refreshToken!)],
       },
     );
   } catch (err) {
     console.error("Website refresh error:", err);
     return authError("Refresh failed", 500, {
-      "Set-Cookie": clearCookie(REFRESH_COOKIE_NAME),
+      "Set-Cookie": clearWebsiteSessionCookies(),
     });
   }
 }
@@ -242,7 +235,7 @@ export async function handleLogout({ env, request }: RequestContext): Promise<Re
     return authJson(
       { success: true },
       {
-        "Set-Cookie": clearCookie(REFRESH_COOKIE_NAME),
+        "Set-Cookie": clearWebsiteSessionCookies(),
       },
     );
   } catch (err) {
@@ -250,7 +243,7 @@ export async function handleLogout({ env, request }: RequestContext): Promise<Re
     return authJson(
       { success: true },
       {
-        "Set-Cookie": clearCookie(REFRESH_COOKIE_NAME),
+        "Set-Cookie": clearWebsiteSessionCookies(),
       },
     );
   }
@@ -260,7 +253,7 @@ export async function handleLogoutAll({ env, request, jwtSecret }: RequestContex
   const payload = await getUser(request, jwtSecret);
   if (!payload) {
     return authError("Unauthorized", 401, {
-      "Set-Cookie": clearCookie(REFRESH_COOKIE_NAME),
+      "Set-Cookie": clearWebsiteSessionCookies(),
     });
   }
 
@@ -274,7 +267,31 @@ export async function handleLogoutAll({ env, request, jwtSecret }: RequestContex
   return authJson(
     { success: true },
     {
-      "Set-Cookie": clearCookie(REFRESH_COOKIE_NAME),
+      "Set-Cookie": clearWebsiteSessionCookies(),
+    },
+  );
+}
+
+export async function handleMigrateSession({ request, jwtSecret }: RequestContext): Promise<Response> {
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return authError("Missing bearer token", 400);
+  }
+
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    return authError("Missing bearer token", 400);
+  }
+
+  const payload = await getUser(request, jwtSecret);
+  if (!payload) {
+    return authError("Invalid or expired token", 401);
+  }
+
+  return authJson(
+    { success: true },
+    {
+      "Set-Cookie": createAccessTokenCookie(token),
     },
   );
 }
@@ -311,13 +328,12 @@ export async function handleChangePassword({ env, request, jwtSecret }: RequestC
     await env.DB.prepare("UPDATE users SET password = ? WHERE id = ?").bind(hashedPassword, userPayload.id).run();
     await revokeAllUserSessions(env, userPayload.id);
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-        "Set-Cookie": clearCookie(REFRESH_COOKIE_NAME),
+    return authJson(
+      { success: true },
+      {
+        "Set-Cookie": clearWebsiteSessionCookies(),
       },
-    });
+    );
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return new Response(message, { status: 500, headers: corsHeaders });
@@ -584,13 +600,12 @@ export async function handleResetPassword({ env, request }: RequestContext): Pro
 
     await env.DB.prepare("UPDATE password_reset_tokens SET used = 1 WHERE token = ?").bind(validToken.token).run();
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-        "Set-Cookie": clearCookie(REFRESH_COOKIE_NAME),
+    return authJson(
+      { success: true },
+      {
+        "Set-Cookie": clearWebsiteSessionCookies(),
       },
-    });
+    );
   } catch (err) {
     console.error("Reset password error:", err);
     return new Response(JSON.stringify({ error: "An error occurred" }), {

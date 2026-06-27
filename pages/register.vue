@@ -138,12 +138,14 @@ const onSubmit = async () => {
   }
   
   try {
-    const res = await $fetch<{ token: string }>('/api/auth/register', {
+    const res = await $fetch<{ user?: unknown }>('/api/auth/register', {
       method: 'POST',
+      credentials: 'include',
       body: { email: email.value, password: password.value, username: username.value, displayName: displayName.value },
     })
-    if (res?.token) {
-      localStorage.setItem('token', res.token)
+    if (res?.user) {
+      router.push('/')
+      return
     }
     router.push('/')
   } catch (err: any) {

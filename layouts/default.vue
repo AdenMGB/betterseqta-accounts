@@ -57,8 +57,7 @@ const toggleDarkMode = () => {
 }
 
 onMounted(async () => {
-  // Ensure user is loaded
-  if (process.client && localStorage.getItem('token') && !auth.user.value) {
+  if (process.client && !auth.user.value) {
     await auth.fetchUser()
   }
   

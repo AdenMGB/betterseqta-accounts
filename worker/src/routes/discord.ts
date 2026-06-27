@@ -6,14 +6,8 @@ import { validateDesqtaClient, touchDesqtaReservedClient } from "../lib/desqta-c
 import { createSession } from "../lib/session";
 import { deviceNameForNewSession } from "../lib/session-display";
 import { ensureUserDesqtaSettings } from "../lib/settings-bootstrap";
-import { REFRESH_COOKIE_NAME } from "../constants";
-import { createCookie as buildCookie } from "../lib/cookies";
+import { createAccessTokenCookie, createRefreshTokenCookie } from "../lib/session-cookies";
 import type { RequestContext } from "../types/context";
-
-// Re-export createCookie from cookies - auth uses REFRESH_COOKIE_NAME with buildCookie
-function createRefreshCookie(value: string, maxAge: number): string {
-  return buildCookie(REFRESH_COOKIE_NAME, value, { maxAge });
-}
 
 export async function handleDiscordOAuthStart({ env, url }: RequestContext): Promise<Response> {
   const discordClientId = cleanEnvVar(env.DISCORD_CLIENT_ID);
@@ -181,15 +175,17 @@ export async function handleDiscordOAuthCallback({ env, request, url, jwtSecret 
     const frontendCallbackUrl = new URL(
       `${env.APP_URL || "https://accounts.betterseqta.org"}/auth/discord/callback`,
     );
-    frontendCallbackUrl.searchParams.set("token", token);
     if (postLoginRedirect) frontendCallbackUrl.searchParams.set("redirect", postLoginRedirect);
+
+    const headers = new Headers({
+      Location: frontendCallbackUrl.toString(),
+    });
+    headers.append("Set-Cookie", createAccessTokenCookie(token));
+    headers.append("Set-Cookie", createRefreshTokenCookie(session.refreshToken));
 
     return new Response(null, {
       status: 302,
-      headers: {
-        Location: frontendCallbackUrl.toString(),
-        "Set-Cookie": createRefreshCookie(session.refreshToken, WEBSITE_REFRESH_EXPIRY_DAYS * 24 * 60 * 60),
-      },
+      headers,
     });
   } catch (err) {
     console.error("Discord OAuth callback error:", err);

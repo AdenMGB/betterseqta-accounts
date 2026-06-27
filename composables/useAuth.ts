@@ -1,54 +1,34 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { AUTH_FETCH } from '~/composables/useAuthFetch'
 
 const user = ref<any>(null)
 const loading = ref(false)
 const error = ref('')
-const accessToken = ref<string | null>(null)
-const refreshPromise = ref<Promise<string | null> | null>(null)
-
-function getStoredToken() {
-  if (!process.client) return null
-  return accessToken.value || localStorage.getItem('token')
-}
-
-function setStoredToken(token: string | null) {
-  accessToken.value = token
-  if (!process.client) return
-  if (token) {
-    localStorage.setItem('token', token)
-  } else {
-    localStorage.removeItem('token')
-  }
-}
+const refreshPromise = ref<Promise<boolean> | null>(null)
 
 export function useAuth() {
   const router = useRouter()
 
   const refreshAccessToken = async () => {
-    if (!process.client) return null
+    if (!process.client) return false
     if (refreshPromise.value) {
       return refreshPromise.value
     }
 
     refreshPromise.value = $fetch<any>('/api/auth/refresh', {
       method: 'POST',
-      credentials: 'include',
+      ...AUTH_FETCH,
     })
       .then((res) => {
-        const nextToken = res?.token || null
-        if (nextToken) {
-          setStoredToken(nextToken)
-        }
         if (res?.user) {
           user.value = res.user
         }
-        return nextToken
+        return true
       })
       .catch((err: any) => {
         const status = err?.status || err?.response?.status
         if (status === 401) {
-          setStoredToken(null)
           user.value = null
         }
         throw err
@@ -64,41 +44,21 @@ export function useAuth() {
     loading.value = true
     error.value = ''
     try {
-      let token = getStoredToken()
-      if (!token) {
-        token = await refreshAccessToken().catch(() => null)
-      }
-      if (!token) {
-        user.value = null
-        return null
-      }
-
-      const res = await $fetch('/api/auth/me', {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'include',
-      })
+      const res = await $fetch('/api/auth/me', AUTH_FETCH)
       user.value = res
       return res
     } catch (err: any) {
       const status = err?.status || err?.response?.status
       if (status === 401) {
         try {
-          const refreshedToken = await refreshAccessToken()
-          if (!refreshedToken) {
-            user.value = null
-            return null
-          }
-          const res = await $fetch('/api/auth/me', {
-            headers: { Authorization: `Bearer ${refreshedToken}` },
-            credentials: 'include',
-          })
+          await refreshAccessToken()
+          const res = await $fetch('/api/auth/me', AUTH_FETCH)
           user.value = res
           return res
         } catch (refreshErr: any) {
           const refreshStatus = refreshErr?.status || refreshErr?.response?.status
           error.value = refreshErr?.data?.error || 'Session expired.'
           if (refreshStatus === 401) {
-            setStoredToken(null)
             user.value = null
           }
           return null
@@ -115,16 +75,13 @@ export function useAuth() {
   const logout = async () => {
     loading.value = true
     try {
-      const token = getStoredToken()
       await $fetch('/api/auth/logout', {
         method: 'POST',
-        credentials: 'include',
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        ...AUTH_FETCH,
       })
-    } catch (e) {
+    } catch {
       // Ignore errors during logout
     } finally {
-      setStoredToken(null)
       user.value = null
       router.push('/login')
       loading.value = false
@@ -137,10 +94,8 @@ export function useAuth() {
     user,
     loading,
     error,
-    accessToken,
     fetchUser,
     refreshAccessToken,
-    setStoredToken,
     logout,
     isLoggedIn,
   }

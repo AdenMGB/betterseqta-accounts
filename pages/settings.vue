@@ -388,7 +388,7 @@ const openPfpView = (src: string) => {
 const loadPfpHistory = async () => {
   try {
     const res = await $fetch<{ pfpHistory: any[] }>('/api/user/pfp/history', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      credentials: 'include',
     })
     pfpHistory.value = res.pfpHistory
   } catch {
@@ -554,11 +554,6 @@ const formatSessionTime = (unixSec: number | null) => {
   return new Date(unixSec * 1000).toLocaleString()
 }
 
-const sessionAuthHeaders = () => {
-  const token = localStorage.getItem('token')
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
-
 const sortSessions = (rows: SessionRow[]) =>
   [...rows].sort((a, b) => {
     if (a.is_current !== b.is_current) return a.is_current ? -1 : 1
@@ -573,7 +568,6 @@ const loadSessions = async () => {
   try {
     const res = await $fetch<{ sessions: SessionRow[] }>('/api/auth/sessions', {
       credentials: 'include',
-      headers: sessionAuthHeaders(),
     })
     sessions.value = sortSessions(res.sessions || [])
   } catch (err: any) {
@@ -590,7 +584,6 @@ const revokeSession = async (sessionId: string) => {
     await $fetch(`/api/auth/sessions/${sessionId}`, {
       method: 'DELETE',
       credentials: 'include',
-      headers: sessionAuthHeaders(),
     })
     await loadSessions()
   } catch (err: any) {
@@ -607,7 +600,6 @@ const revokeOtherSessions = async () => {
     await $fetch('/api/auth/sessions/revoke-others', {
       method: 'POST',
       credentials: 'include',
-      headers: sessionAuthHeaders(),
     })
     await loadSessions()
   } catch (err: any) {
@@ -682,7 +674,7 @@ const updateProfile = async () => {
   try {
     await $fetch('/api/user/update', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      credentials: 'include',
       body: {
         displayName: displayName.value,
         username: username.value,
@@ -771,7 +763,7 @@ const changePassword = async () => {
     try {
         await $fetch('/api/auth/change-password', {
             method: 'POST',
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            credentials: 'include',
             body: {
                 currentPassword: currentPassword.value,
                 newPassword: newPassword.value
@@ -796,7 +788,7 @@ const changeEmail = async () => {
     try {
         const response = await $fetch<{ success: boolean; email: string }>('/api/auth/change-email', {
             method: 'POST',
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            credentials: 'include',
             body: {
                 newEmail: newEmail.value,
                 password: emailPassword.value

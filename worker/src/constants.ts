@@ -12,4 +12,5 @@ export const WEBSITE_ACCESS_EXPIRES_IN = 60 * 60;
 export const WEBSITE_REFRESH_EXPIRY_DAYS = 180;
 export const APP_REFRESH_EXPIRY_DAYS = 180;
 export const DESQTA_CLIENT_TTL_DAYS = 7;
+export const ACCESS_COOKIE_NAME = "bs_access_token";
 export const REFRESH_COOKIE_NAME = "bs_refresh_token";

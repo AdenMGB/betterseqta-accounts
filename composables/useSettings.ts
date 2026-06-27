@@ -19,70 +19,48 @@ export type BsPlusSyncGetResult = {
   schemaVersion?: number
 }
 
+const authFetchInit: RequestInit = { credentials: 'include' }
+
 export const useSettings = () => {
-  const getAuthToken = () => {
-    if (process.client) {
-      return localStorage.getItem('token');
-    }
-    return null;
-  }
-
   const syncSettings = async (mySettings: any) => {
-    const token = getAuthToken();
-    if (!token) {
-      throw new Error('Not authenticated');
-    }
-
     const response = await fetch('/api/settings', {
+      ...authFetchInit,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify(mySettings)
-    });
-    
+      body: JSON.stringify(mySettings),
+    })
+
     if (!response.ok) {
-        throw new Error('Failed to save settings');
+      throw new Error('Failed to save settings')
     }
 
-    const savedData = await response.json();
-    // POST /api/settings returns { ok, server, ...mergedSettings } after sync-metadata migration
+    const savedData = await response.json()
     if (savedData && typeof savedData === 'object' && savedData.ok === true && savedData.server) {
-      const { ok: _ok, server: _server, ...settingsOnly } = savedData;
-      console.log('Settings saved:', settingsOnly, 'server:', _server);
-      return settingsOnly;
+      const { ok: _ok, server: _server, ...settingsOnly } = savedData
+      console.log('Settings saved:', settingsOnly, 'server:', _server)
+      return settingsOnly
     }
-    console.log("Settings saved:", savedData);
-    return savedData;
-  };
+    console.log('Settings saved:', savedData)
+    return savedData
+  }
 
   const getSettings = async () => {
-      const token = getAuthToken();
-      if (!token) {
-        throw new Error('Not authenticated');
-      }
-
-      const response = await fetch('/api/settings', {
-          method: 'GET',
-          headers: {
-              'Authorization': `Bearer ${token}`
-          }
-      });
-      if (!response.ok) {
-        throw new Error('Failed to fetch settings');
-      }
-      return await response.json();
+    const response = await fetch('/api/settings', {
+      ...authFetchInit,
+      method: 'GET',
+    })
+    if (!response.ok) {
+      throw new Error('Failed to fetch settings')
+    }
+    return await response.json()
   }
 
   const getBsPlusSync = async (): Promise<BsPlusSyncGetResult> => {
-    const token = getAuthToken()
-    if (!token) {
-      throw new Error('Not authenticated')
-    }
     const response = await fetch('/api/bsplus/settings/sync', {
+      ...authFetchInit,
       method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
     })
     if (response.status === 404) {
       return { data: {} }
@@ -110,15 +88,11 @@ export const useSettings = () => {
   }
 
   const putBsPlusSync = async (flatData: Record<string, unknown>) => {
-    const token = getAuthToken()
-    if (!token) {
-      throw new Error('Not authenticated')
-    }
     const response = await fetch('/api/bsplus/settings/sync', {
+      ...authFetchInit,
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         schemaVersion: CLOUD_SETTINGS_SYNC_SCHEMA_VERSION,
@@ -140,13 +114,7 @@ export const useSettings = () => {
   }
 
   const getCloudSummary = async (): Promise<CloudSummaryResponse> => {
-    const token = getAuthToken()
-    if (!token) {
-      throw new Error('Not authenticated')
-    }
-    const response = await fetch('/api/user/cloud-summary', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const response = await fetch('/api/user/cloud-summary', authFetchInit)
     if (!response.ok) {
       throw new Error('Failed to fetch cloud summary')
     }
@@ -159,6 +127,5 @@ export const useSettings = () => {
     getBsPlusSync,
     putBsPlusSync,
     getCloudSummary,
-  };
-};
-
+  }
+}

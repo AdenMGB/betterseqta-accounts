@@ -766,7 +766,7 @@ const openPfpEditor = async (user: any) => {
   try {
     const res = await $fetch<{ pfpUrl: string | null; pfpHash: string | null; pfpHistory: any[] }>('/api/admin/user/pfp', {
       params: { userId: user.id },
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      credentials: 'include',
     })
     if (pfpEditorUser.value?.id !== user.id) return
     pfpEditorUser.value = { ...pfpEditorUser.value, pfpUrl: res.pfpUrl, pfpHistory: res.pfpHistory }
@@ -918,7 +918,7 @@ const loadAuditLog = async (opts: { append?: boolean; cursor?: string | null } =
         page: cursor ? undefined : (append ? auditPage.value : 1),
         cursor: cursor ?? undefined,
       }),
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      credentials: 'include',
     })
     auditEntries.value = append ? [...auditEntries.value, ...res.entries] : res.entries
     auditNextCursor.value = res.nextCursor ?? null
@@ -943,7 +943,7 @@ const pollAuditLog = async () => {
   try {
     const res = await $fetch<{ entries: any[] }>('/api/admin/audit-log', {
       params: auditFetchParams({ since: newest, limit: 20 }, { light: true }),
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      credentials: 'include',
     })
     if (!res.entries?.length) {
       touchAuditUpdated()
@@ -1084,7 +1084,7 @@ const processAllPfps = async () => {
             '/api/admin/process-pfps',
             {
               method: 'POST',
-              headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+              credentials: 'include',
               body: { offset, limit: 20 },
             },
           )
@@ -1120,7 +1120,7 @@ const prunePfpHistory = async () => {
       try {
         const res = await $fetch<{ usersProcessed: number; rowsDeleted: number }>('/api/admin/prune-pfp-history', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+          credentials: 'include',
         })
         pruneResult.value = res
         showToast('PFP history pruned', 'success')
@@ -1145,7 +1145,7 @@ const searchUsers = async (page: number = 1, append: boolean = false) => {
     try {
         const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number, maxAdminLevel: number }>('/api/admin/users', {
             params: { q: searchQuery.value, page, sort: sortOption.value, has_pfp: hasPfpFilter.value || undefined, include_history: 'false' },
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            credentials: 'include'
         })
         const mapped = res.users.map((user: any) => ({
             ...user,
@@ -1307,7 +1307,7 @@ const sendPasswordReset = (user: any) => {
                 await $fetch('/api/admin/send-password-reset', {
                     method: 'POST',
                     body: { userId: user.id },
-                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                    credentials: 'include'
                 })
                 showToast('Password reset email sent', 'success')
             } catch (e: any) {
@@ -1331,7 +1331,7 @@ const deleteUser = (user: any) => {
                 await $fetch('/api/admin/delete-user', {
                     method: 'POST',
                     body: { userId: user.id },
-                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                    credentials: 'include'
                 })
                 users.value = users.value.filter(u => u.id !== user.id)
                 totalUsers.value = Math.max(0, totalUsers.value - 1)
@@ -1384,7 +1384,7 @@ const saveUserEdit = async (user: any) => {
                 email: editingUser.value.email,
                 displayName: editingUser.value.displayName
             },
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            credentials: 'include'
         })
         
         if (userIndex !== -1) {
@@ -1427,7 +1427,7 @@ const promoteUser = (user: any) => {
                 await $fetch('/api/admin/promote', {
                     method: 'POST',
                     body: { userId: user.id, adminLevel: newLevel },
-                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                    credentials: 'include'
                 })
                 user._previousAdminLevel = newLevel
                 showToast(`${user.username} promoted`, 'success')
@@ -1455,7 +1455,7 @@ const demoteUser = (user: any) => {
                 await $fetch('/api/admin/promote', {
                     method: 'POST',
                     body: { userId: user.id, adminLevel: newLevel },
-                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                    credentials: 'include'
                 })
                 user._previousAdminLevel = newLevel
                 showToast(`${user.username} demoted`, 'success')
@@ -1470,7 +1470,7 @@ const demoteUser = (user: any) => {
 const loadClients = async () => {
     try {
         const res = await $fetch<any[]>('/api/admin/clients', {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            credentials: 'include'
         })
         clients.value = res
     } catch (e) {
@@ -1481,7 +1481,7 @@ const loadClients = async () => {
 const loadDesqtaClientsCount = async () => {
     try {
         const res = await $fetch<{ count: number }>('/api/admin/desqta-clients-count', {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            credentials: 'include'
         })
         desqtaClientsCount.value = res.count
     } catch (e) {
@@ -1496,7 +1496,7 @@ const createClient = async () => {
         const res = await $fetch<any>('/api/admin/clients', {
             method: 'POST',
             body: newClient.value,
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            credentials: 'include'
         })
         lastCreatedClient.value = res
         clients.value.unshift(res)
@@ -1521,7 +1521,7 @@ const deleteClient = (client: any) => {
                 await $fetch('/api/admin/clients/delete', {
                     method: 'POST',
                     body: { clientId: client.id },
-                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                    credentials: 'include'
                 })
                 clients.value = clients.value.filter(c => c.id !== client.id)
                 showToast('Client deleted', 'success')
@@ -1537,7 +1537,7 @@ const deleteClient = (client: any) => {
 const loadApiKeys = async () => {
     try {
         const res = await $fetch<any[]>('/api/admin/api-keys', {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            credentials: 'include'
         })
         apiKeys.value = res
     } catch (e) {
@@ -1552,7 +1552,7 @@ const createApiKey = async () => {
         const res = await $fetch<any>('/api/admin/api-keys', {
             method: 'POST',
             body: { name: newApiKeyName.value.trim() },
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            credentials: 'include'
         })
         lastCreatedApiKey.value = res
         apiKeys.value.unshift({ id: res.id, name: res.name, createdAt: res.createdAt })
@@ -1591,7 +1591,7 @@ const deleteApiKey = (key: any) => {
                 await $fetch('/api/admin/api-keys', {
                     method: 'DELETE',
                     body: { id: key.id },
-                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                    credentials: 'include'
                 })
                 apiKeys.value = apiKeys.value.filter(k => k.id !== key.id)
                 showToast('API key deleted', 'success')
@@ -1618,7 +1618,7 @@ const fixPfpUrls = () => {
       try {
         const res = await $fetch<{ total: number; fixed: number; failed: number; results: any[] }>('/api/admin/fix-pfp-urls', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+          credentials: 'include'
         })
         urlFixResult.value = res
         showToast('PFP URLs updated', 'success')
@@ -1642,7 +1642,7 @@ const migratePfps = () => {
       try {
         const res = await $fetch<{ total: number; migrated: number; failed: number; results: any[] }>('/api/admin/migrate-pfps', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+          credentials: 'include'
         })
         migrationResult.value = res
         showToast('Migration complete', 'success')

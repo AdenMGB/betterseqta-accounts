@@ -13,23 +13,24 @@ const error = ref<string | null>(null)
 const loading = ref(true)
 
 onMounted(async () => {
-  const token = route.query.token as string | undefined
-  
-  if (!token) {
-    error.value = 'No token received from Discord login.'
-    loading.value = false
-    setTimeout(() => {
-      router.push('/login')
-    }, 3000)
-    return
-  }
+  const legacyToken = route.query.token as string | undefined
 
   try {
-    auth.setStoredToken(token)
+    if (legacyToken) {
+      await $fetch('/api/auth/migrate-session', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${legacyToken}` },
+      })
+      localStorage.removeItem('token')
+    }
+
     await auth.fetchUser()
-    
-    // Redirect to the post-login destination, or home
-    const redirect = route.query.redirect as string || '/'
+    if (!auth.isLoggedIn()) {
+      throw new Error('Not authenticated')
+    }
+
+    const redirect = (route.query.redirect as string) || '/'
     router.replace(redirect)
   } catch (err: any) {
     console.error('Discord login error:', err)
@@ -60,4 +61,4 @@ onMounted(async () => {
       </div>
     </div>
   </div>
-</template> 
+</template>
