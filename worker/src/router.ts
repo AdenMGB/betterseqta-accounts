@@ -12,6 +12,7 @@ import * as admin from "./routes/admin";
 import * as settings from "./routes/settings";
 import * as user from "./routes/user";
 import * as googleCalendar from "./routes/google-calendar";
+import * as microsoftCalendar from "./routes/microsoft-calendar";
 
 type Route = {
   test: (method: string, pathname: string) => boolean;
@@ -67,6 +68,14 @@ const routes: Route[] = [
   {
     test: (m, p) => m === "POST" && p === "/api/bsplus/google/calendar/refresh",
     handle: (c) => googleCalendar.handleGoogleCalendarTokenRefresh(c),
+  },
+  {
+    test: (m, p) => m === "POST" && p === "/api/bsplus/microsoft/calendar/token",
+    handle: (c) => microsoftCalendar.handleMicrosoftCalendarTokenExchange(c),
+  },
+  {
+    test: (m, p) => m === "POST" && p === "/api/bsplus/microsoft/calendar/refresh",
+    handle: (c) => microsoftCalendar.handleMicrosoftCalendarTokenRefresh(c),
   },
   { test: (m, p) => p === "/api/bsplus/settings/sync", handle: (c) => settingsSyncBsplus.handleBsplusSettingsSync(c) },
   { test: (m, p) => m === "GET" && p === "/api/user/cloud-summary", handle: (c) => cloudSummary.handleCloudSummary(c) },
