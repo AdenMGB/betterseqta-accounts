@@ -11,6 +11,7 @@ import * as discord from "./routes/discord";
 import * as admin from "./routes/admin";
 import * as settings from "./routes/settings";
 import * as user from "./routes/user";
+import * as googleCalendar from "./routes/google-calendar";
 
 type Route = {
   test: (method: string, pathname: string) => boolean;
@@ -50,6 +51,14 @@ const routes: Route[] = [
   { test: (m, p) => m === "GET" && p === "/api/bsplus/config", handle: (c) => bsplus.handleBsplusConfig(c) },
   { test: (m, p) => m === "POST" && p === "/api/bsplus/refresh", handle: (c) => bsplus.handleBsplusRefresh(c) },
   { test: (m, p) => m === "POST" && p === "/api/bsplus/login", handle: (c) => bsplus.handleBsplusLogin(c) },
+  {
+    test: (m, p) => m === "POST" && p === "/api/bsplus/google/calendar/token",
+    handle: (c) => googleCalendar.handleGoogleCalendarTokenExchange(c),
+  },
+  {
+    test: (m, p) => m === "POST" && p === "/api/bsplus/google/calendar/refresh",
+    handle: (c) => googleCalendar.handleGoogleCalendarTokenRefresh(c),
+  },
   { test: (m, p) => p === "/api/bsplus/settings/sync", handle: (c) => settingsSyncBsplus.handleBsplusSettingsSync(c) },
   { test: (m, p) => m === "GET" && p === "/api/user/cloud-summary", handle: (c) => cloudSummary.handleCloudSummary(c) },
   { test: (m, p) => m === "GET" && p === "/api/oauth/discord", handle: (c) => discord.handleDiscordOAuthStart(c) },
