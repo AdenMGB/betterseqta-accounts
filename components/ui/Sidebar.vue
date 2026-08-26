@@ -103,6 +103,7 @@ import {
   UserCircleIcon,
   ArrowRightOnRectangleIcon,
   ShieldCheckIcon,
+  SwatchIcon,
 } from '@heroicons/vue/24/outline'
 
 const auth = useAuth()
@@ -117,6 +118,7 @@ const isAdmin = computed(() => {
 const navItems = computed(() => {
   const items = [
     { path: '/', label: 'Dashboard', icon: HomeIcon },
+    { path: '/themes', label: 'My Themes', icon: SwatchIcon },
     { path: '/settings', label: 'Settings', icon: Cog6ToothIcon },
   ]
   if (isAdmin.value) {

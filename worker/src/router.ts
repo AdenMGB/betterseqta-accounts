@@ -13,6 +13,7 @@ import * as settings from "./routes/settings";
 import * as user from "./routes/user";
 import * as googleCalendar from "./routes/google-calendar";
 import * as microsoftCalendar from "./routes/microsoft-calendar";
+import * as customThemesProxy from "./routes/custom-themes-proxy";
 
 type Route = {
   test: (method: string, pathname: string) => boolean;
@@ -78,6 +79,10 @@ const routes: Route[] = [
     handle: (c) => microsoftCalendar.handleMicrosoftCalendarTokenRefresh(c),
   },
   { test: (m, p) => p === "/api/bsplus/settings/sync", handle: (c) => settingsSyncBsplus.handleBsplusSettingsSync(c) },
+  {
+    test: (_m, p) => p.startsWith("/api/custom-themes/mine"),
+    handle: (c) => customThemesProxy.handleCustomThemesProxy(c),
+  },
   { test: (m, p) => m === "GET" && p === "/api/user/cloud-summary", handle: (c) => cloudSummary.handleCloudSummary(c) },
   { test: (m, p) => m === "GET" && p === "/api/oauth/discord", handle: (c) => discord.handleDiscordOAuthStart(c) },
   { test: (m, p) => m === "GET" && p === "/api/oauth/discord/callback", handle: (c) => discord.handleDiscordOAuthCallback(c) },

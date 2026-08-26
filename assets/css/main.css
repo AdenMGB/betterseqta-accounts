@@ -2,6 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .form-label {
+    @apply block text-sm font-medium leading-normal text-zinc-700 dark:text-zinc-300;
+  }
+
+  .form-input {
+    @apply w-full rounded-lg border border-zinc-300 bg-white/50 px-3 py-2 text-zinc-900 transition-all duration-200 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-zinc-700 dark:bg-zinc-900/50 dark:text-white dark:placeholder-zinc-400;
+  }
+
+  .form-select {
+    @apply block w-full appearance-none rounded-lg border border-zinc-300 bg-white/50 bg-none px-3 py-2 pr-9 text-zinc-900 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-zinc-700 dark:bg-zinc-900/50 dark:text-white;
+    min-height: 2.5rem;
+    line-height: 1.5;
+    box-sizing: border-box;
+  }
+
+  .form-button-primary {
+    @apply flex justify-center rounded-lg border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-zinc-900;
+  }
+}
+
 html,
 body {
   overflow-x: hidden;
