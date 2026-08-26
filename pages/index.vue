@@ -87,6 +87,7 @@ import {
   ShieldCheckIcon,
   SparklesIcon,
   ChevronRightIcon,
+  SwatchIcon,
 } from '@heroicons/vue/24/outline'
 import type { CloudSummaryResponse } from '~/composables/useSettings'
 import { settingsTabUrl } from '~/composables/useTabPageUrl'
@@ -165,6 +166,12 @@ const dashboardLinks = computed((): DashboardLink[] => [
     title: 'Account settings',
     subtitle: 'Profile picture, display name, and username',
     icon: UserCircleIcon,
+  },
+  {
+    to: '/themes',
+    title: 'My themes',
+    subtitle: 'Submit and track community theme submissions',
+    icon: SwatchIcon,
   },
   {
     to: settingsTabUrl('bqsettings'),
