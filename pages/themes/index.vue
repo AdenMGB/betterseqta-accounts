@@ -50,19 +50,18 @@
     </section>
 
     <!-- Filters + list -->
-    <section class="themes-card overflow-hidden">
-      <div class="flex flex-wrap items-center gap-3 border-b border-zinc-200/60 px-5 py-4 dark:border-zinc-700/60 sm:px-6">
-        <select v-model="statusFilter" class="form-select w-auto min-w-[8rem] py-2 text-sm" @change="loadThemes(1)">
-          <option value="">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-        </select>
-        <select v-model="typeFilter" class="form-select w-auto min-w-[8rem] py-2 text-sm" @change="loadThemes(1)">
-          <option value="">All types</option>
-          <option value="betterseqta">BetterSEQTA</option>
-          <option value="desqta">DesQTA</option>
-        </select>
+    <section class="themes-card">
+      <div class="relative z-30 flex flex-wrap items-center gap-3 border-b border-zinc-200/60 px-5 py-4 dark:border-zinc-700/60 sm:px-6">
+        <UiSelect
+          v-model="statusFilter"
+          :options="statusOptions"
+          @change="loadThemes(1)"
+        />
+        <UiSelect
+          v-model="typeFilter"
+          :options="typeOptions"
+          @change="loadThemes(1)"
+        />
         <button
           type="button"
           class="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -86,7 +85,7 @@
         <p class="text-sm text-zinc-500 dark:text-zinc-400">No themes yet. Submit your first theme above.</p>
       </div>
 
-      <div v-else class="admin-table-scroll overflow-x-auto">
+      <div v-else class="admin-table-scroll overflow-x-auto overflow-y-visible">
         <table class="w-full min-w-[640px] text-left text-sm">
           <thead class="border-b border-zinc-200/60 bg-zinc-50/50 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-700/60 dark:bg-zinc-950/20 dark:text-zinc-400">
             <tr>
@@ -189,6 +188,7 @@ import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import ThemeStatusBadge from '~/components/themes/ThemeStatusBadge.vue'
 import ThemeUploadForm from '~/components/themes/ThemeUploadForm.vue'
 import ConfirmDialog from '~/components/admin/ConfirmDialog.vue'
+import UiSelect from '~/components/ui/Select.vue'
 import { useCustomThemes } from '~/composables/useCustomThemes'
 import { useToast } from '~/composables/useToast'
 import type { CustomThemeOwner, CustomThemeStatus, CustomThemesPagination } from '~/types/customThemes'
@@ -209,6 +209,19 @@ const pagination = ref<CustomThemesPagination>({ page: 1, limit: 20, total: 0, t
 
 const statusFilter = ref<CustomThemeStatus | ''>('')
 const typeFilter = ref<'betterseqta' | 'desqta' | ''>('')
+
+const statusOptions = [
+  { value: '', label: 'All statuses' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+]
+
+const typeOptions = [
+  { value: '', label: 'All types' },
+  { value: 'betterseqta', label: 'BetterSEQTA' },
+  { value: 'desqta', label: 'DesQTA' },
+]
 
 const statusCounts = reactive({ pending: 0, approved: 0, rejected: 0 })
 
