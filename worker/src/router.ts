@@ -7,12 +7,15 @@ import * as desqta from "./routes/desqta";
 import * as bsplus from "./routes/bsplus";
 import * as settingsSyncBsplus from "./routes/settings-sync-bsplus";
 import * as cloudSummary from "./routes/cloud-summary";
+import * as foundingSurveyStatus from "./routes/founding-survey-status";
 import * as discord from "./routes/discord";
 import * as admin from "./routes/admin";
 import * as settings from "./routes/settings";
 import * as user from "./routes/user";
 import * as googleCalendar from "./routes/google-calendar";
 import * as microsoftCalendar from "./routes/microsoft-calendar";
+import * as v1Users from "./routes/v1/users";
+import * as health from "./routes/health";
 
 type Route = {
   test: (method: string, pathname: string) => boolean;
@@ -21,6 +24,7 @@ type Route = {
 
 /** Same order as legacy `worker/index.js` if-chain (first match wins). */
 const routes: Route[] = [
+  { test: (m, p) => m === "GET" && p === "/api/health", handle: () => health.handleHealth() },
   { test: (m, p) => m === "GET" && p === "/api/stats/discord", handle: (c) => stats.handleStatsDiscord(c) },
   { test: (m, p) => m === "GET" && p === "/api/export/users/count", handle: (c) => exportRoutes.handleExportUsersCount(c) },
   {
@@ -29,6 +33,22 @@ const routes: Route[] = [
   },
   { test: (m, p) => m === "GET" && p === "/api/export/users/full", handle: (c) => exportRoutes.handleExportUsersFull(c) },
   { test: (m, p) => m === "GET" && p === "/api/export/users/contact", handle: (c) => exportRoutes.handleExportUsersContact(c) },
+  {
+    test: (m, p) => m === "GET" && p === "/api/export/users/signup-order",
+    handle: (c) => v1Users.handleExportUsersSignupOrder(c),
+  },
+  {
+    test: (m, p) => m === "GET" && /^\/api\/v1\/users\/[^/]+\/profile$/.test(p),
+    handle: (c) => v1Users.handleV1UserProfile(c),
+  },
+  {
+    test: (m, p) => m === "GET" && /^\/api\/v1\/users\/[^/]+\/eligibility\/founding-2500$/.test(p),
+    handle: (c) => v1Users.handleV1UserFounding2500Eligibility(c),
+  },
+  {
+    test: (m, p) => m === "GET" && /^\/api\/v1\/users\/badges\/[^/]+$/.test(p),
+    handle: (c) => v1Users.handleV1UserBadges(c),
+  },
   { test: (m, p) => m === "POST" && p === "/api/auth/register", handle: (c) => auth.handleRegister(c) },
   { test: (m, p) => m === "POST" && p === "/api/auth/login", handle: (c) => auth.handleLogin(c) },
   { test: (m, p) => m === "GET" && p === "/api/auth/me", handle: (c) => auth.handleMe(c) },
@@ -79,6 +99,10 @@ const routes: Route[] = [
   },
   { test: (m, p) => p === "/api/bsplus/settings/sync", handle: (c) => settingsSyncBsplus.handleBsplusSettingsSync(c) },
   { test: (m, p) => m === "GET" && p === "/api/user/cloud-summary", handle: (c) => cloudSummary.handleCloudSummary(c) },
+  {
+    test: (m, p) => m === "GET" && p === "/api/user/founding-survey-status",
+    handle: (c) => foundingSurveyStatus.handleFoundingSurveyStatus(c),
+  },
   { test: (m, p) => m === "GET" && p === "/api/oauth/discord", handle: (c) => discord.handleDiscordOAuthStart(c) },
   { test: (m, p) => m === "GET" && p === "/api/oauth/discord/callback", handle: (c) => discord.handleDiscordOAuthCallback(c) },
   { test: (m, p) => m === "GET" && p === "/api/oauth/bsplus/discord", handle: (c) => discord.handleBsplusDiscordForward(c) },
@@ -95,6 +119,8 @@ const routes: Route[] = [
   { test: (m, p) => m === "GET" && p === "/api/admin/api-keys", handle: (c) => admin.handleAdminApiKeysGet(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/api-keys", handle: (c) => admin.handleAdminApiKeysPost(c) },
   { test: (m, p) => m === "DELETE" && p === "/api/admin/api-keys", handle: (c) => admin.handleAdminApiKeysDelete(c) },
+  { test: (m, p) => m === "GET" && p === "/api/admin/integrations", handle: (c) => admin.handleAdminIntegrationsGet(c) },
+  { test: (m, p) => m === "PUT" && p === "/api/admin/integrations", handle: (c) => admin.handleAdminIntegrationsPut(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/update-user", handle: (c) => admin.handleAdminUpdateUser(c) },
   { test: (m, p) => m === "GET" && p === "/api/admin/user/pfp", handle: (c) => admin.handleAdminUserPfpGet(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/user/pfp", handle: (c) => admin.handleAdminUserPfpUpload(c) },

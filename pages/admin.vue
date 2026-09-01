@@ -292,6 +292,64 @@
           </ul>
         </div>
 
+        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-4">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">External credentials</h3>
+          <p class="text-zinc-600 dark:text-zinc-400 text-sm">
+            SMTP2GO powers password-reset emails. Stored in D1; env vars (<code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">SMTP2GO_*</code>) are used as fallback.
+          </p>
+          <p
+            v-if="integrationSettings?.hasSmtp2goApiKey"
+            class="text-sm text-green-700 dark:text-green-400"
+          >
+            SMTP2GO API key is configured. Leave the key field blank below to keep the existing value.
+          </p>
+          <form @submit.prevent="saveIntegrations" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">SMTP2GO API key</label>
+              <input
+                v-model="integrationForm.smtp2goApiKey"
+                type="password"
+                autocomplete="off"
+                placeholder="Paste SMTP2GO API key"
+                class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">From email</label>
+              <input
+                v-model="integrationForm.smtp2goFromEmail"
+                type="email"
+                placeholder="noreply@betterseqta.org"
+                class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
+              />
+            </div>
+            <button
+              type="submit"
+              class="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-all duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center"
+              :disabled="savingIntegrations"
+            >
+              <LoadingSpinner v-if="savingIntegrations" size="sm" class="mr-2" />
+              Save external credentials
+            </button>
+          </form>
+        </div>
+
+        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-3">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">Where to use keys you create here</h3>
+          <ul class="text-sm text-zinc-600 dark:text-zinc-400 space-y-2 list-disc list-inside">
+            <li>
+              <strong class="text-zinc-800 dark:text-zinc-200">bsplus website</strong> — Admin → API Keys → Accounts API key
+              (local: <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">{{ integrationSettings?.devAccountsUrl || 'http://localhost:8788' }}</code>)
+            </li>
+            <li>
+              <strong class="text-zinc-800 dark:text-zinc-200">Mail client</strong> — Mail → API keys → External credentials → Accounts export API key
+            </li>
+            <li>
+              <strong class="text-zinc-800 dark:text-zinc-200">Mail send access</strong> — Create a mail API key in Mail → API keys, then paste it into bsplus → External credentials → Mail API key
+            </li>
+          </ul>
+        </div>
+
         <!-- Create API Key -->
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
             <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-4">Create New API Key</h3>
@@ -749,6 +807,14 @@ const newApiKeyName = ref('')
 const creatingApiKey = ref(false)
 const lastCreatedApiKey = ref<any>(null)
 const deletingApiKeyId = ref<string | null>(null)
+
+const integrationSettings = ref<{
+  hasSmtp2goApiKey: boolean
+  smtp2goFromEmail: string
+  devAccountsUrl: string
+} | null>(null)
+const integrationForm = ref({ smtp2goApiKey: '', smtp2goFromEmail: '' })
+const savingIntegrations = ref(false)
 
 // PFP Management State
 const pfpViewerSrc = ref<string | null>(null)
@@ -1545,6 +1611,39 @@ const loadApiKeys = async () => {
     }
 }
 
+const loadIntegrations = async () => {
+    try {
+        const res = await $fetch<any>('/api/admin/integrations', { credentials: 'include' })
+        integrationSettings.value = res
+        if (res.smtp2goFromEmail && !integrationForm.value.smtp2goFromEmail) {
+            integrationForm.value.smtp2goFromEmail = res.smtp2goFromEmail
+        }
+    } catch (e) {
+        console.error('Failed to load integrations', e)
+    }
+}
+
+const saveIntegrations = async () => {
+    savingIntegrations.value = true
+    try {
+        await $fetch('/api/admin/integrations', {
+            method: 'PUT',
+            credentials: 'include',
+            body: {
+                smtp2goApiKey: integrationForm.value.smtp2goApiKey.trim() || undefined,
+                smtp2goFromEmail: integrationForm.value.smtp2goFromEmail.trim() || undefined,
+            },
+        })
+        integrationForm.value.smtp2goApiKey = ''
+        await loadIntegrations()
+        showToast('External credentials saved', 'success')
+    } catch (e: any) {
+        showToast(e?.data?.error || 'Failed to save credentials', 'error')
+    } finally {
+        savingIntegrations.value = false
+    }
+}
+
 const createApiKey = async () => {
     creatingApiKey.value = true
     lastCreatedApiKey.value = null
@@ -1660,6 +1759,7 @@ onMounted(async () => {
         loadClients()
         loadDesqtaClientsCount()
         loadApiKeys()
+        loadIntegrations()
         if (activeTab.value === 'activity-log') {
             await onActivityLogTabActivated()
         } else {

@@ -1,10 +1,22 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import { defineNuxtConfig } from 'nuxt/config'
 
+const isLocalDev =
+  process.env.NODE_ENV === 'development' || process.env.CF_DEV === '1'
+
 export default defineNuxtConfig({
   ssr: false,
   compatibilityDate: '2024-11-01',
   devtools: { enabled: true },
+  runtimeConfig: {
+    public: {
+      bsplusUrl:
+        process.env.NUXT_PUBLIC_BSPLUS_URL ??
+        (isLocalDev
+          ? (process.env.DEV_BSPLUS_URL ?? 'http://localhost:8787')
+          : 'https://betterseqta.org'),
+    },
+  },
   modules: [
     '@nuxtjs/tailwindcss',
     '@vueuse/motion/nuxt',

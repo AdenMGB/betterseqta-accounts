@@ -1,0 +1,3 @@
+# Wrangler local dev secrets — copy to `.dev.vars` or run `pnpm cf:dev` (syncs from `.env`).
+JWT_SECRET=local-dev-jwt-secret-change-me
+APP_URL=http://localhost:8788

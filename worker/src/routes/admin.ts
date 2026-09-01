@@ -23,6 +23,10 @@ import {
   saveCurrentPfpToHistory,
 } from "../lib/pfpHistory";
 import type { RequestContext } from "../types/context";
+import {
+  getIntegrationSettingsPublic,
+  saveIntegrationSettings,
+} from "../lib/integration-settings";
 
 async function audit(
   env: RequestContext["env"],
@@ -57,7 +61,7 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
     email: "email",
     displayName: "displayName",
     admin_level: "admin_level",
-    created_at: "createdAt",
+    created_at: "created_at",
   };
 
   const orderBy = allowedSorts[sortColumn] || "username";
@@ -83,7 +87,7 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
   const total = (countResult as { total: number }).total || 0;
 
   const users = await env.DB.prepare(
-    `SELECT id, email, username, displayName, pfpUrl, admin_level, createdAt FROM users WHERE ${whereClause} ORDER BY ${orderBy} ${orderDir} LIMIT ? OFFSET ?`,
+    `SELECT id, email, username, displayName, pfpUrl, admin_level, created_at FROM users WHERE ${whereClause} ORDER BY ${orderBy} ${orderDir} LIMIT ? OFFSET ?`,
   )
     .bind(...params, pageSize, offset)
     .all();
@@ -499,14 +503,30 @@ export async function handleAdminApiKeysGet({ env, request, jwtSecret }: Request
   const admin = await getAdminUser(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
-  const rows = await env.DB.prepare("SELECT id, name, created_at FROM api_keys ORDER BY created_at DESC").all();
+  const rows = await env.DB.prepare(
+    "SELECT id, name, scopes, created_at, last_used_at FROM api_keys ORDER BY created_at DESC",
+  ).all();
   return new Response(
     JSON.stringify(
-      (rows.results as { id: string; name: string; created_at: number }[]).map((r) => ({
-        id: r.id,
-        name: r.name,
-        createdAt: r.created_at,
-      })),
+      (rows.results as { id: string; name: string; scopes?: string | null; created_at: number; last_used_at?: number | null }[]).map(
+        (r) => {
+          let parsedScopes: string[] = [];
+          if (r.scopes) {
+            try {
+              parsedScopes = JSON.parse(r.scopes);
+            } catch {
+              parsedScopes = [];
+            }
+          }
+          return {
+            id: r.id,
+            name: r.name,
+            scopes: parsedScopes,
+            createdAt: r.created_at,
+            lastUsedAt: r.last_used_at ?? null,
+          };
+        },
+      ),
     ),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
@@ -516,7 +536,7 @@ export async function handleAdminApiKeysPost({ env, request, jwtSecret }: Reques
   const admin = await getAdminUser(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
-  const { name } = (await request.json()) as { name?: string };
+  const { name, scopes } = (await request.json()) as { name?: string; scopes?: string[] };
   if (!name || typeof name !== "string" || !name.trim()) {
     return new Response(JSON.stringify({ error: "Name is required" }), {
       status: 400,
@@ -525,7 +545,11 @@ export async function handleAdminApiKeysPost({ env, request, jwtSecret }: Reques
   }
   const id = crypto.randomUUID();
   const token = "bs_" + crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-  await env.DB.prepare("INSERT INTO api_keys (id, name, token) VALUES (?, ?, ?)").bind(id, name.trim(), token).run();
+  const scopesJson =
+    Array.isArray(scopes) && scopes.length > 0 ? JSON.stringify(scopes.filter((s) => typeof s === "string")) : null;
+  await env.DB.prepare("INSERT INTO api_keys (id, name, token, scopes) VALUES (?, ?, ?, ?)")
+    .bind(id, name.trim(), token, scopesJson)
+    .run();
 
   await audit(env, admin, {
     action: "api_key.create",
@@ -535,9 +559,16 @@ export async function handleAdminApiKeysPost({ env, request, jwtSecret }: Reques
     success: true,
   });
 
-  return new Response(JSON.stringify({ id, name: name.trim(), token, createdAt: Math.floor(Date.now() / 1000) }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({
+      id,
+      name: name.trim(),
+      token,
+      scopes: scopesJson ? JSON.parse(scopesJson) : [],
+      createdAt: Math.floor(Date.now() / 1000),
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
 }
 
 export async function handleAdminApiKeysDelete({ env, request, jwtSecret }: RequestContext): Promise<Response> {
@@ -1428,6 +1459,35 @@ export async function handleAdminAuditLog({ env, request, url, jwtSecret }: Requ
   }
 
   return new Response(JSON.stringify(payload), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export async function handleAdminIntegrationsGet({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUser(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const settings = await getIntegrationSettingsPublic(env);
+  return new Response(JSON.stringify({ ok: true, ...settings }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export async function handleAdminIntegrationsPut({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUser(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const body = (await request.json()) as {
+    smtp2goApiKey?: string;
+    smtp2goFromEmail?: string;
+  };
+
+  await saveIntegrationSettings(env, {
+    smtp2goApiKey: body.smtp2goApiKey,
+    smtp2goFromEmail: body.smtp2goFromEmail,
+  });
+
+  return new Response(JSON.stringify({ ok: true }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }

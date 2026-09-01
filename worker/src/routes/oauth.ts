@@ -4,7 +4,7 @@ import { getDesqtaClient, isReservedClientExpired, touchDesqtaReservedClient } f
 import { checkRateLimit } from "../lib/rate-limit";
 import { createSession, getSessionByRefreshToken, touchUserSession, revokeSessionById } from "../lib/session";
 import { deviceNameForNewSession } from "../lib/session-display";
-import { mapUserPublic, USER_PUBLIC_SELECT } from "../lib/userPublic";
+import { mapUserPublic, USER_PUBLIC_SELECT, enrichUserPublic } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
 
 async function validateOAuthClient(
@@ -313,7 +313,8 @@ export async function handleOAuthUserinfo({ env, request, jwtSecret }: RequestCo
   const userData = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)
     .bind(user.id)
     .first();
-  return new Response(JSON.stringify(mapUserPublic(userData as Record<string, unknown>)), {
+  const enriched = await enrichUserPublic(env.DB, mapUserPublic(userData as Record<string, unknown>));
+  return new Response(JSON.stringify(enriched), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }

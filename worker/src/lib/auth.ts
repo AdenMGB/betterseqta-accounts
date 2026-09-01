@@ -83,13 +83,51 @@ export async function getMaxAdminLevel(env: Env): Promise<number> {
   return Math.max(maxLevel, 3);
 }
 
-export async function verifyApiKey(env: Env, req: Request): Promise<{ id: string } | null> {
+export type ApiKeyAuth = {
+  id: string;
+  scopes: string[];
+};
+
+function parseApiKeyScopes(raw: unknown): string[] {
+  if (raw == null || raw === "") return [];
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === "string") : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+export async function verifyApiKey(env: Env, req: Request): Promise<ApiKeyAuth | null> {
   const bearer = req.headers.get("Authorization");
   const apiKeyHeader = req.headers.get("X-API-Key");
   const token = bearer && bearer.startsWith("Bearer ") ? bearer.slice(7) : (apiKeyHeader || "").trim();
   if (!token) return null;
-  const row = await env.DB.prepare("SELECT id FROM api_keys WHERE token = ?").bind(token).first();
-  return row ? { id: row.id as string } : null;
+  const row = await env.DB.prepare("SELECT id, scopes FROM api_keys WHERE token = ?").bind(token).first();
+  if (!row) return null;
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    await env.DB.prepare("UPDATE api_keys SET last_used_at = ? WHERE id = ?").bind(now, row.id).run();
+  } catch {
+    // last_used_at column may not exist before migration
+  }
+  return { id: row.id as string, scopes: parseApiKeyScopes(row.scopes) };
+}
+
+/** Empty scopes = full access (backward compatible). */
+export function apiKeyHasScope(auth: ApiKeyAuth, scope: string): boolean {
+  if (auth.scopes.length === 0) return true;
+  return auth.scopes.includes(scope);
+}
+
+export function apiKeyForbiddenScope(scope: string): Response {
+  return new Response(JSON.stringify({ error: `API key missing required scope: ${scope}` }), {
+    status: 403,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
 export function apiKeyUnauthorized(): Response {

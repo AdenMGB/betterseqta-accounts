@@ -19,9 +19,10 @@
     "worker:typecheck": "pnpm export:settings-defaults && tsc -p worker/tsconfig.json",
     "worker:test": "tsx --test worker/test/*.test.ts",
     "cf:deploy": "pnpm generate && wrangler deploy",
-    "cf:dev": "pnpm generate && wrangler dev",
-    "db:migrate:local": "wrangler d1 migrations apply BS_SETTINGS --local",
-    "db:migrate:remote": "wrangler d1 migrations apply BS_SETTINGS"
+    "cf:dev": "CF_DEV=1 node scripts/resolve-dev-services.mjs && node scripts/sync-dev-vars.mjs && CF_DEV=1 pnpm generate && wrangler dev --local --persist-to .wrangler/d1-local --env-file .dev.vars",
+    "db:migrate:local": "node scripts/d1-migrate-local.mjs",
+    "db:migrate:remote": "node -e \"console.warn('[db:migrate:remote] Applies pending migrations to production D1 (BS_SETTINGS). Ctrl+C to abort.')\" && pnpm exec wrangler d1 migrations apply BS_SETTINGS --remote",
+    "db:seed:test-user": "tsx scripts/seed-test-account.mts"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.23",

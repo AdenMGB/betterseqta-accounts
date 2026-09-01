@@ -35,7 +35,9 @@ import {
   sessionSubtitle,
   sessionTitle,
 } from "../lib/session-display";
-import { mapUserPublic, publicUserFromCredentials, USER_PUBLIC_SELECT } from "../lib/userPublic";
+import { mapUserPublic, publicUserFromCredentials, USER_PUBLIC_SELECT, enrichUserPublic } from "../lib/userPublic";
+import { assignSignupNumber } from "../lib/signupNumber";
+import { awardBadgesForUser } from "../lib/badges";
 import type { RequestContext } from "../types/context";
 
 export async function handleRegister({ env, request, jwtSecret }: RequestContext): Promise<Response> {
@@ -98,6 +100,9 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
       });
     }
 
+    const signupNumber = await assignSignupNumber(env.DB, id);
+    await awardBadgesForUser(env.DB, id, signupNumber);
+
     const token = await createAccessToken({ id, email: normalizedEmail, username: trimmedUsername }, jwtSecret);
     const session = await createSession(env, {
       userId: id,
@@ -108,10 +113,19 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
     });
     const refreshCookie = createRefreshTokenCookie(session.refreshToken);
 
+    const registeredUser = await enrichUserPublic(env.DB, {
+      id,
+      email: normalizedEmail,
+      username: trimmedUsername,
+      displayName: displayName || trimmedUsername,
+      admin_level: 0,
+      signup_number: signupNumber,
+    });
+
     return authJson(
       {
         expires_in: WEBSITE_ACCESS_EXPIRES_IN,
-        user: { id, email: normalizedEmail, username: trimmedUsername, displayName, admin_level: 0 },
+        user: registeredUser,
       },
       {
         "Set-Cookie": [createAccessTokenCookie(token), refreshCookie],
@@ -152,7 +166,7 @@ export async function handleLogin({ env, request, jwtSecret }: RequestContext): 
     return authJson(
       {
         expires_in: WEBSITE_ACCESS_EXPIRES_IN,
-        user: publicUserFromCredentials(user),
+        user: await enrichUserPublic(env.DB, publicUserFromCredentials(user)),
       },
       {
         "Set-Cookie": websiteSessionCookies(token, session.refreshToken),
@@ -171,7 +185,8 @@ export async function handleMe({ env, request, jwtSecret }: RequestContext): Pro
   const user = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)
     .bind(payload.id)
     .first();
-  return new Response(JSON.stringify(mapUserPublic(user as Record<string, unknown>)), {
+  const enriched = await enrichUserPublic(env.DB, mapUserPublic(user as Record<string, unknown>));
+  return new Response(JSON.stringify(enriched), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
@@ -210,7 +225,7 @@ export async function handleRefresh({ env, request, jwtSecret }: RequestContext)
     return authJson(
       {
         expires_in: WEBSITE_ACCESS_EXPIRES_IN,
-        user: mapUserPublic(user as Record<string, unknown>),
+        user: await enrichUserPublic(env.DB, mapUserPublic(user as Record<string, unknown>)),
       },
       {
         "Set-Cookie": [createAccessTokenCookie(accessToken), createRefreshTokenCookie(refreshToken!)],

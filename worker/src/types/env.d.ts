@@ -14,4 +14,8 @@ export interface Env {
   MICROSOFT_CALENDAR_CLIENT_ID?: string;
   MICROSOFT_CALENDAR_CLIENT_SECRET?: string;
   MICROSOFT_CALENDAR_REDIRECT_URI?: string;
+  BSPLUS_API_KEY?: string;
+  BSPLUS_URL?: string;
+  DEV_BSPLUS_URL?: string;
+  CF_DEV?: string;
 }

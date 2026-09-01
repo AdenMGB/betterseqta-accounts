@@ -1,5 +1,6 @@
 import type { Env } from "../types/env";
 import { escapeHtml } from "./html-escape";
+import { getSmtp2goCredentials } from "./integration-settings";
 
 export async function sendPasswordResetEmail(
   email: string,
@@ -69,8 +70,9 @@ The BetterSEQTA+ Team
         `;
 
   const smtp2goUrl = "https://api.smtp2go.com/v3/email/send";
+  const { apiKey: smtp2goApiKey, fromEmail: smtp2goFromEmail } = await getSmtp2goCredentials(env);
   const requestBody = {
-    sender: env.SMTP2GO_FROM_EMAIL || "noreply@betterseqta.org",
+    sender: smtp2goFromEmail,
     to: [email],
     subject: "Reset Your Password - BetterSEQTA+",
     html_body: emailHtml,
@@ -81,7 +83,7 @@ The BetterSEQTA+ Team
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Smtp2go-Api-Key": env.SMTP2GO_API_KEY as string,
+      "X-Smtp2go-Api-Key": smtp2goApiKey,
     },
     body: JSON.stringify(requestBody),
   });

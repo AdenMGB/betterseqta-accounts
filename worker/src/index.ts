@@ -12,7 +12,16 @@ export default {
     );
 
     const url = new URL(request.url);
-    const jwtSecret = new TextEncoder().encode(env.JWT_SECRET);
+    const jwtSecretRaw = env.JWT_SECRET?.trim();
+    if (!jwtSecretRaw) {
+      return new Response(
+        JSON.stringify({
+          error: "JWT_SECRET is not configured. Run pnpm cf:dev (syncs .dev.vars) or set JWT_SECRET in .env",
+        }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const jwtSecret = new TextEncoder().encode(jwtSecretRaw);
 
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: { ...corsHeaders } });

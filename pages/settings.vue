@@ -42,7 +42,7 @@
           <!-- Profile Settings -->
           <div v-if="activeTab === 'profile'" class="space-y-6">
             <form id="profile-form" @submit.prevent="updateProfile" class="space-y-6">
-              <div class="flex items-center gap-4">
+              <div class="flex items-start gap-4">
                 <PfpStack
                   v-if="auth.user.value"
                   :user-id="auth.user.value.id"
@@ -53,9 +53,17 @@
                   @edit="pfpEditorOpen = true"
                   @view="openPfpView"
                 />
-                <div>
-                  <p class="text-sm text-zinc-600 dark:text-zinc-400">Profile pictures</p>
-                  <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Click the pencil to change, restore, or clear.</p>
+                <div class="min-w-0 space-y-2">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="text-sm font-medium text-zinc-900 dark:text-white">Profile pictures</p>
+                    <ProfileBadgeStack
+                      v-if="auth.user.value"
+                      :admin-level="auth.user.value.admin_level ?? 0"
+                      :signup-number="auth.user.value.signup_number"
+                      :badges="auth.user.value.badges ?? []"
+                    />
+                  </div>
+                  <p class="text-xs text-zinc-500 dark:text-zinc-400">Click the pencil to change, restore, or clear.</p>
                 </div>
               </div>
 
@@ -352,6 +360,7 @@ import { useSettings } from '~/composables/useSettings'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import PfpStack from '~/components/PfpStack.vue'
 import PfpEditorModal from '~/components/PfpEditorModal.vue'
+import ProfileBadgeStack from '~/components/badges/ProfileBadgeStack.vue'
 import { withPfpCacheBust } from '~/utils/pfp'
 import { useTabPageUrl, SETTINGS_TAB_PAGE } from '~/composables/useTabPageUrl'
 import { UserCircleIcon, ShieldCheckIcon, CogIcon, SparklesIcon, XMarkIcon, ComputerDesktopIcon } from '@heroicons/vue/24/outline'
