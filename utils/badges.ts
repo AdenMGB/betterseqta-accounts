@@ -20,7 +20,7 @@ export const BADGE_TIERS = [
     label: 'Founding Member',
     threshold: 50,
     rankLabel: 'Top 50',
-    description: 'One of the first 50 Cloud members — an early supporter of BetterSEQTA.',
+    description: 'One of the first 50 Cloud members, early supporter of BetterSEQTA.',
   },
   {
     key: 'founder_100',
@@ -55,7 +55,7 @@ export const BADGE_TIERS = [
     label: 'Founding Cloud',
     threshold: 2500,
     rankLabel: 'Top 2,500',
-    description: 'One of the first 2,500 Cloud members — part of the founding generation of BetterSEQTA Cloud.',
+    description: 'One of the first 2,500 Cloud members.',
   },
 ] as const
 

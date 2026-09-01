@@ -51,13 +51,12 @@
             <div class="founder-badge-popup-body">
               <p>{{ description }}</p>
               <p>
-                This badge is linked to your BetterSEQTA Cloud account at
+                Linked to your BetterSEQTA Cloud account at
                 <a
                   href="https://accounts.betterseqta.org"
                   target="_blank"
                   rel="noopener noreferrer"
                 >accounts.betterseqta.org</a>.
-                Your signup order is based on when you created your Cloud account and stays with you wherever you're signed in — including BetterSEQTA+.
               </p>
               <p
                 v-if="signupNumber != null"

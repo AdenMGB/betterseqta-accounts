@@ -66,7 +66,7 @@ const tooltipDetail = computed(() => {
 })
 
 const tooltipText = computed(() => {
-  const rank = rankLabel.value ? `${rankLabel.value} — ` : ''
-  return `${rank}${props.badge.label} — ${tooltipDetail.value}`
+  const rank = rankLabel.value ? `${rankLabel.value}: ` : ''
+  return `${rank}${props.badge.label}. ${tooltipDetail.value}`
 })
 </script>
