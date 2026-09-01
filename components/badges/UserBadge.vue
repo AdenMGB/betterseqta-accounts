@@ -2,17 +2,11 @@
   <div class="group relative inline-flex">
     <button
       type="button"
-      :class="badgeClass"
-      class="founder-badge inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold leading-none tracking-wide transition-all duration-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-primary-500/60 focus:ring-offset-1 dark:focus:ring-offset-zinc-900"
+      class="cursor-pointer rounded-md border-0 bg-transparent p-0 transition-all duration-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-primary-500/60 focus:ring-offset-1 dark:focus:ring-offset-zinc-900"
       :aria-label="tooltipText"
       @click="emit('open-detail', badge)"
     >
-      <component
-        :is="tierIcon"
-        class="h-3.5 w-3.5 shrink-0 opacity-95"
-        aria-hidden="true"
-      />
-      <span>{{ badge.label }}</span>
+      <FounderBadgeGlass :badge="badge" size="sm" />
     </button>
     <div
       role="tooltip"
@@ -30,13 +24,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import {
-  SparklesIcon,
-  StarIcon,
-  TrophyIcon,
-  FireIcon,
-} from '@heroicons/vue/20/solid'
 import { badgeRankLabel, type BadgeItem } from '~/utils/badges'
+import FounderBadgeGlass from '~/components/badges/FounderBadgeGlass.vue'
 
 const props = defineProps<{
   badge: BadgeItem
@@ -50,64 +39,7 @@ const emit = defineEmits<{
 
 export type { BadgeItem }
 
-const tierStyles: Record<string, { gradient: string; ring: string; icon: typeof SparklesIcon }> = {
-  founder_10: {
-    gradient: 'from-violet-600 to-fuchsia-600',
-    ring: 'ring-violet-400/30',
-    icon: SparklesIcon,
-  },
-  founder_25: {
-    gradient: 'from-indigo-600 to-blue-600',
-    ring: 'ring-indigo-400/30',
-    icon: SparklesIcon,
-  },
-  founder_50: {
-    gradient: 'from-sky-600 to-teal-600',
-    ring: 'ring-sky-400/30',
-    icon: StarIcon,
-  },
-  founder_100: {
-    gradient: 'from-emerald-600 to-green-600',
-    ring: 'ring-emerald-400/30',
-    icon: StarIcon,
-  },
-  founder_250: {
-    gradient: 'from-amber-600 to-orange-600',
-    ring: 'ring-amber-400/35',
-    icon: TrophyIcon,
-  },
-  founder_500: {
-    gradient: 'from-orange-600 to-primary-600',
-    ring: 'ring-orange-400/35',
-    icon: TrophyIcon,
-  },
-  founder_1000: {
-    gradient: 'from-rose-600 to-pink-600',
-    ring: 'ring-rose-400/30',
-    icon: FireIcon,
-  },
-  founder_2500: {
-    gradient: 'from-amber-500 to-yellow-500',
-    ring: 'ring-amber-300/40',
-    icon: FireIcon,
-  },
-}
-
-const tierConfig = computed(
-  () => tierStyles[props.badge.key] ?? {
-    gradient: 'from-primary-600 to-orange-600',
-    ring: 'ring-primary-400/30',
-    icon: SparklesIcon,
-  },
-)
-
-const tierIcon = computed(() => tierConfig.value.icon)
 const rankLabel = computed(() => badgeRankLabel(props.badge.key))
-
-const badgeClass = computed(() => {
-  const { gradient, ring } = tierConfig.value
-  return `bg-gradient-to-br ${gradient} text-white shadow-sm ring-1 ring-inset ${ring}`
-})
 
 const formattedSignupDate = computed(() => {
   if (!props.signedUpAt) return null
@@ -138,9 +70,3 @@ const tooltipText = computed(() => {
   return `${rank}${props.badge.label} — ${tooltipDetail.value}`
 })
 </script>
-
-<style scoped>
-.founder-badge {
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
-}
-</style>
