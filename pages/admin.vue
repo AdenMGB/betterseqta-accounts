@@ -53,6 +53,10 @@
                 <input type="checkbox" v-model="hasPfpFilter" class="rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500" />
                 Has PFP
             </label>
+            <label class="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 cursor-pointer select-none shrink-0">
+                <input type="checkbox" v-model="showUserBadges" class="rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500" />
+                Show badges
+            </label>
             <button @click="handleSearch" :disabled="usersLoading" class="w-full sm:w-auto px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200 disabled:opacity-50">
               {{ usersLoading ? 'Searching…' : 'Search' }}
             </button>
@@ -106,6 +110,7 @@
                                             <span v-if="users[virtualRow.index].displayName && users[virtualRow.index].displayName !== users[virtualRow.index].username" class="text-xs text-zinc-500 dark:text-zinc-400 ml-1">({{ users[virtualRow.index].username }})</span>
                                         </span>
                                         <ProfileBadgeStack
+                                            v-if="showUserBadges"
                                             :admin-level="0"
                                             :signup-number="users[virtualRow.index].signup_number"
                                             :badges="users[virtualRow.index].badges ?? []"
@@ -866,6 +871,18 @@ const scrollSentinel = ref<HTMLElement | null>(null)
 const pfpCacheVersion = ref<number | string>(Date.now())
 const sortOption = ref('username:asc')
 const hasPfpFilter = ref(false)
+const ADMIN_SHOW_BADGES_KEY = 'admin_show_user_badges'
+const showUserBadges = ref(false)
+
+function readShowUserBadgesPreference(): boolean {
+  if (!process.client) return false
+  return localStorage.getItem(ADMIN_SHOW_BADGES_KEY) === '1'
+}
+
+function persistShowUserBadgesPreference(value: boolean) {
+  if (!process.client) return
+  localStorage.setItem(ADMIN_SHOW_BADGES_KEY, value ? '1' : '0')
+}
 
 const sortOptions = [
   { value: 'username:asc', label: 'Username (A-Z)' },
@@ -1366,7 +1383,14 @@ const searchUsers = async (page: number = 1, append: boolean = false) => {
     if (!append) usersLoading.value = true
     try {
         const res = await $fetch<{ users: any[], total: number, page: number, pageSize: number, totalPages: number, maxAdminLevel: number }>('/api/admin/users', {
-            params: { q: searchQuery.value, page, sort: sortOption.value, has_pfp: hasPfpFilter.value || undefined, include_history: 'false' },
+            params: {
+              q: searchQuery.value,
+              page,
+              sort: sortOption.value,
+              has_pfp: hasPfpFilter.value || undefined,
+              include_history: 'false',
+              include_badges: showUserBadges.value ? 'true' : undefined,
+            },
             credentials: 'include'
         })
         const mapped = res.users.map((user: any) => ({
@@ -1437,6 +1461,11 @@ const retryLoadMore = () => {
 watchDebounced([searchQuery, sortOption, hasPfpFilter], () => {
     if (searched.value) handleSearch()
 }, { debounce: 300 })
+
+watch(showUserBadges, (enabled) => {
+  persistShowUserBadgesPreference(enabled)
+  if (searched.value) void handleSearch()
+})
 
 useIntersectionObserver(
   scrollSentinel,
@@ -1911,6 +1940,7 @@ const migratePfps = () => {
 }
 
 onMounted(async () => {
+    showUserBadges.value = readShowUserBadgesPreference()
     if (auth.user.value && (auth.user.value?.admin_level || 0) > 0) {
         loadClients()
         loadDesqtaClientsCount()

@@ -53,6 +53,7 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
   const offset = (page - 1) * pageSize;
   const hasPfp = url.searchParams.get("has_pfp") === "true";
   const includeHistory = url.searchParams.get("include_history") !== "false";
+  const includeBadges = url.searchParams.get("include_badges") === "true";
 
   const sortParam = url.searchParams.get("sort") || "username:asc";
   const sortParts = sortParam.split(":");
@@ -124,7 +125,7 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
       }
     }
 
-    const enriched = await enrichAdminUserRows(env.DB, rawUsers);
+    const enriched = await enrichAdminUserRows(env.DB, rawUsers, { includeBadges });
     const usersWithPfp = enriched.map((u) => ({
       ...u,
       pfpHistory: pfpHistoryMap[u.id] || [],

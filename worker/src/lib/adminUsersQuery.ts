@@ -116,16 +116,20 @@ export async function enrichAdminUserRows(
     signup_number?: number | null;
     created_at?: number | null;
   }[],
+  options?: { includeBadges?: boolean },
 ): Promise<AdminUserRow[]> {
-  const badgeMap = await loadBadgesForUsers(
-    db,
-    rows.map((r) => r.id),
-  );
+  const includeBadges = options?.includeBadges !== false;
+  const badgeMap = includeBadges
+    ? await loadBadgesForUsers(
+        db,
+        rows.map((r) => r.id),
+      )
+    : new Map<string, UserBadge[]>();
 
   return rows.map((row) => {
     const signupNumber = row.signup_number ?? null;
     const rawBadges = badgeMap.get(row.id) ?? [];
-    const badges = displayUserBadges(rawBadges, signupNumber);
+    const badges = includeBadges ? displayUserBadges(rawBadges, signupNumber) : [];
     return {
       id: row.id,
       email: row.email,
