@@ -1,6 +1,10 @@
 packages:
   - '.'
 
+overrides:
+  vite: ^8.0.0
+  esbuild: ^0.27.0
+
 allowBuilds:
   '@parcel/watcher': true
   bcrypt: true

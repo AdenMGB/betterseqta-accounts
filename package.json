@@ -2,12 +2,6 @@
   "name": "nuxt-app",
   "private": true,
   "type": "module",
-  "pnpm": {
-    "overrides": {
-      "vite": "^8.0.0",
-      "esbuild": "^0.27.0"
-    }
-  },
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
