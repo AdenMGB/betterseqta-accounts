@@ -114,6 +114,16 @@ export async function getUserBadges(db: Env["DB"], userId: string): Promise<User
   }
 }
 
+/** Remove all founder tier badges (used before a full signup-order recompute). */
+export async function clearFounderBadges(db: Env["DB"]): Promise<number> {
+  try {
+    const result = await db.prepare("DELETE FROM user_badges WHERE badge_key LIKE 'founder_%'").run();
+    return result.meta.changes ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 /** Backfill badges for all users with signup_number (idempotent). */
 export async function backfillAllBadges(db: Env["DB"]): Promise<number> {
   let rows: { id: string; signup_number: number }[];

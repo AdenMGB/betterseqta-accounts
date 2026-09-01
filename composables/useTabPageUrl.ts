@@ -37,12 +37,13 @@ export const SETTINGS_TAB_PAGE = createTabPageConfig({
 
 export const ADMIN_TAB_PAGE = createTabPageConfig({
   defaultTab: 'users',
-  tabs: ['users', 'clients', 'apikeys', 'activity-log', 'pfp-migration'],
+  tabs: ['users', 'clients', 'apikeys', 'activity-log', 'signup-order', 'pfp-migration'],
   tabToP: {
     users: 'users',
     clients: 'clients',
     apikeys: 'apikeys',
     'activity-log': 'activity',
+    'signup-order': 'signup',
     'pfp-migration': 'pfp',
   },
 })

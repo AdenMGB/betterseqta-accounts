@@ -515,6 +515,83 @@
         </div>
       </div>
 
+      <!-- Signup Order Tab -->
+      <div v-if="isTab('signup-order')" class="admin-scroll-tab space-y-6">
+        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Founding 2500 signup order</h3>
+          <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+            Assigns each user a <code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded">signup_number</code> by account creation date (<code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded">created_at</code>, then <code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded">id</code>). Users numbered 1–2500 qualify for the Founding Cloud founder badge. Re-running recomputes all numbers and refreshes badges.
+          </p>
+
+          <div v-if="signupOrderStatsLoading" class="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+            <LoadingSpinner size="sm" />
+            Loading stats…
+          </div>
+
+          <div v-else-if="signupOrderStats" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-2xl font-bold text-zinc-900 dark:text-white">{{ signupOrderStats.totalUsers }}</p>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400">Total users</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-2xl font-bold text-zinc-900 dark:text-white">{{ signupOrderStats.withSignupNumber }}</p>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400">With signup #</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ signupOrderStats.missingSignupNumber }}</p>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400">Missing signup #</p>
+            </div>
+            <div class="p-4 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-center">
+              <p class="text-2xl font-bold text-primary-600 dark:text-primary-400">{{ signupOrderStats.founding2500Count }}</p>
+              <p class="text-sm text-primary-600 dark:text-primary-400">Founding ≤2500</p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              @click="loadSignupOrderStats"
+              :disabled="signupOrderStatsLoading"
+              class="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center gap-2"
+            >
+              <ArrowPathIcon class="w-5 h-5" />
+              Refresh stats
+            </button>
+            <button
+              @click="runSignupOrderBackfill"
+              :disabled="signupOrderBackfilling || !isSeniorAdmin"
+              class="px-6 py-3 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center gap-2"
+            >
+              <LoadingSpinner v-if="signupOrderBackfilling" size="sm" />
+              <template v-else>
+                <ArrowPathIcon class="w-5 h-5" />
+              </template>
+              {{ signupOrderBackfilling ? 'Recomputing…' : 'Recompute signup order & badges' }}
+            </button>
+          </div>
+          <p v-if="!isSeniorAdmin" class="mt-3 text-sm text-amber-600 dark:text-amber-400">
+            Only Senior Admins can run the backfill.
+          </p>
+        </div>
+
+        <div v-if="signupOrderBackfillResult" class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-4">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">Last backfill result</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-2xl font-bold text-zinc-900 dark:text-white">{{ signupOrderBackfillResult.recomputed }}</p>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400">Users renumbered</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-2xl font-bold text-zinc-900 dark:text-white">{{ signupOrderBackfillResult.badgesAwarded }}</p>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400">Badges awarded</p>
+            </div>
+            <div class="p-4 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-center">
+              <p class="text-2xl font-bold text-primary-600 dark:text-primary-400">{{ signupOrderBackfillResult.after.founding2500Count }}</p>
+              <p class="text-sm text-primary-600 dark:text-primary-400">Now in Founding ≤2500</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- PFP Migration Tab -->
       <div v-if="isTab('pfp-migration')" class="admin-scroll-tab space-y-6">
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
@@ -721,6 +798,7 @@ const adminTabs = [
   { id: 'clients', label: 'OAuth Clients', description: 'Create and manage OAuth applications.' },
   { id: 'apikeys', label: 'API Keys', description: 'Issue and revoke API keys for integrations.' },
   { id: 'activity-log', label: 'Activity Log', description: 'Review admin actions with live updates every 8 seconds.' },
+  { id: 'signup-order', label: 'Signup Order', description: 'Recompute join order and Founding 2500 founder badges.' },
   { id: 'pfp-migration', label: 'PFP Migration', description: 'Senior admin tools for bulk profile picture maintenance.' },
 ]
 
@@ -1122,6 +1200,7 @@ watch(activeTab, (tab, prevTab) => {
   }
   if (prevTab === 'activity-log') onActivityLogTabDeactivated()
   if (tab === 'activity-log') onActivityLogTabActivated()
+  if (tab === 'signup-order') onSignupOrderTabActivated()
 })
 
 onUnmounted(() => stopAuditAutoRefresh())
@@ -1201,6 +1280,74 @@ const prunePfpHistory = async () => {
 const migratingPfps = ref(false)
 const migrationResult = ref<{ total: number; migrated: number; failed: number; results: any[] } | null>(null)
 const failedResults = computed(() => migrationResult.value?.results?.filter(r => !r.success) || [])
+
+type SignupOrderStats = {
+  totalUsers: number
+  withSignupNumber: number
+  missingSignupNumber: number
+  founding2500Count: number
+  maxSignupNumber: number | null
+  founding2500Threshold?: number
+}
+
+type SignupOrderBackfillResult = {
+  recomputed: number
+  badgesCleared: number
+  badgesAwarded: number
+  before: SignupOrderStats
+  after: SignupOrderStats
+  founding2500Threshold: number
+}
+
+const signupOrderStats = ref<SignupOrderStats | null>(null)
+const signupOrderStatsLoading = ref(false)
+const signupOrderBackfilling = ref(false)
+const signupOrderBackfillResult = ref<SignupOrderBackfillResult | null>(null)
+
+const isSeniorAdmin = computed(() => (auth.user.value?.admin_level || 0) >= maxAdminLevel.value)
+
+const loadSignupOrderStats = async () => {
+  signupOrderStatsLoading.value = true
+  try {
+    signupOrderStats.value = await $fetch<SignupOrderStats>('/api/admin/signup-order/stats', {
+      credentials: 'include',
+    })
+  } catch (e: any) {
+    showToast(e?.data?.error || 'Failed to load signup order stats', 'error')
+  } finally {
+    signupOrderStatsLoading.value = false
+  }
+}
+
+const onSignupOrderTabActivated = async () => {
+  if (!signupOrderStats.value) await loadSignupOrderStats()
+}
+
+const runSignupOrderBackfill = () => {
+  openConfirm({
+    title: 'Recompute signup order',
+    message: 'Reassign signup numbers for all users by join date and refresh founder badges? This overwrites existing signup numbers.',
+    confirmLabel: 'Recompute',
+    onConfirm: async () => {
+      signupOrderBackfilling.value = true
+      signupOrderBackfillResult.value = null
+      try {
+        const res = await $fetch<SignupOrderBackfillResult>('/api/admin/signup-order/backfill', {
+          method: 'POST',
+          credentials: 'include',
+        })
+        signupOrderBackfillResult.value = res
+        signupOrderStats.value = res.after
+        showToast('Signup order recomputed', 'success')
+      } catch (e: any) {
+        showToast(e?.data?.error || 'Backfill failed', 'error')
+      } finally {
+        signupOrderBackfilling.value = false
+      }
+    },
+  })
+}
+
 const isTab = (tab: string) => activeTab.value === tab
 
 // PFP Migration State
@@ -1762,6 +1909,8 @@ onMounted(async () => {
         loadIntegrations()
         if (activeTab.value === 'activity-log') {
             await onActivityLogTabActivated()
+        } else if (activeTab.value === 'signup-order') {
+            await onSignupOrderTabActivated()
         } else {
             await searchUsers(1)
             await ensureScrollBuffer()

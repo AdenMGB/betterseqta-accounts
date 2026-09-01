@@ -27,6 +27,8 @@ import {
   getIntegrationSettingsPublic,
   saveIntegrationSettings,
 } from "../lib/integration-settings";
+import { backfillAllBadges, clearFounderBadges, FOUNDING_2500_THRESHOLD } from "../lib/badges";
+import { getSignupOrderStats, recomputeAllSignupNumbers } from "../lib/signupNumber";
 
 async function audit(
   env: RequestContext["env"],
@@ -1488,6 +1490,63 @@ export async function handleAdminIntegrationsPut({ env, request, jwtSecret }: Re
   });
 
   return new Response(JSON.stringify({ ok: true }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export async function handleAdminSignupOrderStats({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUser(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const stats = await getSignupOrderStats(env.DB);
+  return new Response(JSON.stringify({ ...stats, founding2500Threshold: FOUNDING_2500_THRESHOLD }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export async function handleAdminSignupOrderBackfill({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const maxAdminLevel = await getMaxAdminLevel(env);
+  if ((admin.adminLevel || 0) < maxAdminLevel) {
+    return new Response(JSON.stringify({ error: "Only Senior Admins can recompute signup order" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const before = await getSignupOrderStats(env.DB);
+  const recomputed = await recomputeAllSignupNumbers(env.DB);
+  const badgesCleared = await clearFounderBadges(env.DB);
+  const badgesAwarded = await backfillAllBadges(env.DB);
+  const after = await getSignupOrderStats(env.DB);
+
+  const payload = {
+    recomputed,
+    badgesCleared,
+    badgesAwarded,
+    before,
+    after,
+    founding2500Threshold: FOUNDING_2500_THRESHOLD,
+  };
+
+  await audit(env, admin, {
+    action: "signup_order.backfill",
+    targetType: "system",
+    targetId: null,
+    details: {
+      context: {
+        recomputed: payload.recomputed,
+        badgesCleared: payload.badgesCleared,
+        badgesAwarded: payload.badgesAwarded,
+        founding2500Count: payload.after.founding2500Count,
+      },
+    },
+    success: true,
+  });
+
+  return new Response(JSON.stringify(payload), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
