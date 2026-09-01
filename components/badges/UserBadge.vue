@@ -1,10 +1,11 @@
 <template>
   <div class="group relative inline-flex">
-    <span
+    <button
+      type="button"
       :class="badgeClass"
-      class="founder-badge inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold leading-none tracking-wide transition-all duration-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-primary-500/60 focus:ring-offset-1 dark:focus:ring-offset-zinc-900"
-      tabindex="0"
+      class="founder-badge inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold leading-none tracking-wide transition-all duration-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-primary-500/60 focus:ring-offset-1 dark:focus:ring-offset-zinc-900"
       :aria-label="tooltipText"
+      @click="emit('open-detail', badge)"
     >
       <component
         :is="tierIcon"
@@ -12,13 +13,17 @@
         aria-hidden="true"
       />
       <span>{{ badge.label }}</span>
-    </span>
+    </button>
     <div
       role="tooltip"
-      class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-max max-w-[15rem] -translate-x-1/2 rounded-lg border border-zinc-200/90 bg-white/95 px-3 py-2 text-xs leading-relaxed text-zinc-800 opacity-0 shadow-lg backdrop-blur-sm transition-all duration-200 group-hover:opacity-100 group-focus-within:opacity-100 dark:border-zinc-600/80 dark:bg-zinc-900/95 dark:text-zinc-100"
+      class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-max max-w-[16rem] -translate-x-1/2 rounded-lg border border-zinc-200/90 bg-white/95 px-3 py-2 text-xs leading-relaxed text-zinc-800 opacity-0 shadow-lg backdrop-blur-sm transition-all duration-200 group-hover:opacity-100 group-focus-within:opacity-100 dark:border-zinc-600/80 dark:bg-zinc-900/95 dark:text-zinc-100"
     >
       <p class="font-semibold text-zinc-900 dark:text-white">{{ badge.label }}</p>
+      <p v-if="rankLabel" class="mt-0.5 font-medium text-primary-600 dark:text-primary-400">
+        {{ rankLabel }}
+      </p>
       <p class="mt-0.5 text-zinc-600 dark:text-zinc-400">{{ tooltipDetail }}</p>
+      <p class="mt-1 text-zinc-500 dark:text-zinc-500">Click for details</p>
     </div>
   </div>
 </template>
@@ -31,12 +36,16 @@ import {
   TrophyIcon,
   FireIcon,
 } from '@heroicons/vue/20/solid'
-import type { BadgeItem } from '~/utils/badges'
+import { badgeRankLabel, type BadgeItem } from '~/utils/badges'
 
 const props = defineProps<{
   badge: BadgeItem
   signupNumber?: number | null
   signedUpAt?: number | string | null
+}>()
+
+const emit = defineEmits<{
+  'open-detail': [badge: BadgeItem]
 }>()
 
 export type { BadgeItem }
@@ -93,6 +102,7 @@ const tierConfig = computed(
 )
 
 const tierIcon = computed(() => tierConfig.value.icon)
+const rankLabel = computed(() => badgeRankLabel(props.badge.key))
 
 const badgeClass = computed(() => {
   const { gradient, ring } = tierConfig.value
@@ -120,10 +130,13 @@ const tooltipDetail = computed(() => {
   if (formattedSignupDate.value) {
     parts.push(`joined ${formattedSignupDate.value}`)
   }
-  return parts.length > 0 ? parts.join(' · ') : 'Founding member'
+  return parts.length > 0 ? parts.join(' · ') : 'Linked to your Cloud account'
 })
 
-const tooltipText = computed(() => `${props.badge.label} — ${tooltipDetail.value}`)
+const tooltipText = computed(() => {
+  const rank = rankLabel.value ? `${rankLabel.value} — ` : ''
+  return `${rank}${props.badge.label} — ${tooltipDetail.value}`
+})
 </script>
 
 <style scoped>

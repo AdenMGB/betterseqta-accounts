@@ -12,6 +12,7 @@
       :badge="founderBadge"
       :signup-number="signupNumber"
       :signed-up-at="signedUpAt"
+      @open-detail="openDetail"
     />
     <span
       v-else-if="signupNumber != null"
@@ -21,11 +22,20 @@
       #{{ signupNumber.toLocaleString() }}
     </span>
   </div>
+
+  <BadgeDetailModal
+    :is-open="detailOpen"
+    :badge="detailBadge"
+    :signup-number="signupNumber"
+    :signed-up-at="signedUpAt"
+    @close="detailOpen = false"
+  />
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import AdminRoleBadge from '~/components/badges/AdminRoleBadge.vue'
+import BadgeDetailModal from '~/components/badges/BadgeDetailModal.vue'
 import UserBadge from '~/components/badges/UserBadge.vue'
 import { displayFounderBadges, type BadgeItem } from '~/utils/badges'
 
@@ -43,6 +53,14 @@ const props = withDefaults(
     badges: () => [],
   },
 )
+
+const detailOpen = ref(false)
+const detailBadge = ref<BadgeItem | null>(null)
+
+function openDetail(badge: BadgeItem) {
+  detailBadge.value = badge
+  detailOpen.value = true
+}
 
 const founderBadge = computed(() => {
   const displayed = displayFounderBadges(props.badges ?? [], props.signupNumber)
