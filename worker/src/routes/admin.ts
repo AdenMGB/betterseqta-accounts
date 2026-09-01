@@ -29,6 +29,7 @@ import {
 } from "../lib/integration-settings";
 import { backfillAllBadges, clearFounderBadges, FOUNDING_2500_THRESHOLD } from "../lib/badges";
 import { getSignupOrderStats, recomputeAllSignupNumbers } from "../lib/signupNumber";
+import { enrichAdminUserRows, queryAdminUsersPage } from "../lib/adminUsersQuery";
 
 async function audit(
   env: RequestContext["env"],
@@ -66,7 +67,7 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
     created_at: "created_at",
   };
 
-  const orderBy = allowedSorts[sortColumn] || "username";
+  const orderCol = allowedSorts[sortColumn] || "username";
   const orderDir = sortColumn === "admin_level" ? "DESC" : sortDir;
 
   const conditions: string[] = [];
@@ -81,62 +82,74 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
 
   const whereClause = conditions.join(" AND ");
 
-  const countResult = await env.DB.prepare(
-    `SELECT COUNT(*) as total FROM users WHERE ${whereClause}`,
-  )
-    .bind(...params)
-    .first();
-  const total = (countResult as { total: number }).total || 0;
+  try {
+    const countResult = await env.DB.prepare(
+      `SELECT COUNT(*) as total FROM users WHERE ${whereClause}`,
+    )
+      .bind(...params)
+      .first();
+    const total = (countResult as { total: number }).total || 0;
 
-  const users = await env.DB.prepare(
-    `SELECT id, email, username, displayName, pfpUrl, admin_level, created_at FROM users WHERE ${whereClause} ORDER BY ${orderBy} ${orderDir} LIMIT ? OFFSET ?`,
-  )
-    .bind(...params, pageSize, offset)
-    .all();
-
-  const userIds = ((users.results || []) as { id: string }[]).map((u) => u.id);
-  const pfpHistoryMap: Record<string, { id: string; r2Key: string; createdAt: number }[]> = {};
-  if (includeHistory && userIds.length > 0) {
-    try {
-      const placeholders = userIds.map(() => "?").join(",");
-      const historyRows = await env.DB.prepare(
-        `SELECT id, user_id, r2_key, created_at FROM pfp_history WHERE user_id IN (${placeholders}) ORDER BY created_at DESC LIMIT ?`,
-      )
-        .bind(...userIds, userIds.length * 3)
-        .all();
-      for (const row of (historyRows.results || []) as { id: string; user_id: string; r2_key: string; created_at: number }[]) {
-        if (!pfpHistoryMap[row.user_id]) pfpHistoryMap[row.user_id] = [];
-        if (pfpHistoryMap[row.user_id].length < 3) {
-          pfpHistoryMap[row.user_id].push({
-            id: row.id,
-            r2Key: r2KeyToPfpUrl(row.r2_key, env),
-            createdAt: row.created_at,
-          });
-        }
-      }
-    } catch {
-      // pfp_history table may not exist yet
-    }
-  }
-
-  const usersWithPfp = ((users.results || []) as { id: string; pfpUrl?: string }[]).map((u) => ({
-    ...u,
-    pfpHistory: pfpHistoryMap[u.id] || [],
-  }));
-
-  const maxAdminLevel = await getMaxAdminLevel(env);
-
-  return new Response(
-    JSON.stringify({
-      users: usersWithPfp,
-      total,
-      page,
+    const rawUsers = await queryAdminUsersPage(env.DB, {
+      whereClause,
+      params,
+      sortColumn: orderCol,
+      sortDir: orderDir as "ASC" | "DESC",
       pageSize,
-      totalPages: Math.ceil(total / pageSize),
-      maxAdminLevel,
-    }),
-    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-  );
+      offset,
+    });
+
+    const userIds = rawUsers.map((u) => u.id);
+    const pfpHistoryMap: Record<string, { id: string; r2Key: string; createdAt: number }[]> = {};
+    if (includeHistory && userIds.length > 0) {
+      try {
+        const placeholders = userIds.map(() => "?").join(",");
+        const historyRows = await env.DB.prepare(
+          `SELECT id, user_id, r2_key, created_at FROM pfp_history WHERE user_id IN (${placeholders}) ORDER BY created_at DESC LIMIT ?`,
+        )
+          .bind(...userIds, userIds.length * 3)
+          .all();
+        for (const row of (historyRows.results || []) as { id: string; user_id: string; r2_key: string; created_at: number }[]) {
+          if (!pfpHistoryMap[row.user_id]) pfpHistoryMap[row.user_id] = [];
+          if (pfpHistoryMap[row.user_id].length < 3) {
+            pfpHistoryMap[row.user_id].push({
+              id: row.id,
+              r2Key: r2KeyToPfpUrl(row.r2_key, env),
+              createdAt: row.created_at,
+            });
+          }
+        }
+      } catch {
+        // pfp_history table may not exist yet
+      }
+    }
+
+    const enriched = await enrichAdminUserRows(env.DB, rawUsers);
+    const usersWithPfp = enriched.map((u) => ({
+      ...u,
+      pfpHistory: pfpHistoryMap[u.id] || [],
+    }));
+
+    const maxAdminLevel = await getMaxAdminLevel(env);
+
+    return new Response(
+      JSON.stringify({
+        users: usersWithPfp,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+        maxAdminLevel,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (error) {
+    console.error("[admin/users] query failed:", error);
+    return new Response(JSON.stringify({ error: "Failed to load users" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 }
 
 export async function handleAdminPromote({ env, request, jwtSecret }: RequestContext): Promise<Response> {

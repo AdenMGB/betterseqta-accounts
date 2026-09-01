@@ -100,9 +100,17 @@
                                         @edit="openPfpEditor(users[virtualRow.index])"
                                         @view="openPfpView"
                                     />
-                                    <div v-if="editingUser?.id !== users[virtualRow.index].id" class="text-zinc-900 dark:text-white font-medium min-w-0 truncate">
-                                        {{ users[virtualRow.index].displayName || users[virtualRow.index].username }}
-                                        <span v-if="users[virtualRow.index].displayName && users[virtualRow.index].displayName !== users[virtualRow.index].username" class="text-xs text-zinc-500 dark:text-zinc-400 ml-1">({{ users[virtualRow.index].username }})</span>
+                                    <div v-if="editingUser?.id !== users[virtualRow.index].id" class="flex items-center gap-2 min-w-0">
+                                        <span class="text-zinc-900 dark:text-white font-medium min-w-0 truncate">
+                                            {{ users[virtualRow.index].displayName || users[virtualRow.index].username }}
+                                            <span v-if="users[virtualRow.index].displayName && users[virtualRow.index].displayName !== users[virtualRow.index].username" class="text-xs text-zinc-500 dark:text-zinc-400 ml-1">({{ users[virtualRow.index].username }})</span>
+                                        </span>
+                                        <ProfileBadgeStack
+                                            :admin-level="0"
+                                            :signup-number="users[virtualRow.index].signup_number"
+                                            :badges="users[virtualRow.index].badges ?? []"
+                                            :signed-up-at="users[virtualRow.index].created_at"
+                                        />
                                     </div>
                                     <input
                                         v-else
@@ -783,6 +791,7 @@ import PfpEditorModal from '~/components/PfpEditorModal.vue'
 import AuditContextCell from '~/components/admin/AuditContextCell.vue'
 import ConfirmDialog from '~/components/admin/ConfirmDialog.vue'
 import UserActionsMenu from '~/components/admin/UserActionsMenu.vue'
+import ProfileBadgeStack from '~/components/badges/ProfileBadgeStack.vue'
 import { useIntersectionObserver, watchDebounced } from '@vueuse/core'
 import { withPfpCacheBust, formatRelativeTime } from '~/utils/pfp'
 
