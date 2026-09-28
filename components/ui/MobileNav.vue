@@ -4,6 +4,10 @@
       <HomeIcon class="w-6 h-6" />
       <span class="text-xs mt-1">Home</span>
     </NuxtLink>
+    <NuxtLink to="/themes" class="flex flex-col items-center justify-center flex-1" :class="isActive('/themes')">
+      <SwatchIcon class="w-6 h-6" />
+      <span class="text-xs mt-1">Themes</span>
+    </NuxtLink>
     <NuxtLink to="/settings" class="flex flex-col items-center justify-center flex-1" :class="isActive('/settings')">
       <Cog6ToothIcon class="w-6 h-6" />
       <span class="text-xs mt-1">Settings</span>
@@ -19,7 +23,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '~/composables/useAuth'
-import { HomeIcon, Cog6ToothIcon, KeyIcon } from '@heroicons/vue/24/outline'
+import { HomeIcon, Cog6ToothIcon, KeyIcon, SwatchIcon } from '@heroicons/vue/24/outline'
 
 // Computed property to check if user is admin
 const isAdmin = computed(() => {

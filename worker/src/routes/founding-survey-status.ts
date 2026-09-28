@@ -1,15 +1,7 @@
 import { corsHeaders } from "../constants";
 import { authError, getUser } from "../lib/auth";
+import { getBsplusBaseUrl } from "../lib/env-util";
 import type { RequestContext } from "../types/context";
-import type { Env } from "../types/env";
-
-function getBsplusBaseUrl(env: Env): string {
-  const cfDev = env.CF_DEV === "1" || env.CF_DEV === "true";
-  if (cfDev && env.DEV_BSPLUS_URL?.trim()) {
-    return env.DEV_BSPLUS_URL.trim().replace(/\/$/, "");
-  }
-  return (env.BSPLUS_URL?.trim() || "https://betterseqta.org").replace(/\/$/, "");
-}
 
 export async function handleFoundingSurveyStatus({
   env,
