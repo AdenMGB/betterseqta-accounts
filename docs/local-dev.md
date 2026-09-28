@@ -7,7 +7,7 @@ See also: [bsplus-website docs/local-dev.md](../bsplus-website/docs/local-dev.md
 ## Quick start
 
 ```bash
-# First time / after schema changes
+# First time / after schema changes (also run automatically by `pnpm cf:dev`)
 pnpm db:migrate:local
 
 # Terminal 1 — accounts worker + local D1
@@ -22,8 +22,8 @@ pnpm dev
 
 | Command | Description |
 |---------|-------------|
-| `pnpm cf:dev` | Resolve dev URLs → generate static SPA → `wrangler dev` on `:8788` |
-| `pnpm db:migrate:local` | Apply migrations to `.wrangler/d1-local` (run separately) |
+| `pnpm cf:dev` | Resolve dev URLs → apply local D1 migrations → generate static SPA → `wrangler dev` on `:8788` |
+| `pnpm db:migrate:local` | Apply migrations to `.wrangler/d1-local` (idempotent; `cf:dev` runs this too) |
 | `pnpm db:migrate:remote` | Apply pending migrations to **remote** D1 (`BS_SETTINGS`) — requires Cloudflare auth |
 | `pnpm db:seed:test-user` | Idempotent test user in local D1 |
 | `pnpm db:seed:test-user --admin --signup-number 100` | Senior admin user with signup rank (needs migration 0019) |
