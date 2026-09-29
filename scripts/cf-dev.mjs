@@ -26,6 +26,5 @@ function run(command, args) {
 
 run('node', ['scripts/resolve-dev-services.mjs'])
 run('node', ['scripts/sync-dev-vars.mjs'])
-run('node', ['scripts/d1-migrate-local.mjs'])
 run('pnpm', ['generate'])
 run('pnpm', ['exec', 'wrangler', 'dev', '--local', '--persist-to', '.wrangler/d1-local', '--env-file', '.dev.vars'])
