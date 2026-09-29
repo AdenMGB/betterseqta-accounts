@@ -10,7 +10,7 @@ export type JwtUserPayload = {
   adminLevel?: number;
 };
 
-function extractAccessToken(req: Request): string | null {
+export function extractAccessToken(req: Request): string | null {
   const authHeader = req.headers.get("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
     const bearer = authHeader.slice(7).trim();

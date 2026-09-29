@@ -34,6 +34,7 @@ function wrangler(args) {
   return spawnSync('pnpm', ['exec', 'wrangler', ...args], {
     cwd: root,
     encoding: 'utf-8',
+    shell: process.platform === 'win32',
   })
 }
 
