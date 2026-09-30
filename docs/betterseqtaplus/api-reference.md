@@ -206,25 +206,28 @@ Store all three values. Use `token` as the access token and `refresh_token` for 
 
 ---
 
-## Timetable classmates registry
+## Timetable classmates (phonebook + relay)
 
-**Auth:** `Authorization: Bearer <access_token>` from BS+ login/refresh on all routes below. Cloud login is required for opt-in, peers, sync hints, and heartbeats (no SEQTA-only path).
+Two layers: **D1 phonebook** (who opted in) and **WebSocket relay** (encrypted class enrollment blobs). No timetable or display names on the server; no SEQTA DMs.
 
-Stores SEQTA identifiers and cloud user ids only (no timetable or display names). ISO week labels use **UTC** (`YYYY-Www`).
+**Auth:** `Authorization: Bearer <access_token>` on all REST routes below.
+
+Full relay wire format and client crypto: [TIMETABLE_CLASSMATES_RELAY_API.md](./TIMETABLE_CLASSMATES_RELAY_API.md).
 
 ### Identity binding
 
-Opt-in and heartbeat include `identity_binding_digest` (SHA-256 hex of a canonical `key=value` block, version `v=1`) tying `instance_host`, SEQTA ids, and the authenticated `cloud_user_id`. Optional `seqta_account_type` adds a `type=` line. Server recomputes and rejects **422** on mismatch; persists digest on membership. Heartbeat returns **409** if SEQTA ids change for the same cloud user without opt-out.
+Opt-in and heartbeat send `identity_binding_digest` (SHA-256 hex of canonical `v=1` key=value lines). Server recomputes from body + token user id. Optional `seqta_account_type` adds a `type=` line. **`share_code`** on relay session = first 8 hex chars of the stored digest.
+
+### Phonebook REST
 
 | Method | Path | Rate limit (per user) |
 |--------|------|------------------------|
 | PUT | `/api/bsplus/timetable-classmates/opt-in` | 10 / hour |
 | DELETE | `/api/bsplus/timetable-classmates/opt-in?instance_host=` | 10 / hour |
 | GET | `/api/bsplus/timetable-classmates/peers?instance_host=` | 60 / hour |
-| GET | `/api/bsplus/timetable-classmates/sync-hint?instance_host=` | 60 / hour |
 | POST | `/api/bsplus/timetable-classmates/heartbeat` | 120 / day |
 
-### Opt in — `PUT /api/bsplus/timetable-classmates/opt-in`
+#### Opt in — `PUT /api/bsplus/timetable-classmates/opt-in`
 
 ```json
 {
@@ -238,46 +241,38 @@ Opt-in and heartbeat include `identity_binding_digest` (SHA-256 hex of a canonic
 }
 ```
 
-`attested_at` optional; when sent must be within ±15 minutes of server time. `seqta_account_type` optional (include in digest when present).
+**200:** `{ "opted_in_at": "<ISO8601>" }` · **409** SEQTA id conflict or identity change without opt-out · **422** validation.
 
-**200:** `{ "opted_in_at": "<ISO8601>" }` — **409** if another cloud account holds the same SEQTA id, or SEQTA ids change for this cloud user without opt-out — **422** on validation / digest mismatch.
-
-### Opt out — `DELETE /api/bsplus/timetable-classmates/opt-in?instance_host=...`
+#### Opt out — `DELETE .../opt-in?instance_host=...`
 
 **200** `{ "ok": true }` or **204** if already revoked.
 
-### Peers — `GET /api/bsplus/timetable-classmates/peers?instance_host=...`
+#### Peers — `GET .../peers?instance_host=...`
 
-**404** if the caller is not opted in. **200:** `{ "self": { ... }, "peers": [ { "seqta_student_id", "cloud_user_id"? } ] }`.
+**404** if not opted in. **200:** `{ "self": { "seqta_student_id", "cloud_user_id" }, "peers": [...] }`.
 
-### Sync hint — `GET /api/bsplus/timetable-classmates/sync-hint?instance_host=...`
+#### Heartbeat — `POST .../heartbeat`
+
+Same identity fields as opt-in (no `attested_at`). **200:** `{ "ok": true }`.
+
+### Relay session — `GET /api/bsplus/timetable-classmates/relay-session?instance_host=...`
 
 **200:**
 
 ```json
 {
-  "publish_week": "2026-W40",
-  "thread_subject": "BQ+TIMETABLE:v1:WEEK:2026-W40:7f3a9c12",
-  "coordinator_cloud_user_id": "uuid",
-  "should_publish": false
+  "ws_url": "wss://accounts.betterseqta.org/api/bsplus/timetable-classmates/relay/ws",
+  "relay_token": "<JWT, 15 min>",
+  "bundle_key_b64": "<32 bytes base64>",
+  "share_code": "083f5e95",
+  "relay_protocol": 1
 }
 ```
 
-Coordinator rotation uses the most recent `last_seen_at` among active members (tie: earliest `opted_in_at`). `thread_subject` rotates only on ISO week change, not when replacing a stale coordinator mid-week.
+**401** · **404** not opted in · **422** bad host or missing identity binding.
 
-### Heartbeat — `POST /api/bsplus/timetable-classmates/heartbeat`
+### WebSocket — `GET {ws_url}?instance_host=...&relay_token=...`
 
-```json
-{
-  "instance_host": "learn.example.edu.au",
-  "seqta_student_id": 18,
-  "seqta_person_uuid": "03c5f6e3-b27e-42e1-bece-27c6526205a8",
-  "identity_binding_digest": "64-char-lowercase-hex",
-  "identity_binding_version": 1,
-  "seqta_account_type": "student"
-}
-```
+Upgrade to DO per school instance. Messages: `snapshot`, `publish`, `revoke`, `error` (all `"v": 1`). See [timetable-classmates-relay.md](./timetable-classmates-relay.md).
 
-**200:** `{ "ok": true }`. **409** if SEQTA ids differ from stored membership.
-
-Errors use `{ "error": "message" }` with the appropriate HTTP status.
+Errors use `{ "error": "message" }` on REST.

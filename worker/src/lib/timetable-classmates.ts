@@ -61,16 +61,6 @@ export function parseAttestedAt(raw: unknown, now: Date = new Date()): boolean {
   return Math.abs(now.getTime() - parsed) <= ATTESTED_AT_SKEW_MS;
 }
 
-/** ISO week label `YYYY-Www` in UTC (matches BetterSEQTA+ extension). */
-export function currentUtcIsoWeek(now: Date = new Date()): string {
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const day = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
-}
-
 export function normalizeInstanceHost(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const host = raw.trim().toLowerCase();
@@ -93,87 +83,21 @@ export function parseSeqtaPersonUuid(raw: unknown): string | null {
   return trimmed.toLowerCase();
 }
 
-export function newThreadSubject(publishWeek: string): string {
-  const bytes = new Uint8Array(4);
-  crypto.getRandomValues(bytes);
-  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-  return `BQ+TIMETABLE:v1:WEEK:${publishWeek}:${hex}`;
+export function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary);
 }
 
 export function isoNow(): string {
   return new Date().toISOString();
 }
 
-const COORDINATOR_STALE_MS = 14 * 24 * 60 * 60 * 1000;
-
-export type MembershipRow = {
-  cloud_user_id: string;
-  last_seen_at: string;
-  opted_in_at: string;
-};
-
-export type InstanceRow = {
-  publish_week: string | null;
-  thread_subject: string | null;
-  coordinator_cloud_user_id: string | null;
-};
-
-export type SyncHintPlan = {
-  publishWeek: string;
-  threadSubject: string;
-  coordinatorCloudUserId: string | null;
-  shouldPublish: boolean;
-};
-
-/** Pure coordinator decision (week rotation vs mid-week stale coordinator). */
-export function planSyncHint(
-  instance: InstanceRow,
-  activeMembers: MembershipRow[],
-  callerCloudUserId: string,
-  now: Date = new Date(),
-): SyncHintPlan {
-  const publishWeek = currentUtcIsoWeek(now);
-  const weekChanged = instance.publish_week !== publishWeek;
-
-  let threadSubject = instance.thread_subject;
-  let coordinatorId = instance.coordinator_cloud_user_id;
-
-  const coordinatorMember = coordinatorId
-    ? activeMembers.find((m) => m.cloud_user_id === coordinatorId)
-    : undefined;
-  const coordinatorLastSeen = coordinatorMember?.last_seen_at
-    ? Date.parse(coordinatorMember.last_seen_at)
-    : NaN;
-  const coordinatorStale =
-    !coordinatorMember ||
-    !Number.isFinite(coordinatorLastSeen) ||
-    now.getTime() - coordinatorLastSeen > COORDINATOR_STALE_MS;
-
-  const needsNewCoordinator = weekChanged || coordinatorStale || !coordinatorId;
-
-  if (needsNewCoordinator && activeMembers.length > 0) {
-    const sorted = [...activeMembers].sort((a, b) => {
-      const seenDiff = Date.parse(b.last_seen_at) - Date.parse(a.last_seen_at);
-      if (seenDiff !== 0) return seenDiff;
-      return Date.parse(a.opted_in_at) - Date.parse(b.opted_in_at);
-    });
-    coordinatorId = sorted[0]?.cloud_user_id ?? null;
-  }
-
-  if (weekChanged) {
-    threadSubject = coordinatorId ? newThreadSubject(publishWeek) : null;
-  } else if (!threadSubject && coordinatorId) {
-    threadSubject = newThreadSubject(publishWeek);
-  }
-
-  const effectiveWeek = weekChanged ? publishWeek : (instance.publish_week ?? publishWeek);
-  const shouldPublish =
-    Boolean(coordinatorId) && callerCloudUserId === coordinatorId && publishWeek === effectiveWeek;
-
-  return {
-    publishWeek,
-    threadSubject: threadSubject ?? "",
-    coordinatorCloudUserId: coordinatorId,
-    shouldPublish,
-  };
+/** First 8 hex chars of identity_binding_digest (relay dedupe / debug). */
+export function shareCodeFromIdentityDigest(digest: string | null | undefined): string | null {
+  const d = (digest ?? "").trim().toLowerCase();
+  if (d.length < 8 || !/^[0-9a-f]+$/.test(d.slice(0, 8))) return null;
+  return d.slice(0, 8);
 }

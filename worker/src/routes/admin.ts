@@ -30,6 +30,7 @@ import {
 import { backfillAllBadges, clearFounderBadges, FOUNDING_2500_THRESHOLD } from "../lib/badges";
 import { getSignupOrderStats, recomputeAllSignupNumbers } from "../lib/signupNumber";
 import { enrichAdminUserRows, queryAdminUsersPage } from "../lib/adminUsersQuery";
+import { getTimetableClassmatesAdminStats } from "../lib/timetable-classmates-admin-stats";
 
 async function audit(
   env: RequestContext["env"],
@@ -1561,6 +1562,20 @@ export async function handleAdminSignupOrderBackfill({ env, request, jwtSecret }
   });
 
   return new Response(JSON.stringify(payload), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export async function handleAdminTimetableClassmatesStats({
+  env,
+  request,
+  jwtSecret,
+}: RequestContext): Promise<Response> {
+  const admin = await getAdminUser(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const stats = await getTimetableClassmatesAdminStats(env.DB);
+  return new Response(JSON.stringify(stats), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }

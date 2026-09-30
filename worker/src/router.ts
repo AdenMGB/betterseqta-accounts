@@ -96,12 +96,16 @@ const routes: Route[] = [
     handle: (c) => timetableClassmates.handleTimetableClassmatesPeers(c),
   },
   {
-    test: (m, p) => m === "GET" && p === "/api/bsplus/timetable-classmates/sync-hint",
-    handle: (c) => timetableClassmates.handleTimetableClassmatesSyncHint(c),
-  },
-  {
     test: (m, p) => m === "POST" && p === "/api/bsplus/timetable-classmates/heartbeat",
     handle: (c) => timetableClassmates.handleTimetableClassmatesHeartbeat(c),
+  },
+  {
+    test: (m, p) => m === "GET" && p === "/api/bsplus/timetable-classmates/relay-session",
+    handle: (c) => timetableClassmates.handleTimetableClassmatesRelaySession(c),
+  },
+  {
+    test: (m, p) => m === "GET" && p === "/api/bsplus/timetable-classmates/relay/ws",
+    handle: (c) => timetableClassmates.handleTimetableClassmatesRelayWs(c),
   },
   {
     test: (m, p) => m === "POST" && p === "/api/bsplus/google/calendar/token",
@@ -163,6 +167,10 @@ const routes: Route[] = [
   { test: (m, p) => m === "POST" && p === "/api/admin/fix-pfp-urls", handle: (c) => admin.handleAdminFixPfpUrls(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/prune-pfp-history", handle: (c) => admin.handleAdminPrunePfpHistory(c) },
   { test: (m, p) => m === "GET" && p === "/api/admin/signup-order/stats", handle: (c) => admin.handleAdminSignupOrderStats(c) },
+  {
+    test: (m, p) => m === "GET" && p === "/api/admin/timetable-classmates/stats",
+    handle: (c) => admin.handleAdminTimetableClassmatesStats(c),
+  },
   { test: (m, p) => m === "POST" && p === "/api/admin/signup-order/backfill", handle: (c) => admin.handleAdminSignupOrderBackfill(c) },
 ];
 

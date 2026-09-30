@@ -11,10 +11,11 @@ import {
   parseSeqtaAccountType,
   parseSeqtaPersonUuid,
   parseSeqtaStudentId,
-  planSyncHint,
-  type InstanceRow,
-  type MembershipRow,
+  shareCodeFromIdentityDigest,
+  bytesToBase64,
 } from "../lib/timetable-classmates";
+import { createRelayToken, verifyRelayToken } from "../lib/timetable-classmates-relay-token";
+import { relayRevokeStudentShare } from "../lib/timetable-classmates-relay-client";
 import type { RequestContext } from "../types/context";
 import type { Env } from "../types/env";
 
@@ -34,6 +35,29 @@ async function ensureInstance(env: Env, instanceHost: string): Promise<void> {
   )
     .bind(instanceHost, isoNow())
     .run();
+}
+
+/** Same bundle key for every opted-in student on this SEQTA instance (required for peer decrypt). */
+async function getOrCreateInstanceRelayBundleKey(env: Env, instanceHost: string): Promise<string> {
+  await ensureInstance(env, instanceHost);
+  const row = await env.DB.prepare(
+    "SELECT relay_bundle_key_b64 FROM tq_instance WHERE instance_host = ?",
+  )
+    .bind(instanceHost)
+    .first<{ relay_bundle_key_b64: string | null }>();
+
+  const existing = row?.relay_bundle_key_b64?.trim();
+  if (existing) return existing;
+
+  const bundleBytes = new Uint8Array(32);
+  crypto.getRandomValues(bundleBytes);
+  const bundle_key_b64 = bytesToBase64(bundleBytes);
+  await env.DB.prepare(
+    "UPDATE tq_instance SET relay_bundle_key_b64 = ?, updated_at = ? WHERE instance_host = ?",
+  )
+    .bind(bundle_key_b64, isoNow(), instanceHost)
+    .run();
+  return bundle_key_b64;
 }
 
 async function getActiveMembership(env: Env, cloudUserId: string, instanceHost: string) {
@@ -104,28 +128,13 @@ function seqtaIdentityChanged(
   );
 }
 
-async function loadInstance(env: Env, instanceHost: string): Promise<InstanceRow> {
-  const row = await env.DB.prepare(
-    "SELECT publish_week, thread_subject, coordinator_cloud_user_id FROM tq_instance WHERE instance_host = ?",
-  )
-    .bind(instanceHost)
-    .first<InstanceRow>();
-  return row ?? { publish_week: null, thread_subject: null, coordinator_cloud_user_id: null };
-}
-
-async function loadActiveMembers(env: Env, instanceHost: string): Promise<MembershipRow[]> {
-  const { results } = await env.DB.prepare(
-    `SELECT cloud_user_id, last_seen_at, opted_in_at
-     FROM tq_membership
-     WHERE instance_host = ? AND revoked_at IS NULL`,
-  )
-    .bind(instanceHost)
-    .all<MembershipRow>();
-  return results ?? [];
-}
-
 function instanceHostFromQuery(url: URL): string | null {
   return normalizeInstanceHost(url.searchParams.get("instance_host") ?? "");
+}
+
+function relayWsUrl(env: Env, requestOrigin: string): string {
+  const base = (env.APP_URL?.trim() || requestOrigin).replace(/\/$/, "");
+  return `${base.replace(/^http/, "ws")}/api/bsplus/timetable-classmates/relay/ws`;
 }
 
 export async function handleTimetableClassmatesOptInPut(ctx: RequestContext): Promise<Response> {
@@ -257,12 +266,17 @@ export async function handleTimetableClassmatesOptInDelete(ctx: RequestContext):
     return authError("Invalid instance_host", 422);
   }
 
+  const membership = await getActiveMembership(ctx.env, user.id, instanceHost);
   const now = isoNow();
   const result = await ctx.env.DB.prepare(
     `UPDATE tq_membership SET revoked_at = ? WHERE cloud_user_id = ? AND instance_host = ? AND revoked_at IS NULL`,
   )
     .bind(now, user.id, instanceHost)
     .run();
+
+  if (membership && (result.meta.changes ?? 0) > 0) {
+    await relayRevokeStudentShare(ctx.env, instanceHost, membership.seqta_student_id);
+  }
 
   if ((result.meta.changes ?? 0) === 0) {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -310,59 +324,6 @@ export async function handleTimetableClassmatesPeers(ctx: RequestContext): Promi
         cloud_user_id: self.cloud_user_id,
       },
       peers,
-    },
-    jsonHeaders,
-  );
-}
-
-export async function handleTimetableClassmatesSyncHint(ctx: RequestContext): Promise<Response> {
-  const user = await requireBsplusUser(ctx);
-  if (!user) return authError("Unauthorized", 401);
-
-  const limited = await rateLimitUser(ctx.env, user.id, "tq-sync-hint", 60, 3600);
-  if (limited) return limited;
-
-  const instanceHost = instanceHostFromQuery(ctx.url);
-  if (!instanceHost) {
-    return authError("Invalid instance_host", 422);
-  }
-
-  const self = await getActiveMembership(ctx.env, user.id, instanceHost);
-  if (!self) {
-    return authError("Not registered on this school instance", 404);
-  }
-
-  await ensureInstance(ctx.env, instanceHost);
-  const instance = await loadInstance(ctx.env, instanceHost);
-  const members = await loadActiveMembers(ctx.env, instanceHost);
-  const plan = planSyncHint(instance, members, user.id);
-
-  const weekChanged = instance.publish_week !== plan.publishWeek;
-  const coordinatorChanged = instance.coordinator_cloud_user_id !== plan.coordinatorCloudUserId;
-  const subjectChanged = plan.threadSubject && instance.thread_subject !== plan.threadSubject;
-
-  if (weekChanged || coordinatorChanged || subjectChanged) {
-    await ctx.env.DB.prepare(
-      `UPDATE tq_instance
-       SET publish_week = ?, thread_subject = ?, coordinator_cloud_user_id = ?, updated_at = ?
-       WHERE instance_host = ?`,
-    )
-      .bind(
-        plan.publishWeek,
-        plan.threadSubject || instance.thread_subject,
-        plan.coordinatorCloudUserId,
-        isoNow(),
-        instanceHost,
-      )
-      .run();
-  }
-
-  return authJson(
-    {
-      publish_week: plan.publishWeek,
-      thread_subject: plan.threadSubject || instance.thread_subject || "",
-      coordinator_cloud_user_id: plan.coordinatorCloudUserId,
-      should_publish: plan.shouldPublish,
     },
     jsonHeaders,
   );
@@ -420,4 +381,97 @@ export async function handleTimetableClassmatesHeartbeat(ctx: RequestContext): P
     .run();
 
   return authJson({ ok: true }, jsonHeaders);
+}
+
+export async function handleTimetableClassmatesRelaySession(ctx: RequestContext): Promise<Response> {
+  const user = await requireBsplusUser(ctx);
+  if (!user) return authError("Unauthorized", 401);
+
+  const limited = await rateLimitUser(ctx.env, user.id, "tq-relay-session", 120, 3600);
+  if (limited) return limited;
+
+  const instanceHost = instanceHostFromQuery(ctx.url);
+  if (!instanceHost) {
+    return authError("Invalid instance_host", 422);
+  }
+
+  const membership = await getActiveMembership(ctx.env, user.id, instanceHost);
+  if (!membership) {
+    return authError("Not registered on this school instance", 404);
+  }
+
+  const share_code = shareCodeFromIdentityDigest(membership.identity_binding_digest);
+  if (!share_code) {
+    return authError("Identity binding required for relay session", 422);
+  }
+
+  const bundle_key_b64 = await getOrCreateInstanceRelayBundleKey(ctx.env, instanceHost);
+
+  const relay_token = await createRelayToken(
+    {
+      typ: "tq_relay",
+      instance_host: instanceHost,
+      cloud_user_id: user.id,
+      seqta_student_id: membership.seqta_student_id,
+      share_code,
+    },
+    ctx.jwtSecret,
+  );
+
+  return authJson(
+    {
+      ws_url: relayWsUrl(ctx.env, ctx.url.origin),
+      relay_token,
+      bundle_key_b64,
+      share_code,
+      relay_protocol: 1,
+    },
+    jsonHeaders,
+  );
+}
+
+export async function handleTimetableClassmatesRelayWs(ctx: RequestContext): Promise<Response> {
+  if (ctx.request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+    return new Response("Expected WebSocket", { status: 426, headers: corsHeaders });
+  }
+
+  const instanceHost = instanceHostFromQuery(ctx.url);
+  const relayToken = ctx.url.searchParams.get("relay_token")?.trim();
+  if (!instanceHost || !relayToken) {
+    return authError("Invalid relay connection", 422);
+  }
+
+  const claims = await verifyRelayToken(relayToken, ctx.jwtSecret);
+  if (!claims || claims.instance_host !== instanceHost) {
+    return authError("Invalid relay token", 401);
+  }
+
+  const membership = await getActiveMembership(ctx.env, claims.cloud_user_id, instanceHost);
+  if (!membership) {
+    return authError("Not registered on this school instance", 404);
+  }
+
+  if (membership.seqta_student_id !== claims.seqta_student_id) {
+    return authError("Relay token does not match membership", 401);
+  }
+
+  const expectedShare = shareCodeFromIdentityDigest(membership.identity_binding_digest);
+  if (!expectedShare || expectedShare !== claims.share_code) {
+    return authError("Invalid relay token", 401);
+  }
+
+  const ns = ctx.env.TIMETABLE_CLASSMATES_RELAY;
+  if (!ns) {
+    return authError("Relay not configured", 503);
+  }
+
+  const id = ns.idFromName(instanceHost);
+  const stub = ns.get(id);
+
+  const headers = new Headers(ctx.request.headers);
+  headers.set("X-TQ-Cloud-User-Id", claims.cloud_user_id);
+  headers.set("X-TQ-Seqta-Student-Id", String(claims.seqta_student_id));
+  headers.set("X-TQ-Share-Code", claims.share_code);
+
+  return stub.fetch(new Request(ctx.request, { headers }));
 }

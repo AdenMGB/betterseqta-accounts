@@ -3,13 +3,12 @@ import { describe, it } from "node:test";
 import {
   buildIdentityBindingCanonical,
   computeIdentityBindingDigest,
-  currentUtcIsoWeek,
   normalizeInstanceHost,
   parseAttestedAt,
   parseIdentityBindingDigest,
   parseSeqtaPersonUuid,
   parseSeqtaStudentId,
-  planSyncHint,
+  shareCodeFromIdentityDigest,
 } from "../src/lib/timetable-classmates.ts";
 
 describe("timetable classmates validation", () => {
@@ -65,78 +64,12 @@ describe("identity binding digest", () => {
     });
     assert.equal(parseIdentityBindingDigest(digest), digest);
     assert.equal(digest.length, 64);
+    assert.equal(shareCodeFromIdentityDigest(digest), digest.slice(0, 8));
   });
 
   it("accepts attested_at within ±15 minutes", () => {
     const now = new Date("2026-09-30T12:00:00.000Z");
     assert.equal(parseAttestedAt("2026-09-30T12:10:00.000Z", now), true);
     assert.equal(parseAttestedAt("2026-09-30T12:20:00.000Z", now), false);
-  });
-});
-
-describe("currentUtcIsoWeek", () => {
-  it("matches ISO week for a known UTC date", () => {
-    assert.equal(currentUtcIsoWeek(new Date("2026-09-30T12:00:00.000Z")), "2026-W40");
-  });
-});
-
-describe("planSyncHint coordinator", () => {
-  const members = [
-    {
-      cloud_user_id: "user-a",
-      last_seen_at: "2026-09-29T00:00:00.000Z",
-      opted_in_at: "2026-09-01T00:00:00.000Z",
-    },
-    {
-      cloud_user_id: "user-b",
-      last_seen_at: "2026-09-28T00:00:00.000Z",
-      opted_in_at: "2026-09-02T00:00:00.000Z",
-    },
-  ];
-
-  it("rotates thread subject when publish week changes", () => {
-    const plan = planSyncHint(
-      {
-        publish_week: "2026-W39",
-        thread_subject: "BQ+TIMETABLE:v1:WEEK:2026-W39:deadbeef",
-        coordinator_cloud_user_id: "user-b",
-      },
-      members,
-      "user-a",
-      new Date("2026-09-30T12:00:00.000Z"),
-    );
-    assert.equal(plan.publishWeek, "2026-W40");
-    assert.match(plan.threadSubject, /^BQ\+TIMETABLE:v1:WEEK:2026-W40:[0-9a-f]{8}$/);
-    assert.equal(plan.coordinatorCloudUserId, "user-a");
-    assert.equal(plan.shouldPublish, true);
-  });
-
-  it("keeps thread subject when coordinator is stale mid-week", () => {
-    const subject = "BQ+TIMETABLE:v1:WEEK:2026-W40:abc12345";
-    const staleMembers = [
-      {
-        cloud_user_id: "user-a",
-        last_seen_at: "2026-09-29T00:00:00.000Z",
-        opted_in_at: "2026-09-01T00:00:00.000Z",
-      },
-      {
-        cloud_user_id: "user-b",
-        last_seen_at: "2026-09-01T00:00:00.000Z",
-        opted_in_at: "2026-08-01T00:00:00.000Z",
-      },
-    ];
-    const plan = planSyncHint(
-      {
-        publish_week: "2026-W40",
-        thread_subject: subject,
-        coordinator_cloud_user_id: "user-b",
-      },
-      staleMembers,
-      "user-a",
-      new Date("2026-09-30T12:00:00.000Z"),
-    );
-    assert.equal(plan.threadSubject, subject);
-    assert.equal(plan.coordinatorCloudUserId, "user-a");
-    assert.equal(plan.shouldPublish, true);
   });
 });

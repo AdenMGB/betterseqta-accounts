@@ -3,6 +3,8 @@ import { runSettingsBootstrapIfNeeded } from "./lib/settings-bootstrap";
 import { dispatch } from "./router";
 import type { Env } from "./types/env";
 
+export { TimetableClassmatesRelay } from "./durable-objects/timetable-classmates-relay";
+
 export default {
   async fetch(request: Request, env: Env, executionCtx: ExecutionContext): Promise<Response> {
     executionCtx.waitUntil(

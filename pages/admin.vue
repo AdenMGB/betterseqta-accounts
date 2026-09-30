@@ -605,6 +605,86 @@
         </div>
       </div>
 
+      <!-- Timetable classmates Tab -->
+      <div v-if="isTab('timetable-classmates')" class="admin-scroll-tab space-y-6">
+        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">BetterSEQTA+ timetable classmates</h3>
+          <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+            Counts active phonebook opt-ins per SEQTA school (<code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded">instance_host</code>). Revoked registrations are excluded from active totals.
+          </p>
+
+          <div v-if="!tqClassmatesStats?.available" class="text-sm text-amber-600 dark:text-amber-400 mb-4">
+            Timetable classmates tables are not available on this database. Run migrations <code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1 rounded">0020</code>+ locally or on D1.
+          </div>
+
+          <div v-if="tqClassmatesStatsLoading" class="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+            <LoadingSpinner size="sm" />
+            Loading stats…
+          </div>
+
+          <div v-else-if="tqClassmatesStats?.available" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+            <div class="p-4 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-center">
+              <p class="text-3xl font-bold text-primary-600 dark:text-primary-400">{{ tqClassmatesStats.active_opt_ins }}</p>
+              <p class="text-sm text-primary-700 dark:text-primary-300 mt-1">Active opt-ins</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-3xl font-bold text-zinc-900 dark:text-white">{{ tqClassmatesStats.school_instances }}</p>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">School instances</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{{ tqClassmatesStats.active_last_24h }}</p>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Heartbeat 24h</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{{ tqClassmatesStats.active_last_7d }}</p>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Active 7d</p>
+            </div>
+            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center col-span-2 sm:col-span-1">
+              <p class="text-3xl font-bold text-zinc-500 dark:text-zinc-400">{{ tqClassmatesStats.revoked_total }}</p>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Revoked (all time)</p>
+            </div>
+          </div>
+
+          <button
+            @click="loadTqClassmatesStats"
+            :disabled="tqClassmatesStatsLoading"
+            class="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center gap-2"
+          >
+            <ArrowPathIcon class="w-5 h-5" />
+            Refresh
+          </button>
+        </div>
+
+        <div
+          v-if="tqClassmatesStats?.available && tqClassmatesStats.by_instance.length"
+          class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700"
+        >
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-4">By school instance</h3>
+          <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+            <div class="admin-table-scroll max-h-[28rem]">
+              <table class="admin-data-table w-full text-left">
+                <thead class="sticky top-0 bg-zinc-50 dark:bg-zinc-800/95 backdrop-blur-sm z-10">
+                  <tr class="border-b border-zinc-200 dark:border-zinc-700">
+                    <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Instance</th>
+                    <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400 text-right">Active users</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
+                  <tr
+                    v-for="row in tqClassmatesStats.by_instance"
+                    :key="row.instance_host"
+                    class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors duration-200"
+                  >
+                    <td class="py-3 px-4 text-sm text-zinc-900 dark:text-white font-mono break-all">{{ row.instance_host }}</td>
+                    <td class="py-3 px-4 text-sm text-zinc-900 dark:text-white text-right font-semibold">{{ row.active_count }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- PFP Migration Tab -->
       <div v-if="isTab('pfp-migration')" class="admin-scroll-tab space-y-6">
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
@@ -813,6 +893,7 @@ const adminTabs = [
   { id: 'apikeys', label: 'API Keys', description: 'Issue and revoke API keys for integrations.' },
   { id: 'activity-log', label: 'Activity Log', description: 'Review admin actions with live updates every 8 seconds.' },
   { id: 'signup-order', label: 'Signup Order', description: 'Recompute join order and Founding 2500 founder badges.' },
+  { id: 'timetable-classmates', label: 'Timetable classmates', description: 'Opt-in usage for BetterSEQTA+ classmate avatars (phonebook).' },
   { id: 'pfp-migration', label: 'PFP Migration', description: 'Senior admin tools for bulk profile picture maintenance.' },
 ]
 
@@ -1227,6 +1308,7 @@ watch(activeTab, (tab, prevTab) => {
   if (prevTab === 'activity-log') onActivityLogTabDeactivated()
   if (tab === 'activity-log') onActivityLogTabActivated()
   if (tab === 'signup-order') onSignupOrderTabActivated()
+  if (tab === 'timetable-classmates') onTqClassmatesTabActivated()
 })
 
 onUnmounted(() => stopAuditAutoRefresh())
@@ -1347,6 +1429,36 @@ const loadSignupOrderStats = async () => {
 
 const onSignupOrderTabActivated = async () => {
   if (!signupOrderStats.value) await loadSignupOrderStats()
+}
+
+type TqClassmatesAdminStats = {
+  available: boolean
+  active_opt_ins: number
+  revoked_total: number
+  school_instances: number
+  active_last_24h: number
+  active_last_7d: number
+  by_instance: { instance_host: string; active_count: number }[]
+}
+
+const tqClassmatesStats = ref<TqClassmatesAdminStats | null>(null)
+const tqClassmatesStatsLoading = ref(false)
+
+const loadTqClassmatesStats = async () => {
+  tqClassmatesStatsLoading.value = true
+  try {
+    tqClassmatesStats.value = await $fetch<TqClassmatesAdminStats>('/api/admin/timetable-classmates/stats', {
+      credentials: 'include',
+    })
+  } catch (e: any) {
+    showToast(e?.data?.error || 'Failed to load timetable classmates stats', 'error')
+  } finally {
+    tqClassmatesStatsLoading.value = false
+  }
+}
+
+const onTqClassmatesTabActivated = async () => {
+  if (!tqClassmatesStats.value) await loadTqClassmatesStats()
 }
 
 const runSignupOrderBackfill = () => {
@@ -1950,6 +2062,8 @@ onMounted(async () => {
             await onActivityLogTabActivated()
         } else if (activeTab.value === 'signup-order') {
             await onSignupOrderTabActivated()
+        } else if (activeTab.value === 'timetable-classmates') {
+            await onTqClassmatesTabActivated()
         } else {
             await searchUsers(1)
             await ensureScrollBuffer()
