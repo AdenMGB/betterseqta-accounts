@@ -7,14 +7,11 @@ export type RateLimitConfig = {
   windowSec: number;
 };
 
-export async function checkRateLimit(
+export async function checkRateLimitKeyed(
   env: Env,
-  request: Request,
-  bucket: string,
+  bucketKey: string,
   config: RateLimitConfig,
 ): Promise<Response | null> {
-  const ip = getRequestIp(request) || "unknown";
-  const bucketKey = `${bucket}:${ip}`;
   const now = Math.floor(Date.now() / 1000);
 
   try {
@@ -66,4 +63,14 @@ export async function checkRateLimit(
     console.error("[rate-limit] check failed, allowing request:", err);
     return null;
   }
+}
+
+export async function checkRateLimit(
+  env: Env,
+  request: Request,
+  bucket: string,
+  config: RateLimitConfig,
+): Promise<Response | null> {
+  const ip = getRequestIp(request) || "unknown";
+  return checkRateLimitKeyed(env, `${bucket}:${ip}`, config);
 }

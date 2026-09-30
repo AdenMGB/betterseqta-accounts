@@ -34,6 +34,7 @@ function wrangler(args) {
   return spawnSync('pnpm', ['exec', 'wrangler', ...args], {
     cwd: root,
     encoding: 'utf-8',
+    // Windows needs shell to resolve pnpm; never pass multi-word SQL via --command (use --file).
     shell: process.platform === 'win32',
   })
 }
@@ -42,8 +43,8 @@ function wranglerOut(result) {
   return `${result.stdout || ''}${result.stderr || ''}`
 }
 
-function executeFile(filePath) {
-  const result = wrangler([
+function executeFile(filePath, { json = false } = {}) {
+  const args = [
     'd1',
     'execute',
     CONFIG.database,
@@ -51,33 +52,48 @@ function executeFile(filePath) {
     `--persist-to=${CONFIG.persistTo}`,
     '--file',
     filePath,
-  ])
+  ]
+  if (json) args.push('--json')
+  const result = wrangler(args)
   const output = wranglerOut(result)
-  if (result.status === 0) return { ok: true, output }
+  if (result.status === 0) return { ok: true, output, stdout: result.stdout || '' }
   if (IGNORE_ERROR.some((re) => re.test(output))) {
-    return { ok: true, ignored: true, output }
+    return { ok: true, ignored: true, output, stdout: result.stdout || '' }
   }
-  return { ok: false, output }
+  return { ok: false, output, stdout: result.stdout || '' }
+}
+
+/** Run ad-hoc SQL via a temp file (avoids Windows --command tokenization). */
+function executeSqlStatements(sql, { json = false } = {}) {
+  const tmpDir = path.join(root, CONFIG.persistTo, '_migrate_tmp')
+  fs.mkdirSync(tmpDir, { recursive: true })
+  const tmpFile = path.join(tmpDir, `stmt-${process.pid}-${Date.now()}.sql`)
+  fs.writeFileSync(tmpFile, sql.endsWith(';') ? sql : `${sql};`, 'utf8')
+  try {
+    return executeFile(tmpFile, { json })
+  } finally {
+    try {
+      fs.unlinkSync(tmpFile)
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function columnExists(table, column) {
-  const result = wrangler([
-    'd1',
-    'execute',
-    CONFIG.database,
-    '--local',
-    `--persist-to=${CONFIG.persistTo}`,
-    '--command',
-    `SELECT 1 AS ok FROM pragma_table_info('${table.replace(/'/g, "''")}') WHERE name='${column.replace(/'/g, "''")}' LIMIT 1`,
-    '--json',
-  ])
-  if (result.status !== 0) return false
+  const safeTable = table.replace(/'/g, "''")
+  const safeColumn = column.replace(/'/g, "''")
+  const result = executeSqlStatements(
+    `SELECT 1 AS ok FROM pragma_table_info('${safeTable}') WHERE name='${safeColumn}' LIMIT 1`,
+    { json: true },
+  )
+  if (!result.ok) return false
   try {
     const parsed = JSON.parse(result.stdout || '[]')
     const rows = Array.isArray(parsed) ? parsed[0]?.results ?? parsed : parsed?.results ?? []
     return Array.isArray(rows) && rows.length > 0
   } catch {
-    return wranglerOut(result).includes('"ok"')
+    return result.output.includes('"ok"')
   }
 }
 
@@ -122,37 +138,22 @@ function bootstrapSchema() {
 }
 
 function syncMigrationJournal(files) {
-  const ensureTable = wrangler([
-    'd1',
-    'execute',
-    CONFIG.database,
-    '--local',
-    `--persist-to=${CONFIG.persistTo}`,
-    '--command',
-    'CREATE TABLE IF NOT EXISTS d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)',
-  ])
-  if (ensureTable.status !== 0) {
-    console.warn('[journal] could not ensure d1_migrations table')
-    console.warn(wranglerOut(ensureTable))
+  const lines = [
+    'CREATE TABLE IF NOT EXISTS d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL);',
+  ]
+  for (const file of files) {
+    const escaped = file.replace(/'/g, "''")
+    lines.push(`INSERT OR IGNORE INTO d1_migrations (name) VALUES ('${escaped}');`)
+  }
+
+  const result = executeSqlStatements(lines.join('\n'))
+  if (!result.ok) {
+    console.warn('[journal] could not sync d1_migrations table')
+    console.warn(result.output)
     return false
   }
 
-  let synced = 0
-  for (const file of files) {
-    const escaped = file.replace(/'/g, "''")
-    const result = wrangler([
-      'd1',
-      'execute',
-      CONFIG.database,
-      '--local',
-      `--persist-to=${CONFIG.persistTo}`,
-      '--command',
-      `INSERT OR IGNORE INTO d1_migrations (name) VALUES ('${escaped}')`,
-    ])
-    if (result.status === 0) synced++
-  }
-
-  console.log(`[journal] recorded ${synced}/${files.length} migrations`)
+  console.log(`[journal] recorded ${files.length}/${files.length} migrations`)
   return true
 }
 

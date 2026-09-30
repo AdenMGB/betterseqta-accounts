@@ -203,3 +203,81 @@ On success, the user is redirected to:
 ```
 
 Store all three values. Use `token` as the access token and `refresh_token` for the refresh flow.
+
+---
+
+## Timetable classmates registry
+
+**Auth:** `Authorization: Bearer <access_token>` from BS+ login/refresh on all routes below. Cloud login is required for opt-in, peers, sync hints, and heartbeats (no SEQTA-only path).
+
+Stores SEQTA identifiers and cloud user ids only (no timetable or display names). ISO week labels use **UTC** (`YYYY-Www`).
+
+### Identity binding
+
+Opt-in and heartbeat include `identity_binding_digest` (SHA-256 hex of a canonical `key=value` block, version `v=1`) tying `instance_host`, SEQTA ids, and the authenticated `cloud_user_id`. Optional `seqta_account_type` adds a `type=` line. Server recomputes and rejects **422** on mismatch; persists digest on membership. Heartbeat returns **409** if SEQTA ids change for the same cloud user without opt-out.
+
+| Method | Path | Rate limit (per user) |
+|--------|------|------------------------|
+| PUT | `/api/bsplus/timetable-classmates/opt-in` | 10 / hour |
+| DELETE | `/api/bsplus/timetable-classmates/opt-in?instance_host=` | 10 / hour |
+| GET | `/api/bsplus/timetable-classmates/peers?instance_host=` | 60 / hour |
+| GET | `/api/bsplus/timetable-classmates/sync-hint?instance_host=` | 60 / hour |
+| POST | `/api/bsplus/timetable-classmates/heartbeat` | 120 / day |
+
+### Opt in — `PUT /api/bsplus/timetable-classmates/opt-in`
+
+```json
+{
+  "instance_host": "learn.integration.site.seqta.com.au",
+  "seqta_student_id": 18,
+  "seqta_person_uuid": "03c5f6e3-b27e-42e1-bece-27c6526205a8",
+  "identity_binding_digest": "64-char-lowercase-hex",
+  "identity_binding_version": 1,
+  "attested_at": "2026-09-30T04:00:00.000Z",
+  "seqta_account_type": "student"
+}
+```
+
+`attested_at` optional; when sent must be within ±15 minutes of server time. `seqta_account_type` optional (include in digest when present).
+
+**200:** `{ "opted_in_at": "<ISO8601>" }` — **409** if another cloud account holds the same SEQTA id, or SEQTA ids change for this cloud user without opt-out — **422** on validation / digest mismatch.
+
+### Opt out — `DELETE /api/bsplus/timetable-classmates/opt-in?instance_host=...`
+
+**200** `{ "ok": true }` or **204** if already revoked.
+
+### Peers — `GET /api/bsplus/timetable-classmates/peers?instance_host=...`
+
+**404** if the caller is not opted in. **200:** `{ "self": { ... }, "peers": [ { "seqta_student_id", "cloud_user_id"? } ] }`.
+
+### Sync hint — `GET /api/bsplus/timetable-classmates/sync-hint?instance_host=...`
+
+**200:**
+
+```json
+{
+  "publish_week": "2026-W40",
+  "thread_subject": "BQ+TIMETABLE:v1:WEEK:2026-W40:7f3a9c12",
+  "coordinator_cloud_user_id": "uuid",
+  "should_publish": false
+}
+```
+
+Coordinator rotation uses the most recent `last_seen_at` among active members (tie: earliest `opted_in_at`). `thread_subject` rotates only on ISO week change, not when replacing a stale coordinator mid-week.
+
+### Heartbeat — `POST /api/bsplus/timetable-classmates/heartbeat`
+
+```json
+{
+  "instance_host": "learn.example.edu.au",
+  "seqta_student_id": 18,
+  "seqta_person_uuid": "03c5f6e3-b27e-42e1-bece-27c6526205a8",
+  "identity_binding_digest": "64-char-lowercase-hex",
+  "identity_binding_version": 1,
+  "seqta_account_type": "student"
+}
+```
+
+**200:** `{ "ok": true }`. **409** if SEQTA ids differ from stored membership.
+
+Errors use `{ "error": "message" }` with the appropriate HTTP status.

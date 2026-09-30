@@ -17,6 +17,7 @@ import * as microsoftCalendar from "./routes/microsoft-calendar";
 import * as v1Users from "./routes/v1/users";
 import * as health from "./routes/health";
 import * as customThemesProxy from "./routes/custom-themes-proxy";
+import * as timetableClassmates from "./routes/timetable-classmates-bsplus";
 
 type Route = {
   test: (method: string, pathname: string) => boolean;
@@ -82,6 +83,26 @@ const routes: Route[] = [
   { test: (m, p) => m === "GET" && p === "/api/bsplus/config", handle: (c) => bsplus.handleBsplusConfig(c) },
   { test: (m, p) => m === "POST" && p === "/api/bsplus/refresh", handle: (c) => bsplus.handleBsplusRefresh(c) },
   { test: (m, p) => m === "POST" && p === "/api/bsplus/login", handle: (c) => bsplus.handleBsplusLogin(c) },
+  {
+    test: (m, p) => m === "PUT" && p === "/api/bsplus/timetable-classmates/opt-in",
+    handle: (c) => timetableClassmates.handleTimetableClassmatesOptInPut(c),
+  },
+  {
+    test: (m, p) => m === "DELETE" && p === "/api/bsplus/timetable-classmates/opt-in",
+    handle: (c) => timetableClassmates.handleTimetableClassmatesOptInDelete(c),
+  },
+  {
+    test: (m, p) => m === "GET" && p === "/api/bsplus/timetable-classmates/peers",
+    handle: (c) => timetableClassmates.handleTimetableClassmatesPeers(c),
+  },
+  {
+    test: (m, p) => m === "GET" && p === "/api/bsplus/timetable-classmates/sync-hint",
+    handle: (c) => timetableClassmates.handleTimetableClassmatesSyncHint(c),
+  },
+  {
+    test: (m, p) => m === "POST" && p === "/api/bsplus/timetable-classmates/heartbeat",
+    handle: (c) => timetableClassmates.handleTimetableClassmatesHeartbeat(c),
+  },
   {
     test: (m, p) => m === "POST" && p === "/api/bsplus/google/calendar/token",
     handle: (c) => googleCalendar.handleGoogleCalendarTokenExchange(c),
