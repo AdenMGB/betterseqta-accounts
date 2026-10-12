@@ -72,7 +72,7 @@
         <div class="mt-6 text-center">
           <p class="text-sm text-zinc-600 dark:text-zinc-400">
             Don't have an account?
-            <NuxtLink to="/register" class="font-medium text-primary-600 dark:text-primary-500 hover:text-primary-500 dark:hover:text-primary-400">
+            <NuxtLink :to="signUpTo" class="font-medium text-primary-600 dark:text-primary-500 hover:text-primary-500 dark:hover:text-primary-400">
               Sign up
             </NuxtLink>
           </p>
@@ -83,10 +83,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuth } from '~/composables/useAuth'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
+import {
+  getPostLoginRedirect,
+  navigateAfterLogin,
+  registerLocation,
+  setPostLoginRedirect,
+} from '~/utils/postLoginRedirect'
 
 definePageMeta({ layout: false })
 
@@ -95,15 +101,19 @@ const password = ref('')
 const error = ref('')
 const loading = ref(false)
 const checkingSession = ref(true)
-const router = useRouter()
 const route = useRoute()
-const { fetchUser, isLoggedIn } = useAuth()
+const { user, fetchUser, isLoggedIn } = useAuth()
+const signUpTo = computed(() =>
+  registerLocation(getPostLoginRedirect(route.query.redirect)),
+)
 
 onMounted(async () => {
+  if (route.query.redirect) {
+    setPostLoginRedirect(getPostLoginRedirect(route.query.redirect))
+  }
   await fetchUser()
   if (isLoggedIn()) {
-    const redirect = route.query.redirect as string || '/'
-    router.replace(redirect)
+    await navigateAfterLogin(getPostLoginRedirect(route.query.redirect))
     return
   }
   checkingSession.value = false
@@ -119,9 +129,9 @@ const handleLogin = async () => {
       body: { login: login.value.trim(), password: password.value },
     })
     if (res?.user) {
+      user.value = res.user
       await fetchUser()
-      const redirect = route.query.redirect as string || '/'
-      router.push(redirect)
+      await navigateAfterLogin(getPostLoginRedirect(route.query.redirect))
       return
     }
     error.value = 'Sign in failed. Please try again.'
@@ -133,10 +143,11 @@ const handleLogin = async () => {
 }
 
 const loginWithDiscord = () => {
-  const redirect = route.query.redirect as string || ''
-  const discordUrl = redirect
-    ? `/api/oauth/discord?redirect=${encodeURIComponent(redirect)}`
-    : '/api/oauth/discord'
+  const redirect = getPostLoginRedirect(route.query.redirect)
+  const discordUrl =
+    redirect && redirect !== '/'
+      ? `/api/oauth/discord?redirect=${encodeURIComponent(redirect)}`
+      : '/api/oauth/discord'
   window.location.href = discordUrl
 }
 </script> 

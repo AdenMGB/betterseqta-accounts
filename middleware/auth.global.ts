@@ -1,3 +1,5 @@
+import { loginLocation, setPostLoginRedirect } from '~/utils/postLoginRedirect'
+
 export default defineNuxtRouteMiddleware(async (to, from) => {
   // Public pages - these don't require authentication
   // Check BEFORE calling useAuth() to avoid any side effects
@@ -27,7 +29,8 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
 
   // If still not logged in, redirect to login
   if (!user.value) {
-    return navigateTo(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
+    setPostLoginRedirect(to.fullPath)
+    return navigateTo(loginLocation(to.fullPath))
   }
 })
 

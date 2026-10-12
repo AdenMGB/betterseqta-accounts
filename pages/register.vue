@@ -1,6 +1,9 @@
 <template>
   <div class="flex items-center justify-center min-h-screen bg-zinc-100 dark:bg-zinc-900">
-    <div class="w-full max-w-md animate-fade-in">
+    <div v-if="checkingSession" class="text-center">
+      <LoadingSpinner size="lg" />
+    </div>
+    <div v-else class="w-full max-w-md animate-fade-in">
       <div class="backdrop-blur-lg bg-white/50 dark:bg-zinc-800/50 border border-zinc-200/50 dark:border-white/10 rounded-2xl shadow-xl p-8">
         <div class="text-center mb-8">
           <h1 class="text-3xl font-bold text-zinc-900 dark:text-white font-display">Create Account</h1>
@@ -100,7 +103,7 @@
         <div class="mt-6 text-center">
           <p class="text-sm text-zinc-600 dark:text-zinc-400">
             Already have an account?
-            <NuxtLink to="/login" class="font-medium text-primary-600 dark:text-primary-500 hover:text-primary-500 dark:hover:text-primary-400">
+            <NuxtLink :to="signInTo" class="font-medium text-primary-600 dark:text-primary-500 hover:text-primary-500 dark:hover:text-primary-400">
               Sign in
             </NuxtLink>
           </p>
@@ -111,9 +114,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { useAuth } from '~/composables/useAuth'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
+import {
+  getPostLoginRedirect,
+  loginLocation,
+  navigateAfterLogin,
+  setPostLoginRedirect,
+} from '~/utils/postLoginRedirect'
 
 definePageMeta({ layout: false })
 
@@ -124,34 +134,58 @@ const password = ref('')
 const confirmPassword = ref('')
 const error = ref('')
 const loading = ref(false)
-const router = useRouter()
+const checkingSession = ref(true)
+const route = useRoute()
+const { user, fetchUser, isLoggedIn } = useAuth()
+
+const signInTo = computed(() =>
+  loginLocation(getPostLoginRedirect(route.query.redirect)),
+)
+
+onMounted(async () => {
+  if (route.query.redirect) {
+    setPostLoginRedirect(getPostLoginRedirect(route.query.redirect))
+  }
+  await fetchUser()
+  if (isLoggedIn()) {
+    await navigateAfterLogin(getPostLoginRedirect(route.query.redirect))
+    return
+  }
+  checkingSession.value = false
+})
 
 const onSubmit = async () => {
   error.value = ''
   loading.value = true
-  
-  // Check if passwords match
+
   if (password.value !== confirmPassword.value) {
     error.value = 'Passwords do not match.'
     loading.value = false
     return
   }
-  
+
   try {
-    const res = await $fetch<{ user?: unknown }>('/api/auth/register', {
+    const res = await $fetch<{ user?: Record<string, unknown> }>('/api/auth/register', {
       method: 'POST',
       credentials: 'include',
-      body: { email: email.value, password: password.value, username: username.value, displayName: displayName.value },
+      body: {
+        email: email.value,
+        password: password.value,
+        username: username.value,
+        displayName: displayName.value,
+      },
     })
     if (res?.user) {
-      router.push('/')
+      user.value = res.user
+      await fetchUser()
+      await navigateAfterLogin(getPostLoginRedirect(route.query.redirect))
       return
     }
-    router.push('/')
+    error.value = 'Registration failed. Please try again.'
   } catch (err: any) {
     error.value = err?.data?.error || err?.data?.statusMessage || 'Registration failed.'
   } finally {
     loading.value = false
   }
 }
-</script> 
+</script>
