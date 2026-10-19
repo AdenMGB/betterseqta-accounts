@@ -10,6 +10,7 @@ import {
   putCurrentPfp,
   saveCurrentPfpToHistory,
 } from "../lib/pfpHistory";
+import { setPfpPendingReview } from "../lib/pfpAuditReview";
 import type { RequestContext } from "../types/context";
 
 function isAccountsHostedPfpUrl(pfpUrl: string): boolean {
@@ -47,6 +48,9 @@ export async function handleUserUpdate({ env, request, jwtSecret }: RequestConte
       }
     }
 
+    const clearPendingReview =
+      pfpUrl !== undefined && (!pfpUrl || !isAccountsHostedPfpUrl(pfpUrl));
+
     if (updates.length === 0) {
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -55,6 +59,9 @@ export async function handleUserUpdate({ env, request, jwtSecret }: RequestConte
 
     values.push(user.id);
     await env.DB.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).bind(...values).run();
+    if (clearPendingReview) {
+      await setPfpPendingReview(env, user.id, false);
+    }
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
