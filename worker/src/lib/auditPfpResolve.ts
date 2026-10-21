@@ -10,6 +10,8 @@ export type PfpAuditRef =
 export type PfpAuditContext = {
   from: PfpAuditRef;
   to: PfpAuditRef;
+  /** e.g. "PFP Audit - Violent" for moderation clears */
+  auditLabel?: string;
 };
 
 export type ResolvedPfpSide = {

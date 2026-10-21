@@ -37,7 +37,7 @@ export const SETTINGS_TAB_PAGE = createTabPageConfig({
 
 export const ADMIN_TAB_PAGE = createTabPageConfig({
   defaultTab: 'users',
-  tabs: ['users', 'clients', 'apikeys', 'activity-log', 'signup-order', 'timetable-classmates', 'pfp-migration'],
+  tabs: ['users', 'clients', 'apikeys', 'activity-log', 'signup-order', 'timetable-classmates', 'pfp-audit', 'pfp-migration'],
   tabToP: {
     users: 'users',
     clients: 'clients',
@@ -45,6 +45,7 @@ export const ADMIN_TAB_PAGE = createTabPageConfig({
     'activity-log': 'activity',
     'signup-order': 'signup',
     'timetable-classmates': 'tq-classmates',
+    'pfp-audit': 'pfp-audit',
     'pfp-migration': 'pfp',
   },
 })

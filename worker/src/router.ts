@@ -153,6 +153,19 @@ const routes: Route[] = [
   { test: (m, p) => m === "POST" && p === "/api/admin/user/pfp", handle: (c) => admin.handleAdminUserPfpUpload(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/user/pfp/revert", handle: (c) => admin.handleAdminUserPfpRevert(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/user/pfp/clear", handle: (c) => admin.handleAdminUserPfpClear(c) },
+  {
+    test: (m, p) => m === "POST" && p === "/api/admin/user/pfp/history/purge",
+    handle: (c) => admin.handleAdminUserPfpHistoryPurge(c),
+  },
+  { test: (m, p) => m === "GET" && p === "/api/admin/pfp-audit/next", handle: (c) => admin.handleAdminPfpAuditNext(c) },
+  {
+    test: (m, p) => m === "POST" && p === "/api/admin/pfp-audit/accept",
+    handle: (c) => admin.handleAdminPfpAuditAccept(c),
+  },
+  {
+    test: (m, p) => m === "POST" && p === "/api/admin/pfp-audit/reject",
+    handle: (c) => admin.handleAdminPfpAuditReject(c),
+  },
   { test: (m, p) => m === "GET" && p === "/api/admin/audit-log", handle: (c) => admin.handleAdminAuditLog(c) },
   { test: (m, p) => m === "POST" && p === "/api/settings/sync-init", handle: (c) => settings.handleSettingsSyncInit(c) },
   { test: (m, p) => p === "/api/settings", handle: (c) => settings.handleSettings(c) },

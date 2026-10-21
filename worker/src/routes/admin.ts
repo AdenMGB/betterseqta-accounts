@@ -11,8 +11,14 @@ import { buildPfpAuditContext, resolvePfpAuditRefs, type PfpAuditRef } from "../
 import { auditTargetForUser, labelFromDetails, resolveAuditTargets } from "../lib/auditTarget";
 import { processPfpUpload } from "../lib/pfpProcess";
 import {
+  pickPfpAuditCandidateForAdmin,
+  recordPfpAuditAcceptance,
+  loadPfpReviewMetaForUsers,
+} from "../lib/pfpAuditReview";
+import {
   buildUserPfpUrl,
   clearUserPfp,
+  deletePfpHistoryEntry,
   getAppBaseUrl,
   getPfpHistoryForUser,
   prunePfpHistory,
@@ -44,6 +50,64 @@ async function audit(
   });
 }
 
+const PFP_AUDIT_REASONS = new Set(["Violent", "Sexual", "Spam", "Hateful", "Other"]);
+
+function middleAdminForbidden(): Response {
+  return new Response(JSON.stringify({ error: "Moderator controls require Middle Admin level (2) or higher" }), {
+    status: 403,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function adminClearUserPfpAndAudit(
+  env: RequestContext["env"],
+  admin: { id?: string; username?: string },
+  userId: string,
+  auditLabel?: string,
+): Promise<
+  | { ok: true; pfpHistory: Awaited<ReturnType<typeof getPfpHistoryForUser>> }
+  | { ok: false; status: number; error: string }
+> {
+  const pfpRow = (await env.DB.prepare("SELECT pfpUrl, pfp_hash FROM users WHERE id = ?").bind(userId).first()) as
+    | { pfpUrl: string | null; pfp_hash: string | null }
+    | null;
+  if (!pfpRow) {
+    return { ok: false, status: 404, error: "User not found" };
+  }
+
+  const pfpUrlBefore = pfpRow.pfpUrl ?? null;
+  const { archivedHistoryId } = await clearUserPfp(env, userId);
+  const pfpHistory = await getPfpHistoryForUser(env, userId);
+
+  const fromRef = pfpRefBeforeClear(archivedHistoryId, pfpUrlBefore);
+  const targetUser = (await env.DB.prepare("SELECT id, username, displayName, email FROM users WHERE id = ?")
+    .bind(userId)
+    .first()) as {
+    id: string;
+    username: string;
+    displayName: string | null;
+    email: string;
+  } | null;
+
+  const pfpContext = buildPfpAuditContext(fromRef, { slot: "cleared" });
+  if (auditLabel) {
+    pfpContext.auditLabel = auditLabel;
+  }
+
+  await audit(env, admin, {
+    action: "pfp.clear",
+    targetType: "user",
+    targetId: userId,
+    details: {
+      ...(targetUser ? auditTargetForUser(targetUser) : {}),
+      context: pfpContext,
+    },
+    success: true,
+  });
+
+  return { ok: true, pfpHistory };
+}
+
 export async function handleAdminUsers({ env, request, url, jwtSecret }: RequestContext): Promise<Response> {
   const admin = await getAdminUser(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
@@ -53,6 +117,7 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
   const pageSize = 50;
   const offset = (page - 1) * pageSize;
   const hasPfp = url.searchParams.get("has_pfp") === "true";
+  const pendingPfpReview = url.searchParams.get("pending_pfp_review") === "true";
   const includeHistory = url.searchParams.get("include_history") !== "false";
   const includeBadges = url.searchParams.get("include_badges") === "true";
 
@@ -80,6 +145,10 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
 
   if (hasPfp) {
     conditions.push("pfpUrl IS NOT NULL AND pfpUrl != ''");
+  }
+
+  if (pendingPfpReview) {
+    conditions.push("pfp_pending_review = 1");
   }
 
   const whereClause = conditions.join(" AND ");
@@ -127,10 +196,19 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
     }
 
     const enriched = await enrichAdminUserRows(env.DB, rawUsers, { includeBadges });
-    const usersWithPfp = enriched.map((u) => ({
-      ...u,
-      pfpHistory: pfpHistoryMap[u.id] || [],
-    }));
+    const reviewMeta = await loadPfpReviewMetaForUsers(
+      env,
+      enriched.map((u) => u.id),
+    );
+    const usersWithPfp = enriched.map((u) => {
+      const meta = reviewMeta.get(u.id);
+      return {
+        ...u,
+        pfpHistory: pfpHistoryMap[u.id] || [],
+        pfpPendingReview: meta?.pfpPendingReview ?? false,
+        pfpHash: meta?.pfpHash ?? null,
+      };
+    });
 
     const maxAdminLevel = await getMaxAdminLevel(env);
 
@@ -878,10 +956,7 @@ export async function handleAdminUserPfpClear({ env, request, jwtSecret }: Reque
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
   if ((admin.adminLevel || 0) < 2) {
-    return new Response(JSON.stringify({ error: "Moderator controls require Middle Admin level (2) or higher" }), {
-      status: 403,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return middleAdminForbidden();
   }
 
   const { userId } = (await request.json()) as { userId?: string };
@@ -892,15 +967,157 @@ export async function handleAdminUserPfpClear({ env, request, jwtSecret }: Reque
     });
   }
 
-  const pfpRow = await env.DB.prepare("SELECT pfpUrl FROM users WHERE id = ?").bind(userId).first() as
-    | { pfpUrl: string | null }
-    | null;
-  const pfpUrlBefore = pfpRow?.pfpUrl ?? null;
-  const { archivedHistoryId } = await clearUserPfp(env, userId);
-  const pfpHistory = await getPfpHistoryForUser(env, userId);
+  const result = await adminClearUserPfpAndAudit(env, admin, userId);
+  if (!result.ok) {
+    return new Response(JSON.stringify({ error: result.error }), {
+      status: result.status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
-  const fromRef = pfpRefBeforeClear(archivedHistoryId, pfpUrlBefore);
-  const targetUser = await env.DB.prepare("SELECT id, username, displayName, email FROM users WHERE id = ?").bind(userId).first() as {
+  return new Response(JSON.stringify({ pfpUrl: null, pfpHash: null, pfpHistory: result.pfpHistory }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export async function handleAdminPfpAuditNext({ env, request, url, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  if ((admin.adminLevel || 0) < 2) {
+    return middleAdminForbidden();
+  }
+
+  const excludeParam = url.searchParams.get("exclude") ?? "";
+  const excludeUserIds = excludeParam
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const cfDev = env.CF_DEV === "1" || env.CF_DEV === "true";
+  const user = await pickPfpAuditCandidateForAdmin(env, admin.id as string, excludeUserIds, {
+    mode: cfDev ? "sequential" : "random",
+    devRelaxed: cfDev,
+  });
+
+  return new Response(JSON.stringify({ user }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export async function handleAdminPfpAuditAccept({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  if ((admin.adminLevel || 0) < 2) {
+    return middleAdminForbidden();
+  }
+
+  const { userId } = (await request.json()) as { userId?: string };
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "userId is required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const row = (await env.DB.prepare(
+    "SELECT pfp_hash, pfp_pending_review FROM users WHERE id = ? AND pfp_hash IS NOT NULL",
+  )
+    .bind(userId)
+    .first()) as { pfp_hash: string; pfp_pending_review: number } | null;
+
+  if (!row || row.pfp_pending_review !== 1) {
+    return new Response(JSON.stringify({ error: "This account is not awaiting profile picture review" }), {
+      status: 409,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const result = await recordPfpAuditAcceptance(env, admin.id as string, userId, row.pfp_hash);
+
+  return new Response(
+    JSON.stringify({
+      distinctAcceptances: result.distinctAcceptances,
+      reviewComplete: result.reviewComplete,
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
+
+export async function handleAdminPfpAuditReject({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  if ((admin.adminLevel || 0) < 2) {
+    return middleAdminForbidden();
+  }
+
+  const { userId, reason } = (await request.json()) as { userId?: string; reason?: string };
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "userId is required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (!reason || !PFP_AUDIT_REASONS.has(reason)) {
+    return new Response(JSON.stringify({ error: "A valid reason is required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const stillHasPfp = (await env.DB.prepare("SELECT pfp_hash FROM users WHERE id = ? AND pfp_hash IS NOT NULL")
+    .bind(userId)
+    .first()) as { pfp_hash: string } | null;
+  if (!stillHasPfp) {
+    return new Response(JSON.stringify({ error: "This user no longer has a profile picture to remove" }), {
+      status: 409,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const result = await adminClearUserPfpAndAudit(env, admin, userId, `PFP Audit - ${reason}`);
+  if (!result.ok) {
+    return new Response(JSON.stringify({ error: result.error }), {
+      status: result.status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  return new Response(JSON.stringify({ pfpUrl: null, pfpHash: null, pfpHistory: result.pfpHistory }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+export async function handleAdminUserPfpHistoryPurge({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  if ((admin.adminLevel || 0) < 2) {
+    return middleAdminForbidden();
+  }
+
+  const { userId, historyId } = (await request.json()) as { userId?: string; historyId?: string };
+  if (!userId || !historyId) {
+    return new Response(JSON.stringify({ error: "userId and historyId are required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const deleted = await deletePfpHistoryEntry(env, userId, historyId);
+  if (!deleted) {
+    return new Response(JSON.stringify({ error: "History entry not found" }), {
+      status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const pfpHistory = await getPfpHistoryForUser(env, userId);
+  const targetUser = (await env.DB.prepare("SELECT id, username, displayName, email FROM users WHERE id = ?")
+    .bind(userId)
+    .first()) as {
     id: string;
     username: string;
     displayName: string | null;
@@ -908,17 +1125,20 @@ export async function handleAdminUserPfpClear({ env, request, jwtSecret }: Reque
   } | null;
 
   await audit(env, admin, {
-    action: "pfp.clear",
+    action: "pfp.history.purge",
     targetType: "user",
     targetId: userId,
     details: {
       ...(targetUser ? auditTargetForUser(targetUser) : {}),
-      context: buildPfpAuditContext(fromRef, { slot: "cleared" }),
+      context: {
+        historyId,
+        r2Key: deleted.r2Key,
+      },
     },
     success: true,
   });
 
-  return new Response(JSON.stringify({ pfpUrl: null, pfpHash: null, pfpHistory }), {
+  return new Response(JSON.stringify({ pfpHistory }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }

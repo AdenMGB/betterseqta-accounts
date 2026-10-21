@@ -1,5 +1,6 @@
 import type { Env } from "../types/env";
 import type { PfpAuditRef } from "./auditPfpResolve";
+import { pickPfpAuditCandidateForAdmin, setPfpPendingReview } from "./pfpAuditReview";
 import type { ProcessedPfp } from "./pfpProcess";
 
 const DEFAULT_APP_URL = "https://accounts.betterseqta.org";
@@ -69,9 +70,18 @@ export async function putCurrentPfp(
     httpMetadata: { contentType: processed.contentType },
   });
   const pfpUrl = buildUserPfpUrl(env, userId);
-  await env.DB.prepare("UPDATE users SET pfpUrl = ?, pfp_hash = ? WHERE id = ?")
-    .bind(pfpUrl, processed.hash, userId)
-    .run();
+  try {
+    await env.DB.prepare(
+      "UPDATE users SET pfpUrl = ?, pfp_hash = ?, pfp_pending_review = 1 WHERE id = ?",
+    )
+      .bind(pfpUrl, processed.hash, userId)
+      .run();
+  } catch {
+    await env.DB.prepare("UPDATE users SET pfpUrl = ?, pfp_hash = ? WHERE id = ?")
+      .bind(pfpUrl, processed.hash, userId)
+      .run();
+    await setPfpPendingReview(env, userId, true);
+  }
   return { pfpUrl, pfpHash: processed.hash };
 }
 
@@ -131,7 +141,16 @@ export async function clearUserPfp(
     await env.PFP_BUCKET.delete(`pfp/${userId}`);
   }
 
-  await env.DB.prepare("UPDATE users SET pfpUrl = NULL, pfp_hash = NULL WHERE id = ?").bind(userId).run();
+  try {
+    await env.DB.prepare(
+      "UPDATE users SET pfpUrl = NULL, pfp_hash = NULL, pfp_pending_review = 0 WHERE id = ?",
+    )
+      .bind(userId)
+      .run();
+  } catch {
+    await env.DB.prepare("UPDATE users SET pfpUrl = NULL, pfp_hash = NULL WHERE id = ?").bind(userId).run();
+    await setPfpPendingReview(env, userId, false);
+  }
   await prunePfpHistory(env, userId);
 
   return {
@@ -154,4 +173,47 @@ export function pfpRefBeforeClear(
   if (archivedHistoryId) return { slot: "history", historyId: archivedHistoryId };
   if (pfpUrlBefore) return { slot: "snapshot", url: pfpUrlBefore };
   return { slot: "unavailable" };
+}
+
+export type PfpAuditCandidate = {
+  id: string;
+  username: string;
+  displayName: string | null;
+  pfpUrl: string;
+  pfpHash: string;
+};
+
+export type PfpAuditPickMode = "random" | "sequential";
+
+/** @deprecated Use pickPfpAuditCandidateForAdmin from pfpAuditReview */
+export async function pickPfpAuditCandidate(
+  env: Env,
+  excludeUserIds: string[],
+  options?: { mode?: PfpAuditPickMode; devRelaxed?: boolean },
+): Promise<PfpAuditCandidate | null> {
+  return pickPfpAuditCandidateForAdmin(env, "", excludeUserIds, options);
+}
+
+/** @deprecated Use pickPfpAuditCandidate */
+export async function pickRandomPfpAuditCandidate(
+  env: Env,
+  excludeUserIds: string[],
+): Promise<PfpAuditCandidate | null> {
+  return pickPfpAuditCandidate(env, excludeUserIds, { mode: "random" });
+}
+
+export async function deletePfpHistoryEntry(
+  env: Env,
+  userId: string,
+  historyId: string,
+): Promise<{ r2Key: string } | null> {
+  const row = (await env.DB.prepare(
+    "SELECT r2_key FROM pfp_history WHERE id = ? AND user_id = ?",
+  )
+    .bind(historyId, userId)
+    .first()) as { r2_key: string } | null;
+  if (!row) return null;
+  await env.PFP_BUCKET.delete(row.r2_key);
+  await env.DB.prepare("DELETE FROM pfp_history WHERE id = ?").bind(historyId).run();
+  return { r2Key: row.r2_key };
 }

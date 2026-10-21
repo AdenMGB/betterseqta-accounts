@@ -1,6 +1,7 @@
 <template>
   <div class="text-sm text-zinc-600 dark:text-zinc-400 min-w-0 max-w-full overflow-hidden">
-    <div v-if="pfpResolved" class="flex items-center gap-2 min-w-0 overflow-hidden">
+    <div v-if="pfpResolved" class="flex flex-col gap-1 min-w-0 overflow-hidden">
+      <div class="flex items-center gap-2 min-w-0 overflow-hidden">
       <button
         v-if="pfpResolved.from.available && pfpResolved.from.url"
         type="button"
@@ -20,6 +21,13 @@
         <img :src="bust(pfpResolved.to.url)" alt="After" class="w-10 h-10 rounded-full object-cover border-2 border-zinc-300 dark:border-zinc-600" />
       </button>
       <div v-else class="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[9px] text-zinc-500 text-center px-1" title="No longer available">N/A</div>
+      </div>
+      <p v-if="ctx.auditLabel" class="text-xs text-zinc-600 dark:text-zinc-400 truncate">{{ ctx.auditLabel }}</p>
+    </div>
+
+    <div v-else-if="entry.action === 'pfp.history.purge'" class="text-xs text-zinc-600 dark:text-zinc-400">
+      Permanently deleted history entry
+      <span v-if="ctx.historyId" class="font-mono text-zinc-500 ml-1">{{ ctx.historyId.slice(0, 8) }}…</span>
     </div>
 
     <div v-else-if="ctx.fromLevel !== undefined && ctx.toLevel !== undefined" class="flex items-center gap-2 flex-wrap min-w-0 overflow-hidden">
