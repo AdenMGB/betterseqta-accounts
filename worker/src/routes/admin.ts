@@ -50,7 +50,7 @@ async function audit(
   });
 }
 
-const PFP_AUDIT_REASONS = new Set(["Violent", "Sexual", "Spam", "Hateful", "Other"]);
+const PFP_AUDIT_REASONS = new Set(["Violent", "Sexual", "Spam", "Hateful", "Broken image", "Other"]);
 
 function middleAdminForbidden(): Response {
   return new Response(JSON.stringify({ error: "Moderator controls require Middle Admin level (2) or higher" }), {
