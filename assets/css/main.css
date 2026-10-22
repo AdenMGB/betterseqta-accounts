@@ -8,6 +8,26 @@ body {
   max-width: 100vw;
 }
 
+@media (max-width: 767px) {
+  /* Let the document scroll with touch — nested overflow-hidden breaks finger drag on iOS */
+  html {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .layout-app-column {
+    overflow: visible;
+    min-height: 100dvh;
+    height: auto;
+  }
+
+  .app-main-scroll {
+    overflow: visible !important;
+    flex: none !important;
+    min-height: auto !important;
+  }
+}
+
 body {
   @apply bg-zinc-900 text-zinc-300 antialiased;
 }
@@ -362,12 +382,10 @@ body {
 @media (max-width: 767px) {
   .admin-panel {
     max-height: none;
+    overflow: visible;
   }
 
-  .admin-panel-mobile-scroll {
-    overflow: visible !important;
-  }
-
+  .admin-panel-mobile-scroll,
   .admin-panel-body-mobile-scroll {
     overflow: visible !important;
   }

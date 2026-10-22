@@ -891,10 +891,11 @@ import ConfirmDialog from '~/components/admin/ConfirmDialog.vue'
 import UserActionsMenu from '~/components/admin/UserActionsMenu.vue'
 import PfpAuditTab from '~/components/admin/PfpAuditTab.vue'
 import ProfileBadgeStack from '~/components/badges/ProfileBadgeStack.vue'
-import { useIntersectionObserver, watchDebounced } from '@vueuse/core'
+import { useIntersectionObserver, useMediaQuery, watchDebounced } from '@vueuse/core'
 import { withPfpCacheBust, formatRelativeTime } from '~/utils/pfp'
 
 const SCROLL_BUFFER = 400
+const isMobileViewport = useMediaQuery('(max-width: 767px)')
 const SCROLL_CHAIN_CAP = 20
 
 const auth = useAuth()
@@ -1065,7 +1066,12 @@ const onPfpUpdated = (payload: { pfpUrl: string | null; pfpHash: string | null; 
 
 const rowVirtualizer = useVirtualizer(computed(() => ({
   count: users.value.length,
-  getScrollElement: () => usersScrollContainer.value,
+  getScrollElement: () => {
+    if (isMobileViewport.value && import.meta.client) {
+      return document.documentElement
+    }
+    return usersScrollContainer.value
+  },
   estimateSize: () => 72,
   overscan: 4,
 })))
@@ -1138,10 +1144,16 @@ const touchAuditUpdated = () => { auditLastUpdated.value = Date.now() }
 const scrollContainerOverflows = (el: HTMLElement | null) =>
   !!el && el.scrollHeight > el.clientHeight + 1
 
-const scrollRoot = (el: HTMLElement | null) =>
-  scrollContainerOverflows(el) ? el : null
+const scrollRoot = (el: HTMLElement | null) => {
+  if (isMobileViewport.value) return null
+  return scrollContainerOverflows(el) ? el : null
+}
 
 const getScrollRemaining = (el: HTMLElement | null) => {
+  if (isMobileViewport.value && import.meta.client) {
+    const doc = document.documentElement
+    return doc.scrollHeight - window.scrollY - window.innerHeight
+  }
   if (!el) return Infinity
   if (scrollContainerOverflows(el)) {
     return el.scrollHeight - el.scrollTop - el.clientHeight
