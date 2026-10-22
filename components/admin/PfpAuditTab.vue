@@ -22,9 +22,24 @@
     <!-- Queue -->
     <div v-if="view === 'queue'" class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
       <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Profile picture audit</h3>
-      <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-6">
+      <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
         Review uploaded profile pictures. Accept to approve, or remove with a reason. Change past choices under Audit history.
       </p>
+
+      <label
+        v-if="isMobileViewport"
+        class="flex items-center justify-between gap-3 mb-6 p-3 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-white/60 dark:bg-zinc-800/60 cursor-pointer select-none"
+      >
+        <span class="text-sm text-zinc-800 dark:text-zinc-200">
+          <span class="font-medium">Swipe mode</span>
+          <span class="block text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Swipe right to accept, left to remove</span>
+        </span>
+        <input
+          v-model="swipeMode"
+          type="checkbox"
+          class="h-5 w-5 rounded border-zinc-300 text-primary-500 focus:ring-primary-500"
+        />
+      </label>
 
       <div v-if="loading && !candidate" class="flex items-center justify-center gap-2 py-16 text-zinc-500">
         <LoadingSpinner size="sm" />
@@ -44,70 +59,98 @@
       </div>
 
       <template v-else>
-        <div class="flex flex-col items-center gap-4 mb-6">
-          <button
-            type="button"
-            class="rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
-            @click="$emit('view-pfp', bust(candidate.pfpUrl, candidate.pfpHash))"
+        <div v-if="swipeModeActive" class="relative mx-auto max-w-sm touch-none select-none" style="min-height: 22rem">
+          <div
+            class="pointer-events-none absolute inset-0 flex items-center justify-between px-4 z-0"
+            aria-hidden="true"
           >
-            <img
-              :src="bust(candidate.pfpUrl, candidate.pfpHash)"
-              :alt="`Profile picture for ${candidate.username}`"
-              class="w-40 h-40 sm:w-48 sm:h-48 rounded-full object-cover border-4 border-zinc-200 dark:border-zinc-600 shadow-lg"
-            />
-          </button>
-          <div class="text-center">
-            <p class="font-semibold text-zinc-900 dark:text-white">
-              {{ candidate.displayName || candidate.username }}
-            </p>
-            <p class="text-sm text-zinc-500">@{{ candidate.username }}</p>
+            <span
+              class="text-lg font-bold tracking-wide px-3 py-1 rounded-lg border-4 rotate-[-18deg] transition-opacity"
+              :class="dragX < -24 ? 'opacity-100 border-red-500 text-red-500' : 'opacity-0 border-red-500/30 text-red-500/30'"
+            >
+              REMOVE
+            </span>
+            <span
+              class="text-lg font-bold tracking-wide px-3 py-1 rounded-lg border-4 rotate-[18deg] transition-opacity"
+              :class="dragX > 24 ? 'opacity-100 border-emerald-500 text-emerald-500' : 'opacity-0 border-emerald-500/30 text-emerald-500/30'"
+            >
+              ACCEPT
+            </span>
           </div>
+
+          <div
+            ref="swipeCardEl"
+            class="relative z-10 flex flex-col items-center gap-4 p-5 rounded-2xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 shadow-xl cursor-grab active:cursor-grabbing"
+            :class="{ 'transition-transform duration-200 ease-out': !swipeDragging }"
+            :style="swipeCardStyle"
+            @pointerdown="onSwipePointerDown"
+            @pointermove="onSwipePointerMove"
+            @pointerup="onSwipePointerUp"
+            @pointercancel="onSwipePointerUp"
+          >
+            <button
+              type="button"
+              class="rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500 pointer-events-auto"
+              @click.stop="$emit('view-pfp', bust(candidate.pfpUrl, candidate.pfpHash))"
+            >
+              <img
+                :src="bust(candidate.pfpUrl, candidate.pfpHash)"
+                :alt="`Profile picture for ${candidate.username}`"
+                class="w-44 h-44 rounded-full object-cover border-4 border-zinc-200 dark:border-zinc-600 shadow-lg pointer-events-none"
+                draggable="false"
+              />
+            </button>
+            <div class="text-center pointer-events-none">
+              <p class="font-semibold text-zinc-900 dark:text-white">
+                {{ candidate.displayName || candidate.username }}
+              </p>
+              <p class="text-sm text-zinc-500">@{{ candidate.username }}</p>
+            </div>
+          </div>
+
+          <p class="text-center text-xs text-zinc-400 mt-4 pointer-events-none">Swipe ← remove · → accept</p>
         </div>
 
-        <div v-if="removeMode" class="space-y-4 mb-4 p-4 rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20">
-          <label class="block text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            Reason for removal
-            <select
-              v-model="selectedReason"
-              class="mt-1.5 w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-white"
+        <template v-else>
+          <div class="flex flex-col items-center gap-4 mb-6">
+            <button
+              type="button"
+              class="rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
+              @click="$emit('view-pfp', bust(candidate.pfpUrl, candidate.pfpHash))"
             >
-              <option value="" disabled>Select a reason…</option>
-              <option v-for="r in PFP_AUDIT_REASONS" :key="r" :value="r">{{ r }}</option>
-            </select>
-          </label>
-          <div class="flex flex-wrap gap-2">
-            <button type="button" class="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-sm" :disabled="rejecting" @click="cancelRemove">
-              Cancel
+              <img
+                :src="bust(candidate.pfpUrl, candidate.pfpHash)"
+                :alt="`Profile picture for ${candidate.username}`"
+                class="w-40 h-40 sm:w-48 sm:h-48 rounded-full object-cover border-4 border-zinc-200 dark:border-zinc-600 shadow-lg"
+              />
+            </button>
+            <div class="text-center">
+              <p class="font-semibold text-zinc-900 dark:text-white">
+                {{ candidate.displayName || candidate.username }}
+              </p>
+              <p class="text-sm text-zinc-500">@{{ candidate.username }}</p>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-3 w-full max-w-sm mx-auto">
+            <button
+              type="button"
+              class="px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 text-sm hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+              :disabled="loading"
+              @click="removeMode = true"
+            >
+              Remove
             </button>
             <button
               type="button"
-              class="px-4 py-2 rounded-lg bg-red-600 text-white text-sm disabled:opacity-50"
-              :disabled="!selectedReason || rejecting"
-              @click="confirmRemove"
+              class="px-6 py-2.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+              :disabled="loading"
+              @click="accept"
             >
-              {{ rejecting ? 'Removing…' : 'Confirm remove' }}
+              Accept
             </button>
           </div>
-        </div>
-
-        <div v-else class="flex items-center justify-between gap-3 w-full max-w-sm mx-auto">
-          <button
-            type="button"
-            class="px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 text-sm hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
-            :disabled="loading"
-            @click="removeMode = true"
-          >
-            Remove
-          </button>
-          <button
-            type="button"
-            class="px-6 py-2.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
-            :disabled="loading"
-            @click="accept"
-          >
-            Accept
-          </button>
-        </div>
+        </template>
       </template>
     </div>
 
@@ -238,16 +281,80 @@
         </button>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="showRemoveReason && candidate && view === 'queue'"
+        class="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4 sm:p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pfp-remove-reason-title"
+      >
+        <div
+          class="absolute inset-0 bg-black/55 backdrop-blur-sm"
+          aria-hidden="true"
+          @click="cancelRemove"
+        />
+        <div
+          class="relative w-full max-w-md rounded-2xl border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-900 shadow-2xl p-5 sm:p-6 animate-fade-in"
+          @click.stop
+        >
+          <h3 id="pfp-remove-reason-title" class="text-lg font-semibold text-zinc-900 dark:text-white">
+            Remove profile picture
+          </h3>
+          <p class="text-sm text-zinc-600 dark:text-zinc-400 mt-1">
+            @{{ candidate.username }}
+            <span v-if="candidate.displayName && candidate.displayName !== candidate.username" class="text-zinc-500">
+              ({{ candidate.displayName }})
+            </span>
+          </p>
+
+          <label class="block text-sm font-medium text-zinc-800 dark:text-zinc-200 mt-5">
+            Reason for removal
+            <select
+              v-model="selectedReason"
+              class="mt-2 w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-sm text-zinc-900 dark:text-white"
+            >
+              <option value="" disabled>Select a reason…</option>
+              <option v-for="r in PFP_AUDIT_REASONS" :key="r" :value="r">{{ r }}</option>
+            </select>
+          </label>
+
+          <div class="flex items-center justify-between gap-3 mt-6">
+            <button
+              type="button"
+              class="px-4 py-2.5 rounded-lg border border-zinc-300 dark:border-zinc-600 text-sm font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+              :disabled="rejecting"
+              @click="cancelRemove"
+            >
+              Go back
+            </button>
+            <button
+              type="button"
+              class="px-5 py-2.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="!selectedReason || rejecting"
+              @click="confirmRemove"
+            >
+              {{ rejecting ? 'Removing…' : 'Remove' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 import { withPfpCacheBust } from '~/utils/pfp'
 import { PFP_AUDIT_REASONS, type PfpAuditReason } from '~/utils/pfpAuditReasons'
+import { useMediaQuery } from '@vueuse/core'
+
+const SWIPE_THRESHOLD_PX = 96
+const SWIPE_MODE_STORAGE_KEY = 'pfp-audit-swipe-mode'
 
 type AuditCandidate = {
   id: string
@@ -294,7 +401,25 @@ const editDecision = ref<'accept' | 'remove'>('accept')
 const editReason = ref<PfpAuditReason | ''>('')
 const savingEdit = ref(false)
 
+const isMobileViewport = useMediaQuery('(max-width: 767px)')
+const swipeMode = ref(false)
+const swipeRemovePending = ref(false)
+const swipeDragging = ref(false)
+const swipePointerId = ref<number | null>(null)
+const swipeStartX = ref(0)
+const dragX = ref(0)
+const swipeCardEl = ref<HTMLElement | null>(null)
+
 const canViewOtherAdmins = computed(() => (auth.user.value?.admin_level ?? 0) >= 3)
+const swipeModeActive = computed(() => isMobileViewport.value && swipeMode.value)
+const showRemoveReason = computed(() => removeMode.value || swipeRemovePending.value)
+
+const swipeCardStyle = computed(() => {
+  const rotate = Math.max(-14, Math.min(14, dragX.value * 0.06))
+  return {
+    transform: `translateX(${dragX.value}px) rotate(${rotate}deg)`,
+  }
+})
 
 const bust = (url: string, hash?: string) => withPfpCacheBust(url, hash)
 
@@ -318,7 +443,9 @@ const fetchNext = async () => {
     })
     candidate.value = res.user
     removeMode.value = false
+    swipeRemovePending.value = false
     selectedReason.value = ''
+    dragX.value = 0
   } catch (e: unknown) {
     const err = e as { data?: { error?: string } }
     showToast(err?.data?.error || 'Failed to load profile picture', 'error')
@@ -388,9 +515,53 @@ const accept = async () => {
   }
 }
 
+const resetSwipeDrag = () => {
+  swipeDragging.value = false
+  swipePointerId.value = null
+  dragX.value = 0
+}
+
+const onSwipePointerDown = (e: PointerEvent) => {
+  if (!swipeModeActive.value || loading.value || rejecting.value || showRemoveReason.value) return
+  swipeDragging.value = true
+  swipePointerId.value = e.pointerId
+  swipeStartX.value = e.clientX
+  swipeCardEl.value?.setPointerCapture(e.pointerId)
+}
+
+const onSwipePointerMove = (e: PointerEvent) => {
+  if (!swipeDragging.value || e.pointerId !== swipePointerId.value) return
+  dragX.value = e.clientX - swipeStartX.value
+}
+
+const onSwipePointerUp = async (e: PointerEvent) => {
+  if (!swipeDragging.value || e.pointerId !== swipePointerId.value) return
+  swipeCardEl.value?.releasePointerCapture(e.pointerId)
+  swipeDragging.value = false
+  swipePointerId.value = null
+
+  if (dragX.value >= SWIPE_THRESHOLD_PX) {
+    dragX.value = 420
+    await accept()
+    dragX.value = 0
+    return
+  }
+
+  if (dragX.value <= -SWIPE_THRESHOLD_PX) {
+    dragX.value = 0
+    swipeRemovePending.value = true
+    selectedReason.value = ''
+    return
+  }
+
+  dragX.value = 0
+}
+
 const cancelRemove = () => {
   removeMode.value = false
+  swipeRemovePending.value = false
   selectedReason.value = ''
+  resetSwipeDrag()
 }
 
 const confirmRemove = async () => {
@@ -462,7 +633,18 @@ const resetAndLoad = () => {
   fetchNext()
 }
 
+watch(swipeMode, (enabled) => {
+  if (!import.meta.client) return
+  localStorage.setItem(SWIPE_MODE_STORAGE_KEY, enabled ? '1' : '0')
+  resetSwipeDrag()
+  swipeRemovePending.value = false
+  removeMode.value = false
+})
+
 onMounted(() => {
+  if (import.meta.client) {
+    swipeMode.value = localStorage.getItem(SWIPE_MODE_STORAGE_KEY) === '1'
+  }
   fetchNext()
 })
 </script>
