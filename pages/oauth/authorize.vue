@@ -69,6 +69,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '~/composables/useAuth'
 import { ShieldExclamationIcon, CheckCircleIcon, UserCircleIcon } from '@heroicons/vue/24/solid'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
+import { loginLocation, setPostLoginRedirect } from '~/utils/postLoginRedirect'
 
 definePageMeta({ layout: false })
 
@@ -121,10 +122,8 @@ onMounted(async () => {
     if (!auth.isLoggedIn()) {
         await auth.fetchUser() // Try to restore session
         if (!auth.isLoggedIn()) {
-            router.push({ 
-                path: '/login', 
-                query: { redirect: route.fullPath } 
-            })
+            setPostLoginRedirect(route.fullPath)
+            await navigateTo(loginLocation(route.fullPath))
             return
         }
     }

@@ -82,14 +82,26 @@
               </button>
               <span class="text-xs text-zinc-500 dark:text-zinc-400">Past</span>
               <span v-if="h.createdAt" class="text-[10px] text-zinc-400">{{ formatRelativeTime(h.createdAt) }}</span>
-              <button
-                type="button"
-                class="text-xs px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors disabled:opacity-50"
-                :disabled="restoringId === h.id"
-                @click="restore(h)"
-              >
-                {{ restoringId === h.id ? 'Restoring...' : 'Restore' }}
-              </button>
+              <div class="flex flex-wrap items-center justify-center gap-1">
+                <button
+                  type="button"
+                  class="text-xs px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors disabled:opacity-50"
+                  :disabled="restoringId === h.id || purgingId === h.id"
+                  @click="restore(h)"
+                >
+                  {{ restoringId === h.id ? 'Restoring...' : 'Restore' }}
+                </button>
+                <button
+                  v-if="mode === 'admin'"
+                  type="button"
+                  class="p-1.5 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                  :disabled="restoringId === h.id || purgingId === h.id"
+                  title="Permanently delete from history"
+                  @click="purgeHistory(h)"
+                >
+                  <TrashIcon class="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div
@@ -151,7 +163,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { XMarkIcon } from '@heroicons/vue/24/outline'
+import { TrashIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import ImageCropper from '~/components/ui/ImageCropper.vue'
 import ConfirmDialog from '~/components/admin/ConfirmDialog.vue'
 import { useToast } from '~/composables/useToast'
@@ -225,6 +237,7 @@ const cropperOpen = ref(false)
 const cropperSrc = ref<string | null>(null)
 const uploading = ref(false)
 const restoringId = ref<string | null>(null)
+const purgingId = ref<string | null>(null)
 const clearing = ref(false)
 const localHistory = ref<PfpHistoryItem[]>([])
 const localPfpUrl = ref<string | null>(null)
@@ -363,6 +376,41 @@ const clearPfp = () => {
     destructive: true,
     onConfirm: () => doClearPfp(),
   })
+}
+
+const purgeHistory = (history: PfpHistoryItem) => {
+  if (!props.user) return
+  openConfirm({
+    title: 'Permanently delete profile picture',
+    message: `Delete this past profile picture from storage? It cannot be restored afterward.`,
+    confirmLabel: 'Delete permanently',
+    destructive: true,
+    onConfirm: () => doPurgeHistory(history),
+  })
+}
+
+const doPurgeHistory = async (history: PfpHistoryItem) => {
+  if (!props.user) return
+  purgingId.value = history.id
+  try {
+    const res = await $fetch<{ pfpHistory: PfpHistoryItem[] }>('/api/admin/user/pfp/history/purge', {
+      method: 'POST',
+      ...authFetchInit(),
+      body: { userId: props.user.id, historyId: history.id },
+    })
+    localHistory.value = res.pfpHistory
+    bumpView()
+    emit('updated', {
+      pfpUrl: localPfpUrl.value,
+      pfpHash: localPfpHash.value,
+      pfpHistory: res.pfpHistory,
+    })
+    showToast('Past profile picture permanently deleted', 'success')
+  } catch (e: any) {
+    showToast(e?.data?.error || 'Failed to delete profile picture from history', 'error')
+  } finally {
+    purgingId.value = null
+  }
 }
 
 const doClearPfp = async () => {

@@ -116,6 +116,13 @@
                                             :badges="users[virtualRow.index].badges ?? []"
                                             :signed-up-at="users[virtualRow.index].created_at"
                                         />
+                                        <span
+                                            v-if="users[virtualRow.index].pfpPendingReview"
+                                            class="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+                                            title="Hosted profile picture awaiting admin review"
+                                        >
+                                            PFP review
+                                        </span>
                                     </div>
                                     <input
                                         v-else
@@ -685,6 +692,12 @@
         </div>
       </div>
 
+      <!-- PFP Audit Tab -->
+      <PfpAuditTab
+        v-if="isTab('pfp-audit')"
+        @view-pfp="openPfpView"
+      />
+
       <!-- PFP Migration Tab -->
       <div v-if="isTab('pfp-migration')" class="admin-scroll-tab space-y-6">
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
@@ -876,11 +889,13 @@ import PfpEditorModal from '~/components/PfpEditorModal.vue'
 import AuditContextCell from '~/components/admin/AuditContextCell.vue'
 import ConfirmDialog from '~/components/admin/ConfirmDialog.vue'
 import UserActionsMenu from '~/components/admin/UserActionsMenu.vue'
+import PfpAuditTab from '~/components/admin/PfpAuditTab.vue'
 import ProfileBadgeStack from '~/components/badges/ProfileBadgeStack.vue'
-import { useIntersectionObserver, watchDebounced } from '@vueuse/core'
+import { useIntersectionObserver, useMediaQuery, watchDebounced } from '@vueuse/core'
 import { withPfpCacheBust, formatRelativeTime } from '~/utils/pfp'
 
 const SCROLL_BUFFER = 400
+const isMobileViewport = useMediaQuery('(max-width: 767px)')
 const SCROLL_CHAIN_CAP = 20
 
 const auth = useAuth()
@@ -894,6 +909,7 @@ const adminTabs = [
   { id: 'activity-log', label: 'Activity Log', description: 'Review admin actions with live updates every 8 seconds.' },
   { id: 'signup-order', label: 'Signup Order', description: 'Recompute join order and Founding 2500 founder badges.' },
   { id: 'timetable-classmates', label: 'Timetable classmates', description: 'Opt-in usage for BetterSEQTA+ classmate avatars (phonebook).' },
+  { id: 'pfp-audit', label: 'PFP Audit', description: 'Review random uploaded profile pictures and remove violations.' },
   { id: 'pfp-migration', label: 'PFP Migration', description: 'Senior admin tools for bulk profile picture maintenance.' },
 ]
 
@@ -1050,7 +1066,12 @@ const onPfpUpdated = (payload: { pfpUrl: string | null; pfpHash: string | null; 
 
 const rowVirtualizer = useVirtualizer(computed(() => ({
   count: users.value.length,
-  getScrollElement: () => usersScrollContainer.value,
+  getScrollElement: () => {
+    if (isMobileViewport.value && import.meta.client) {
+      return document.documentElement
+    }
+    return usersScrollContainer.value
+  },
   estimateSize: () => 72,
   overscan: 4,
 })))
@@ -1091,6 +1112,7 @@ const auditActionOptions = [
   { value: 'pfp.upload', label: 'PFP upload' },
   { value: 'pfp.restore', label: 'PFP restore' },
   { value: 'pfp.clear', label: 'PFP clear' },
+  { value: 'pfp.history.purge', label: 'PFP history purge' },
   { value: 'client.create', label: 'Create client' },
   { value: 'client.delete', label: 'Delete client' },
   { value: 'api_key.create', label: 'Create API key' },
@@ -1122,10 +1144,16 @@ const touchAuditUpdated = () => { auditLastUpdated.value = Date.now() }
 const scrollContainerOverflows = (el: HTMLElement | null) =>
   !!el && el.scrollHeight > el.clientHeight + 1
 
-const scrollRoot = (el: HTMLElement | null) =>
-  scrollContainerOverflows(el) ? el : null
+const scrollRoot = (el: HTMLElement | null) => {
+  if (isMobileViewport.value) return null
+  return scrollContainerOverflows(el) ? el : null
+}
 
 const getScrollRemaining = (el: HTMLElement | null) => {
+  if (isMobileViewport.value && import.meta.client) {
+    const doc = document.documentElement
+    return doc.scrollHeight - window.scrollY - window.innerHeight
+  }
   if (!el) return Infinity
   if (scrollContainerOverflows(el)) {
     return el.scrollHeight - el.scrollTop - el.clientHeight

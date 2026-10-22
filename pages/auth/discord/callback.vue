@@ -3,6 +3,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ref, onMounted } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
+import { getPostLoginRedirect, navigateAfterLogin } from '~/utils/postLoginRedirect'
 
 definePageMeta({ layout: false })
 
@@ -30,8 +31,7 @@ onMounted(async () => {
       throw new Error('Not authenticated')
     }
 
-    const redirect = (route.query.redirect as string) || '/'
-    router.replace(redirect)
+    await navigateAfterLogin(getPostLoginRedirect(route.query.redirect))
   } catch (err: any) {
     console.error('Discord login error:', err)
     error.value = 'Failed to complete Discord login. Please try again.'
