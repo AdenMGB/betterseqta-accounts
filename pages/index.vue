@@ -9,6 +9,54 @@
       </div>
     </header>
 
+    <section
+      v-if="showComplianceBanner"
+      class="dash-card animate-fade-in border-amber-500/30 bg-amber-50/80 p-4 dark:border-amber-500/25 dark:bg-amber-950/30 sm:p-5"
+    >
+      <h2 class="text-base font-semibold text-zinc-900 dark:text-white">Action required</h2>
+      <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+        Please confirm the following to continue using your BetterSEQTA account.
+      </p>
+      <div class="mt-4 space-y-3">
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input
+            v-model="bannerPrivacyAccepted"
+            type="checkbox"
+            class="mt-0.5 rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500"
+          />
+          <span class="text-sm text-zinc-700 dark:text-zinc-300">
+            I agree to the
+            <a
+              href="https://betterseqta.org/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="font-medium text-primary-600 dark:text-primary-500 hover:text-primary-500"
+            >Privacy Policy</a>
+          </span>
+        </label>
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input
+            v-model="bannerAgeConfirmed"
+            type="checkbox"
+            class="mt-0.5 rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500"
+          />
+          <span class="text-sm text-zinc-700 dark:text-zinc-300">
+            I confirm that I am over the age of 13
+          </span>
+        </label>
+      </div>
+      <p v-if="complianceError" class="mt-3 text-sm text-red-500 dark:text-red-400">{{ complianceError }}</p>
+      <button
+        type="button"
+        class="mt-4 inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-zinc-900"
+        :disabled="complianceSubmitting || !bannerCanSubmit"
+        @click="submitComplianceAck"
+      >
+        <LoadingSpinner v-if="complianceSubmitting" size="sm" />
+        <span v-else>Save and continue</span>
+      </button>
+    </section>
+
     <!-- Profile -->
     <section class="dash-card animate-fade-in p-4 sm:p-5">
       <div v-if="authLoading" class="flex justify-center py-6">
@@ -101,7 +149,49 @@ const summaryLoading = ref(true)
 const summaryError = ref('')
 const summary = ref<CloudSummaryResponse | null>(null)
 
+const bannerPrivacyAccepted = ref(false)
+const bannerAgeConfirmed = ref(false)
+const complianceSubmitting = ref(false)
+const complianceError = ref('')
+
 const authLoading = computed(() => auth.loading.value && !auth.user.value)
+
+const showComplianceBanner = computed(() => {
+  const u = auth.user.value
+  if (!u) return false
+  return !u.privacy_policy_accepted || !u.age_13_confirmed
+})
+
+const bannerCanSubmit = computed(() => bannerPrivacyAccepted.value && bannerAgeConfirmed.value)
+
+const submitComplianceAck = async () => {
+  complianceError.value = ''
+  if (!bannerCanSubmit.value) {
+    complianceError.value = 'Please accept the privacy policy and confirm you are over 13.'
+    return
+  }
+  complianceSubmitting.value = true
+  try {
+    const res = await $fetch<{ user?: Record<string, unknown> }>('/api/user/compliance-ack', {
+      method: 'POST',
+      credentials: 'include',
+      body: {
+        privacyPolicyAccepted: bannerPrivacyAccepted.value,
+        age13Confirmed: bannerAgeConfirmed.value,
+      },
+    })
+    if (res?.user) {
+      auth.user.value = res.user
+    } else {
+      await auth.fetchUser()
+    }
+  } catch (err: unknown) {
+    const e = err as { data?: { error?: string } }
+    complianceError.value = e?.data?.error || 'Could not save your confirmations.'
+  } finally {
+    complianceSubmitting.value = false
+  }
+}
 
 const userBadges = computed(() => auth.user.value?.badges ?? [])
 

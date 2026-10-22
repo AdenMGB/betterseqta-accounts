@@ -156,6 +156,7 @@ const routes: Route[] = [
   { test: (m, p) => m === "GET" && p === "/api/admin/audit-log", handle: (c) => admin.handleAdminAuditLog(c) },
   { test: (m, p) => m === "POST" && p === "/api/settings/sync-init", handle: (c) => settings.handleSettingsSyncInit(c) },
   { test: (m, p) => p === "/api/settings", handle: (c) => settings.handleSettings(c) },
+  { test: (m, p) => m === "POST" && p === "/api/user/compliance-ack", handle: (c) => user.handleUserComplianceAck(c) },
   { test: (m, p) => m === "POST" && p === "/api/user/update", handle: (c) => user.handleUserUpdate(c) },
   { test: (m, p) => m === "GET" && p === "/api/user/pfp/history", handle: (c) => user.handleUserPfpHistory(c) },
   { test: (m, p) => m === "POST" && p === "/api/user/pfp/revert", handle: (c) => user.handleUserPfpRevert(c) },

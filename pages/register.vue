@@ -82,6 +82,35 @@
             </div>
           </div>
 
+          <div class="space-y-3">
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input
+                v-model="privacyPolicyAccepted"
+                type="checkbox"
+                class="mt-0.5 rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500"
+              />
+              <span class="text-sm text-zinc-700 dark:text-zinc-300">
+                I agree to the
+                <a
+                  href="https://betterseqta.org/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="font-medium text-primary-600 dark:text-primary-500 hover:text-primary-500 dark:hover:text-primary-400"
+                >Privacy Policy</a>
+              </span>
+            </label>
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input
+                v-model="age13Confirmed"
+                type="checkbox"
+                class="mt-0.5 rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500"
+              />
+              <span class="text-sm text-zinc-700 dark:text-zinc-300">
+                I confirm that I am over the age of 13
+              </span>
+            </label>
+          </div>
+
           <div v-if="error" class="text-red-500 dark:text-red-400 text-sm text-center">
             {{ error }}
           </div>
@@ -89,7 +118,7 @@
           <div>
         <button
           type="submit"
-          :disabled="loading"
+          :disabled="loading || !canSubmit"
               class="w-full flex justify-center py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-zinc-100 dark:focus:ring-offset-zinc-900 focus:ring-primary-500 transition-all duration-200 disabled:bg-primary-500/50 dark:disabled:bg-primary-800 disabled:cursor-not-allowed"
         >
               <LoadingSpinner v-if="loading" size="sm" />
@@ -111,7 +140,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 
@@ -122,13 +151,23 @@ const username = ref('')
 const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
+const privacyPolicyAccepted = ref(false)
+const age13Confirmed = ref(false)
 const error = ref('')
 const loading = ref(false)
 const router = useRouter()
 
+const canSubmit = computed(() => privacyPolicyAccepted.value && age13Confirmed.value)
+
 const onSubmit = async () => {
   error.value = ''
   loading.value = true
+
+  if (!canSubmit.value) {
+    error.value = 'Please accept the privacy policy and confirm you are over 13.'
+    loading.value = false
+    return
+  }
   
   // Check if passwords match
   if (password.value !== confirmPassword.value) {
@@ -141,7 +180,14 @@ const onSubmit = async () => {
     const res = await $fetch<{ user?: unknown }>('/api/auth/register', {
       method: 'POST',
       credentials: 'include',
-      body: { email: email.value, password: password.value, username: username.value, displayName: displayName.value },
+      body: {
+        email: email.value,
+        password: password.value,
+        username: username.value,
+        displayName: displayName.value,
+        privacyPolicyAccepted: privacyPolicyAccepted.value,
+        age13Confirmed: age13Confirmed.value,
+      },
     })
     if (res?.user) {
       router.push('/')

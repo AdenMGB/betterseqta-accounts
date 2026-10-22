@@ -38,6 +38,7 @@ import {
 import { mapUserPublic, publicUserFromCredentials, USER_PUBLIC_SELECT, enrichUserPublic } from "../lib/userPublic";
 import { assignSignupNumber } from "../lib/signupNumber";
 import { awardBadgesForUser } from "../lib/badges";
+import { validateComplianceAck } from "../lib/userCompliance";
 import type { RequestContext } from "../types/context";
 
 export async function handleRegister({ env, request, jwtSecret }: RequestContext): Promise<Response> {
@@ -45,18 +46,31 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
     const rateLimited = await checkRateLimit(env, request, "auth-register", { limit: 10, windowSec: 900 });
     if (rateLimited) return rateLimited;
 
-    const { email, password, username, displayName } = (await request.json()) as {
-      email?: string;
-      password?: string;
-      username?: string;
-      displayName?: string;
-    };
+    const { email, password, username, displayName, privacyPolicyAccepted, age13Confirmed } =
+      (await request.json()) as {
+        email?: string;
+        password?: string;
+        username?: string;
+        displayName?: string;
+        privacyPolicyAccepted?: boolean;
+        age13Confirmed?: boolean;
+      };
     if (!email || !password || !username) {
       return new Response(JSON.stringify({ error: "Missing fields" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const complianceError = validateComplianceAck({ privacyPolicyAccepted, age13Confirmed });
+    if (complianceError) {
+      return new Response(JSON.stringify({ error: complianceError }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const acknowledgedAt = Math.floor(Date.now() / 1000);
 
     const normalizedEmail = email.toLowerCase().trim();
     const trimmedUsername = username.trim();
@@ -88,9 +102,18 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
 
     try {
       await env.DB.prepare(
-        "INSERT INTO users (id, email, password, username, displayName, admin_level) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO users (id, email, password, username, displayName, admin_level, privacy_policy_accepted_at, age_13_confirmed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       )
-        .bind(id, normalizedEmail, hashedPassword, trimmedUsername, displayName || trimmedUsername, 0)
+        .bind(
+          id,
+          normalizedEmail,
+          hashedPassword,
+          trimmedUsername,
+          displayName || trimmedUsername,
+          0,
+          acknowledgedAt,
+          acknowledgedAt,
+        )
         .run();
       await ensureUserDesqtaSettings(env.DB, id);
     } catch {
@@ -120,6 +143,8 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
       displayName: displayName || trimmedUsername,
       admin_level: 0,
       signup_number: signupNumber,
+      privacy_policy_accepted: true,
+      age_13_confirmed: true,
     });
 
     return authJson(

@@ -1,5 +1,7 @@
 import { corsHeaders } from "../constants";
 import { getUser } from "../lib/auth";
+import { enrichUserPublic, mapUserPublic, USER_PUBLIC_SELECT } from "../lib/userPublic";
+import { validateComplianceAck } from "../lib/userCompliance";
 import { processPfpUpload } from "../lib/pfpProcess";
 import {
   buildUserPfpUrl,
@@ -14,6 +16,48 @@ import type { RequestContext } from "../types/context";
 
 function isAccountsHostedPfpUrl(pfpUrl: string): boolean {
   return pfpUrl.includes("/api/user/pfp/") && !pfpUrl.includes("/hist/");
+}
+
+export async function handleUserComplianceAck({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const sessionUser = await getUser(request, jwtSecret);
+  if (!sessionUser) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+
+  try {
+    const { privacyPolicyAccepted, age13Confirmed } = (await request.json()) as {
+      privacyPolicyAccepted?: boolean;
+      age13Confirmed?: boolean;
+    };
+
+    const complianceError = validateComplianceAck({ privacyPolicyAccepted, age13Confirmed });
+    if (complianceError) {
+      return new Response(JSON.stringify({ error: complianceError }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const acknowledgedAt = Math.floor(Date.now() / 1000);
+    await env.DB.prepare(
+      `UPDATE users SET
+        privacy_policy_accepted_at = COALESCE(privacy_policy_accepted_at, ?),
+        age_13_confirmed_at = COALESCE(age_13_confirmed_at, ?)
+      WHERE id = ?`,
+    )
+      .bind(acknowledgedAt, acknowledgedAt, sessionUser.id)
+      .run();
+
+    const user = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)
+      .bind(sessionUser.id)
+      .first();
+    const enriched = await enrichUserPublic(env.DB, mapUserPublic(user as Record<string, unknown>));
+
+    return new Response(JSON.stringify({ user: enriched }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return new Response(message, { status: 500, headers: corsHeaders });
+  }
 }
 
 export async function handleUserUpdate({ env, request, jwtSecret }: RequestContext): Promise<Response> {

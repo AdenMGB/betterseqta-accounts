@@ -1,9 +1,10 @@
 import type { Env } from "../types/env";
 import { getUserBadges, isFounding2500, displayUserBadges, type UserBadge } from "./badges";
+import { complianceFlagsFromRow } from "./userCompliance";
 
 /** Columns for API user objects (camelCase pfpHash). */
 export const USER_PUBLIC_SELECT =
-  "id, email, username, displayName, pfpUrl, pfp_hash AS pfpHash, admin_level, signup_number";
+  "id, email, username, displayName, pfpUrl, pfp_hash AS pfpHash, admin_level, signup_number, privacy_policy_accepted_at, age_13_confirmed_at";
 
 export type PublicUserRow = {
   id: string;
@@ -16,12 +17,18 @@ export type PublicUserRow = {
   signup_number?: number | null;
   badges?: UserBadge[];
   is_founding_2500?: boolean;
+  privacy_policy_accepted?: boolean;
+  age_13_confirmed?: boolean;
 };
 
 export function mapUserPublic(row: Record<string, unknown> | null): PublicUserRow | null {
   if (!row) return null;
   const signupNumber =
     row.signup_number != null ? (row.signup_number as number) : (row.signupNumber as number | null | undefined);
+  const compliance = complianceFlagsFromRow({
+    privacy_policy_accepted_at: row.privacy_policy_accepted_at as number | null | undefined,
+    age_13_confirmed_at: row.age_13_confirmed_at as number | null | undefined,
+  });
   return {
     id: row.id as string,
     email: row.email as string | null | undefined,
@@ -32,11 +39,16 @@ export function mapUserPublic(row: Record<string, unknown> | null): PublicUserRo
     admin_level: (row.admin_level as number) || 0,
     signup_number: signupNumber ?? null,
     is_founding_2500: isFounding2500(signupNumber ?? null),
+    ...compliance,
   };
 }
 
 export function publicUserFromCredentials(row: Record<string, string>): PublicUserRow {
   const signupNumber = row.signup_number != null ? Number(row.signup_number) : null;
+  const compliance = complianceFlagsFromRow({
+    privacy_policy_accepted_at: row.privacy_policy_accepted_at != null ? Number(row.privacy_policy_accepted_at) : null,
+    age_13_confirmed_at: row.age_13_confirmed_at != null ? Number(row.age_13_confirmed_at) : null,
+  });
   return {
     id: row.id,
     email: row.email,
@@ -47,6 +59,7 @@ export function publicUserFromCredentials(row: Record<string, string>): PublicUs
     admin_level: Number(row.admin_level) || 0,
     signup_number: signupNumber,
     is_founding_2500: isFounding2500(signupNumber),
+    ...compliance,
   };
 }
 
