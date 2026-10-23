@@ -211,6 +211,28 @@ export async function restoreSubjectPfpFromLatestHistory(
   return { pfpUrl, pfpHash };
 }
 
+/** Resolve admin by UUID, username, or email (case-insensitive). */
+export async function resolveAdminUserId(env: Env, identifier: string): Promise<string | null> {
+  const trimmed = identifier.trim();
+  if (!trimmed) return null;
+
+  try {
+    const byId = (await env.DB.prepare("SELECT id FROM users WHERE id = ?")
+      .bind(trimmed)
+      .first()) as { id: string } | null;
+    if (byId?.id) return byId.id;
+
+    const byLogin = (await env.DB.prepare(
+      "SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?) LIMIT 1",
+    )
+      .bind(trimmed, trimmed)
+      .first()) as { id: string } | null;
+    return byLogin?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function listPfpAuditDecisions(
   env: Env,
   input: {

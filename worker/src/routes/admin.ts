@@ -18,6 +18,7 @@ import {
   recalculatePfpPendingReview,
   recordPfpAuditAcceptance,
   removePfpAuditAcceptance,
+  resolveAdminUserId,
   restoreSubjectPfpFromLatestHistory,
   upsertPfpAuditDecision,
 } from "../lib/pfpAuditReview";
@@ -1151,7 +1152,18 @@ export async function handleAdminPfpAuditHistory({ env, request, url, jwtSecret 
     return middleAdminForbidden();
   }
 
-  const targetAdminId = url.searchParams.get("admin_user_id")?.trim() || (admin.id as string);
+  const adminFilterRaw = url.searchParams.get("admin_user_id")?.trim();
+  let targetAdminId = admin.id as string;
+  if (adminFilterRaw) {
+    const resolved = await resolveAdminUserId(env, adminFilterRaw);
+    if (!resolved) {
+      return new Response(JSON.stringify({ error: "Admin not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    targetAdminId = resolved;
+  }
   if (targetAdminId !== admin.id) {
     const maxLevel = await getMaxAdminLevel(env);
     if ((admin.adminLevel || 0) < maxLevel) {

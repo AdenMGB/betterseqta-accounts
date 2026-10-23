@@ -26,20 +26,16 @@
         Review uploaded profile pictures. Accept to approve, or remove with a reason. Change past choices under Audit history.
       </p>
 
-      <label
+      <div
         v-if="isMobileViewport"
-        class="flex items-center justify-between gap-3 mb-6 p-3 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-white/60 dark:bg-zinc-800/60 cursor-pointer select-none"
+        class="flex items-center justify-between gap-4 mb-6"
       >
-        <span class="text-sm text-zinc-800 dark:text-zinc-200">
-          <span class="font-medium">Swipe mode</span>
-          <span class="block text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Swipe right to accept, left to remove</span>
-        </span>
-        <input
-          v-model="swipeMode"
-          type="checkbox"
-          class="h-5 w-5 rounded border-zinc-300 text-primary-500 focus:ring-primary-500"
-        />
-      </label>
+        <div class="min-w-0">
+          <p class="text-sm font-medium text-zinc-900 dark:text-white">Swipe mode</p>
+          <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Right accept · left remove</p>
+        </div>
+        <Switch v-model="swipeMode" />
+      </div>
 
       <div v-if="loading && !candidate" class="flex items-center justify-center gap-2 py-16 text-zinc-500">
         <LoadingSpinner size="sm" />
@@ -59,20 +55,31 @@
       </div>
 
       <template v-else>
-        <div v-if="swipeModeActive" class="relative mx-auto max-w-sm select-none touch-pan-y">
+        <div v-if="swipeModeActive" class="relative mx-auto max-w-sm min-h-[22rem] select-none touch-pan-y">
           <div
-            class="pointer-events-none absolute inset-0 flex items-center justify-between px-4 z-0"
+            v-if="candidate"
+            class="pointer-events-none absolute inset-x-6 top-6 bottom-16 rounded-2xl border border-zinc-300/40 dark:border-zinc-600/40 bg-zinc-200/50 dark:bg-zinc-700/40 scale-[0.92] translate-y-3 z-0"
+            aria-hidden="true"
+          />
+          <div
+            v-if="candidate"
+            class="pointer-events-none absolute inset-x-3 top-3 bottom-12 rounded-2xl border border-zinc-300/50 dark:border-zinc-600/50 bg-zinc-100/70 dark:bg-zinc-700/55 scale-[0.96] translate-y-1.5 z-[1]"
+            aria-hidden="true"
+          />
+
+          <div
+            class="pointer-events-none absolute inset-0 flex items-center justify-between px-4 z-[2]"
             aria-hidden="true"
           >
             <span
               class="text-lg font-bold tracking-wide px-3 py-1 rounded-lg border-4 rotate-[-18deg] transition-opacity"
-              :class="dragX < -24 ? 'opacity-100 border-red-500 text-red-500' : 'opacity-0 border-red-500/30 text-red-500/30'"
+              :class="dragX < -24 && !cardStackEntering ? 'opacity-100 border-red-500 text-red-500' : 'opacity-0 border-red-500/30 text-red-500/30'"
             >
               REMOVE
             </span>
             <span
               class="text-lg font-bold tracking-wide px-3 py-1 rounded-lg border-4 rotate-[18deg] transition-opacity"
-              :class="dragX > 24 ? 'opacity-100 border-emerald-500 text-emerald-500' : 'opacity-0 border-emerald-500/30 text-emerald-500/30'"
+              :class="dragX > 24 && !cardStackEntering ? 'opacity-100 border-emerald-500 text-emerald-500' : 'opacity-0 border-emerald-500/30 text-emerald-500/30'"
             >
               ACCEPT
             </span>
@@ -80,8 +87,12 @@
 
           <div
             ref="swipeCardEl"
-            class="relative z-10 flex flex-col items-center gap-4 p-5 rounded-2xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 shadow-xl cursor-grab active:cursor-grabbing"
-            :class="{ 'transition-transform duration-200 ease-out': !swipeDragging }"
+            class="relative z-10 flex flex-col items-center gap-4 p-5 rounded-2xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 shadow-xl cursor-grab active:cursor-grabbing will-change-transform"
+            :class="[
+              flyOffAnimating || (!swipeDragging && !cardStackEntering) ? 'transition-transform duration-300 ease-in' : '',
+              cardStackEntering ? 'opacity-0 scale-[0.97] translate-y-2' : 'opacity-100 scale-100 translate-y-0',
+              'transition-[opacity,transform] duration-350 ease-out',
+            ]"
             :style="[swipeCardStyle, swipeCardTouchStyle]"
             @pointerdown="onSwipePointerDown"
             @pointermove="onSwipePointerMove"
@@ -145,7 +156,7 @@
               type="button"
               class="px-6 py-2.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
               :disabled="loading"
-              @click="accept"
+              @click="() => void accept()"
             >
               Accept
             </button>
@@ -162,14 +173,19 @@
           Final choices per picture (including edits). Newest first.
         </p>
 
+        <p v-if="!canViewOtherAdmins || !historyAdminFilter.trim()" class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+          Showing your audit history.
+        </p>
+
         <div v-if="canViewOtherAdmins" class="mb-4">
-          <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">Admin user ID (senior only)</label>
+          <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">Other admin (username or ID, senior only)</label>
           <div class="flex gap-2">
             <input
               v-model="historyAdminFilter"
               type="text"
-              placeholder="Leave empty for your history"
+              placeholder="Leave empty for yours"
               class="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-white"
+              @keydown.enter="reloadHistory"
             />
             <button type="button" class="px-3 py-2 text-sm rounded-lg bg-primary-500 text-white shrink-0" @click="reloadHistory">
               Load
@@ -180,7 +196,10 @@
         <div v-if="historyLoading && !historyItems.length" class="flex justify-center py-12">
           <LoadingSpinner size="md" />
         </div>
-        <p v-else-if="!historyItems.length" class="text-sm text-zinc-500 text-center py-8">No audit decisions yet.</p>
+        <p v-else-if="historyLoadError" class="text-sm text-red-500 dark:text-red-400 text-center py-8">{{ historyLoadError }}</p>
+        <p v-else-if="!historyItems.length" class="text-sm text-zinc-500 text-center py-8">
+          {{ historyAdminFilter.trim() ? 'No audit decisions for this admin.' : 'No audit decisions yet.' }}
+        </p>
 
         <ul v-else class="divide-y divide-zinc-200 dark:divide-zinc-700">
           <li v-for="item in historyItems" :key="item.id" class="py-4 flex gap-3 sm:gap-4">
@@ -345,8 +364,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
+import Switch from '~/components/ui/Switch.vue'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 import { withPfpCacheBust } from '~/utils/pfp'
@@ -396,6 +416,7 @@ const historyItems = ref<AuditDecision[]>([])
 const historyLoading = ref(false)
 const historyNextCursor = ref<number | null>(null)
 const historyAdminFilter = ref('')
+const historyLoadError = ref('')
 const editingId = ref<string | null>(null)
 const editDecision = ref<'accept' | 'remove'>('accept')
 const editReason = ref<PfpAuditReason | ''>('')
@@ -411,16 +432,21 @@ const swipeStartY = ref(0)
 const swipeAxis = ref<'none' | 'horizontal' | 'vertical'>('none')
 const dragX = ref(0)
 const swipeCardEl = ref<HTMLElement | null>(null)
+const flyOffAnimating = ref(false)
+const cardStackEntering = ref(false)
 const SWIPE_AXIS_LOCK_PX = 10
+const FLY_OFF_PX = 520
+const FLY_OFF_MS = 300
 
 const canViewOtherAdmins = computed(() => (auth.user.value?.admin_level ?? 0) >= 3)
 const swipeModeActive = computed(() => isMobileViewport.value && swipeMode.value)
 const showRemoveReason = computed(() => removeMode.value || swipeRemovePending.value)
 
 const swipeCardStyle = computed(() => {
-  const rotate = Math.max(-14, Math.min(14, dragX.value * 0.06))
+  const x = dragX.value
+  const rotate = Math.max(-14, Math.min(14, x * 0.06))
   return {
-    transform: `translateX(${dragX.value}px) rotate(${rotate}deg)`,
+    transform: `translate3d(${x}px, 0, 0) rotate(${rotate}deg)`,
   }
 })
 
@@ -466,6 +492,7 @@ const fetchNext = async () => {
 
 const fetchHistory = async (append: boolean) => {
   historyLoading.value = true
+  if (!append) historyLoadError.value = ''
   try {
     const query: Record<string, string> = { limit: '30' }
     if (append && historyNextCursor.value) {
@@ -482,8 +509,16 @@ const fetchHistory = async (append: boolean) => {
     historyNextCursor.value = res.nextCursor
     historyItems.value = append ? [...historyItems.value, ...res.decisions] : res.decisions
   } catch (e: unknown) {
-    const err = e as { data?: { error?: string } }
-    showToast(err?.data?.error || 'Failed to load audit history', 'error')
+    const err = e as { status?: number; statusCode?: number; data?: { error?: string } }
+    const status = err?.status ?? err?.statusCode
+    const message = err?.data?.error || 'Failed to load audit history'
+    if (!append && status === 404) {
+      historyItems.value = []
+      historyNextCursor.value = null
+      historyLoadError.value = message
+    } else {
+      showToast(message, 'error')
+    }
   } finally {
     historyLoading.value = false
   }
@@ -491,9 +526,8 @@ const fetchHistory = async (append: boolean) => {
 
 const openHistory = () => {
   view.value = 'history'
-  if (!historyItems.value.length) {
-    void fetchHistory(false)
-  }
+  historyNextCursor.value = null
+  void fetchHistory(false)
 }
 
 const reloadHistory = () => {
@@ -503,22 +537,49 @@ const reloadHistory = () => {
 
 const loadMoreHistory = () => fetchHistory(true)
 
-const accept = async () => {
-  if (!candidate.value) return
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+const animateFlyOff = async (direction: 'left' | 'right', opts?: { keepOffset?: boolean }) => {
+  flyOffAnimating.value = true
+  dragX.value = direction === 'right' ? FLY_OFF_PX : -FLY_OFF_PX
+  await sleep(FLY_OFF_MS)
+  flyOffAnimating.value = false
+  if (!opts?.keepOffset) dragX.value = 0
+}
+
+const revealNextCard = async () => {
+  cardStackEntering.value = true
+  await nextTick()
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  cardStackEntering.value = false
+}
+
+const loadNextAfterDecision = async () => {
+  cardStackEntering.value = true
+  await fetchNext()
+  await revealNextCard()
+}
+
+const accept = async (opts?: { flyOff?: 'left' | 'right' }) => {
+  if (!candidate.value || flyOffAnimating.value) return
   const userId = candidate.value.id
   loading.value = true
   try {
+    if (opts?.flyOff) {
+      await animateFlyOff(opts.flyOff, { keepOffset: true })
+    }
     await $fetch('/api/admin/pfp-audit/accept', {
       method: 'POST',
       credentials: 'include',
       body: { userId },
     })
     excludeIds.value.push(userId)
-    await fetchNext()
+    await loadNextAfterDecision()
     if (view.value === 'history') await fetchHistory(false)
   } catch (e: unknown) {
     const err = e as { data?: { error?: string } }
     showToast(err?.data?.error || 'Failed to accept profile picture', 'error')
+    cardStackEntering.value = false
   } finally {
     loading.value = false
   }
@@ -540,7 +601,7 @@ const releaseSwipePointer = (e: PointerEvent) => {
 }
 
 const onSwipePointerDown = (e: PointerEvent) => {
-  if (!swipeModeActive.value || loading.value || rejecting.value || showRemoveReason.value) return
+  if (!swipeModeActive.value || loading.value || rejecting.value || showRemoveReason.value || flyOffAnimating.value || cardStackEntering.value) return
   swipeDragging.value = true
   swipePointerId.value = e.pointerId
   swipeStartX.value = e.clientX
@@ -589,14 +650,12 @@ const onSwipePointerUp = async (e: PointerEvent) => {
   }
 
   if (dragX.value >= SWIPE_THRESHOLD_PX) {
-    dragX.value = 420
-    await accept()
-    dragX.value = 0
+    await accept({ flyOff: 'right' })
     return
   }
 
   if (dragX.value <= -SWIPE_THRESHOLD_PX) {
-    dragX.value = 0
+    await animateFlyOff('left', { keepOffset: true })
     swipeRemovePending.value = true
     selectedReason.value = ''
     return
@@ -609,6 +668,7 @@ const cancelRemove = () => {
   removeMode.value = false
   swipeRemovePending.value = false
   selectedReason.value = ''
+  dragX.value = 0
   resetSwipeDrag()
 }
 
@@ -625,7 +685,7 @@ const confirmRemove = async () => {
     })
     showToast('Profile picture removed', 'success')
     excludeIds.value.push(userId)
-    await fetchNext()
+    await loadNextAfterDecision()
     if (view.value === 'history') await fetchHistory(false)
   } catch (e: unknown) {
     const err = e as { status?: number; statusCode?: number; data?: { error?: string } }
@@ -680,6 +740,13 @@ const resetAndLoad = () => {
   excludeIds.value = []
   fetchNext()
 }
+
+watch(candidate, () => {
+  if (!candidate.value) {
+    dragX.value = 0
+    resetSwipeDrag()
+  }
+})
 
 watch(swipeMode, (enabled) => {
   if (!import.meta.client) return
