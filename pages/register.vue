@@ -143,14 +143,9 @@
 </template>
 
 <script setup lang="ts">
-<<<<<<< HEAD
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
-=======
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '~/composables/useAuth'
->>>>>>> 7e4a42ea923c624301ad0f5aa6f5bc3a012d0ba4
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import {
   getPostLoginRedirect,
@@ -196,16 +191,12 @@ const onSubmit = async () => {
   error.value = ''
   loading.value = true
 
-<<<<<<< HEAD
   if (!canSubmit.value) {
     error.value = 'Please accept the privacy policy and confirm you are over 13.'
     loading.value = false
     return
   }
-  
-  // Check if passwords match
-=======
->>>>>>> 7e4a42ea923c624301ad0f5aa6f5bc3a012d0ba4
+
   if (password.value !== confirmPassword.value) {
     error.value = 'Passwords do not match.'
     loading.value = false
@@ -221,11 +212,8 @@ const onSubmit = async () => {
         password: password.value,
         username: username.value,
         displayName: displayName.value,
-<<<<<<< HEAD
         privacyPolicyAccepted: privacyPolicyAccepted.value,
         age13Confirmed: age13Confirmed.value,
-=======
->>>>>>> 7e4a42ea923c624301ad0f5aa6f5bc3a012d0ba4
       },
     })
     if (res?.user) {
