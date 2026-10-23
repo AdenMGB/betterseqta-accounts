@@ -3,7 +3,7 @@
     <Sidebar />
 
     <!-- Main Content -->
-    <div class="layout-app-column relative z-10 flex min-h-screen w-full min-w-0 flex-col overflow-hidden">
+    <div class="layout-app-column relative z-10 flex w-full min-w-0 flex-col min-h-screen max-md:min-h-0 max-md:overflow-visible md:overflow-hidden">
       <MouseGlowBackground />
 
       <!-- Header -->
@@ -23,7 +23,7 @@
         </div>
       </header>
       <!-- Page Content -->
-      <main class="app-main-scroll relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 md:pl-20 py-4 sm:py-6 pb-24 md:pb-8">
+      <main class="app-main-scroll relative z-10 flex w-full min-w-0 flex-col px-4 sm:px-6 lg:px-8 md:pl-20 py-4 sm:py-6 pb-28 md:pb-8 max-md:flex-none max-md:overflow-visible md:min-h-0 md:flex-1 md:overflow-y-auto">
         <slot />
       </main>
     </div>
