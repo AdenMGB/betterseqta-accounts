@@ -59,7 +59,7 @@
       </div>
 
       <template v-else>
-        <div v-if="swipeModeActive" class="relative mx-auto max-w-sm touch-none select-none" style="min-height: 22rem">
+        <div v-if="swipeModeActive" class="relative mx-auto max-w-sm select-none touch-pan-y">
           <div
             class="pointer-events-none absolute inset-0 flex items-center justify-between px-4 z-0"
             aria-hidden="true"
@@ -82,7 +82,7 @@
             ref="swipeCardEl"
             class="relative z-10 flex flex-col items-center gap-4 p-5 rounded-2xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-600 shadow-xl cursor-grab active:cursor-grabbing"
             :class="{ 'transition-transform duration-200 ease-out': !swipeDragging }"
-            :style="swipeCardStyle"
+            :style="[swipeCardStyle, swipeCardTouchStyle]"
             @pointerdown="onSwipePointerDown"
             @pointermove="onSwipePointerMove"
             @pointerup="onSwipePointerUp"
@@ -407,8 +407,11 @@ const swipeRemovePending = ref(false)
 const swipeDragging = ref(false)
 const swipePointerId = ref<number | null>(null)
 const swipeStartX = ref(0)
+const swipeStartY = ref(0)
+const swipeAxis = ref<'none' | 'horizontal' | 'vertical'>('none')
 const dragX = ref(0)
 const swipeCardEl = ref<HTMLElement | null>(null)
+const SWIPE_AXIS_LOCK_PX = 10
 
 const canViewOtherAdmins = computed(() => (auth.user.value?.admin_level ?? 0) >= 3)
 const swipeModeActive = computed(() => isMobileViewport.value && swipeMode.value)
@@ -420,6 +423,12 @@ const swipeCardStyle = computed(() => {
     transform: `translateX(${dragX.value}px) rotate(${rotate}deg)`,
   }
 })
+
+const swipeCardTouchStyle = computed(() =>
+  swipeAxis.value === 'horizontal'
+    ? { touchAction: 'none' as const }
+    : { touchAction: 'pan-y' as const },
+)
 
 const bust = (url: string, hash?: string) => withPfpCacheBust(url, hash)
 
@@ -518,7 +527,16 @@ const accept = async () => {
 const resetSwipeDrag = () => {
   swipeDragging.value = false
   swipePointerId.value = null
+  swipeAxis.value = 'none'
   dragX.value = 0
+}
+
+const releaseSwipePointer = (e: PointerEvent) => {
+  try {
+    swipeCardEl.value?.releasePointerCapture(e.pointerId)
+  } catch {
+    /* already released */
+  }
 }
 
 const onSwipePointerDown = (e: PointerEvent) => {
@@ -526,19 +544,49 @@ const onSwipePointerDown = (e: PointerEvent) => {
   swipeDragging.value = true
   swipePointerId.value = e.pointerId
   swipeStartX.value = e.clientX
-  swipeCardEl.value?.setPointerCapture(e.pointerId)
+  swipeStartY.value = e.clientY
+  swipeAxis.value = 'none'
+  dragX.value = 0
 }
 
 const onSwipePointerMove = (e: PointerEvent) => {
   if (!swipeDragging.value || e.pointerId !== swipePointerId.value) return
-  dragX.value = e.clientX - swipeStartX.value
+
+  const dx = e.clientX - swipeStartX.value
+  const dy = e.clientY - swipeStartY.value
+
+  if (swipeAxis.value === 'none') {
+    if (Math.abs(dx) < SWIPE_AXIS_LOCK_PX && Math.abs(dy) < SWIPE_AXIS_LOCK_PX) return
+    if (Math.abs(dy) > Math.abs(dx)) {
+      swipeAxis.value = 'vertical'
+      swipeDragging.value = false
+      swipePointerId.value = null
+      dragX.value = 0
+      return
+    }
+    swipeAxis.value = 'horizontal'
+    swipeCardEl.value?.setPointerCapture(e.pointerId)
+  }
+
+  if (swipeAxis.value !== 'horizontal') return
+  dragX.value = dx
 }
 
 const onSwipePointerUp = async (e: PointerEvent) => {
-  if (!swipeDragging.value || e.pointerId !== swipePointerId.value) return
-  swipeCardEl.value?.releasePointerCapture(e.pointerId)
+  if (e.pointerId !== swipePointerId.value && swipePointerId.value != null) return
+  if (swipeAxis.value === 'horizontal') {
+    releaseSwipePointer(e)
+  }
+
+  const wasHorizontal = swipeAxis.value === 'horizontal'
   swipeDragging.value = false
   swipePointerId.value = null
+  swipeAxis.value = 'none'
+
+  if (!wasHorizontal) {
+    dragX.value = 0
+    return
+  }
 
   if (dragX.value >= SWIPE_THRESHOLD_PX) {
     dragX.value = 420

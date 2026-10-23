@@ -9,22 +9,20 @@ body {
 }
 
 @media (max-width: 767px) {
-  /* Let the document scroll with touch — nested overflow-hidden breaks finger drag on iOS */
-  html {
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .layout-app-column {
-    overflow: visible;
+  /* Document scroll only — nested overflow traps break finger drag (iOS/Android) */
+  html,
+  body {
+    height: auto !important;
     min-height: 100dvh;
-    height: auto;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: auto;
   }
 
-  .app-main-scroll {
-    overflow: visible !important;
-    flex: none !important;
-    min-height: auto !important;
+  #__nuxt,
+  #__layout {
+    min-height: 0;
+    height: auto;
   }
 }
 
@@ -380,14 +378,28 @@ body {
 }
 
 @media (max-width: 767px) {
+  .admin-page {
+    flex: none !important;
+    min-height: 0 !important;
+  }
+
   .admin-panel {
-    max-height: none;
-    overflow: visible;
+    max-height: none !important;
+    overflow: visible !important;
+    flex: none !important;
+    min-height: 0 !important;
   }
 
   .admin-panel-mobile-scroll,
   .admin-panel-body-mobile-scroll {
     overflow: visible !important;
+    flex: none !important;
+    min-height: 0 !important;
+  }
+
+  .admin-tab-panel {
+    flex: none !important;
+    min-height: 0 !important;
   }
 
   .admin-table-viewport-scroll {
@@ -397,8 +409,14 @@ body {
   }
 
   .admin-scroll-tab {
-    overflow-y: visible;
+    flex: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
     overscroll-behavior: auto;
+  }
+
+  .admin-table-scroll {
+    touch-action: pan-x;
   }
 }
 
