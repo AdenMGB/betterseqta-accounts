@@ -24,12 +24,17 @@ export async function handleUserComplianceAck({ env, request, jwtSecret }: Reque
   if (!sessionUser) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
 
   try {
-    const { privacyPolicyAccepted, age13Confirmed } = (await request.json()) as {
+    const { privacyPolicyAccepted, termsOfServiceAccepted, age13Confirmed } = (await request.json()) as {
       privacyPolicyAccepted?: boolean;
+      termsOfServiceAccepted?: boolean;
       age13Confirmed?: boolean;
     };
 
-    const complianceError = validateComplianceAck({ privacyPolicyAccepted, age13Confirmed });
+    const complianceError = validateComplianceAck({
+      privacyPolicyAccepted,
+      termsOfServiceAccepted,
+      age13Confirmed,
+    });
     if (complianceError) {
       return new Response(JSON.stringify({ error: complianceError }), {
         status: 400,
@@ -41,10 +46,11 @@ export async function handleUserComplianceAck({ env, request, jwtSecret }: Reque
     await env.DB.prepare(
       `UPDATE users SET
         privacy_policy_accepted_at = COALESCE(privacy_policy_accepted_at, ?),
+        terms_of_service_accepted_at = COALESCE(terms_of_service_accepted_at, ?),
         age_13_confirmed_at = COALESCE(age_13_confirmed_at, ?)
       WHERE id = ?`,
     )
-      .bind(acknowledgedAt, acknowledgedAt, sessionUser.id)
+      .bind(acknowledgedAt, acknowledgedAt, acknowledgedAt, sessionUser.id)
       .run();
 
     const user = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)

@@ -36,6 +36,22 @@
         </label>
         <label class="flex items-start gap-2 cursor-pointer">
           <input
+            v-model="bannerTermsAccepted"
+            type="checkbox"
+            class="mt-0.5 rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500"
+          />
+          <span class="text-sm text-zinc-700 dark:text-zinc-300">
+            I agree to the
+            <a
+              href="https://betterseqta.org/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="font-medium text-primary-600 dark:text-primary-500 hover:text-primary-500"
+            >Terms of Service</a>
+          </span>
+        </label>
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input
             v-model="bannerAgeConfirmed"
             type="checkbox"
             class="mt-0.5 rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500"
@@ -150,6 +166,7 @@ const summaryError = ref('')
 const summary = ref<CloudSummaryResponse | null>(null)
 
 const bannerPrivacyAccepted = ref(false)
+const bannerTermsAccepted = ref(false)
 const bannerAgeConfirmed = ref(false)
 const complianceSubmitting = ref(false)
 const complianceError = ref('')
@@ -159,15 +176,18 @@ const authLoading = computed(() => auth.loading.value && !auth.user.value)
 const showComplianceBanner = computed(() => {
   const u = auth.user.value
   if (!u) return false
-  return !u.privacy_policy_accepted || !u.age_13_confirmed
+  return !u.privacy_policy_accepted || !u.terms_of_service_accepted || !u.age_13_confirmed
 })
 
-const bannerCanSubmit = computed(() => bannerPrivacyAccepted.value && bannerAgeConfirmed.value)
+const bannerCanSubmit = computed(
+  () => bannerPrivacyAccepted.value && bannerTermsAccepted.value && bannerAgeConfirmed.value,
+)
 
 const submitComplianceAck = async () => {
   complianceError.value = ''
   if (!bannerCanSubmit.value) {
-    complianceError.value = 'Please accept the privacy policy and confirm you are over 13.'
+    complianceError.value =
+      'Please accept the privacy policy, terms of service, and confirm you are over 13.'
     return
   }
   complianceSubmitting.value = true
@@ -177,6 +197,7 @@ const submitComplianceAck = async () => {
       credentials: 'include',
       body: {
         privacyPolicyAccepted: bannerPrivacyAccepted.value,
+        termsOfServiceAccepted: bannerTermsAccepted.value,
         age13Confirmed: bannerAgeConfirmed.value,
       },
     })

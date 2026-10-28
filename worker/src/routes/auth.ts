@@ -46,13 +46,14 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
     const rateLimited = await checkRateLimit(env, request, "auth-register", { limit: 10, windowSec: 900 });
     if (rateLimited) return rateLimited;
 
-    const { email, password, username, displayName, privacyPolicyAccepted, age13Confirmed } =
+    const { email, password, username, displayName, privacyPolicyAccepted, termsOfServiceAccepted, age13Confirmed } =
       (await request.json()) as {
         email?: string;
         password?: string;
         username?: string;
         displayName?: string;
         privacyPolicyAccepted?: boolean;
+        termsOfServiceAccepted?: boolean;
         age13Confirmed?: boolean;
       };
     if (!email || !password || !username) {
@@ -62,7 +63,11 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
       });
     }
 
-    const complianceError = validateComplianceAck({ privacyPolicyAccepted, age13Confirmed });
+    const complianceError = validateComplianceAck({
+      privacyPolicyAccepted,
+      termsOfServiceAccepted,
+      age13Confirmed,
+    });
     if (complianceError) {
       return new Response(JSON.stringify({ error: complianceError }), {
         status: 400,
@@ -102,7 +107,7 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
 
     try {
       await env.DB.prepare(
-        "INSERT INTO users (id, email, password, username, displayName, admin_level, privacy_policy_accepted_at, age_13_confirmed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO users (id, email, password, username, displayName, admin_level, privacy_policy_accepted_at, terms_of_service_accepted_at, age_13_confirmed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
         .bind(
           id,
@@ -111,6 +116,7 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
           trimmedUsername,
           displayName || trimmedUsername,
           0,
+          acknowledgedAt,
           acknowledgedAt,
           acknowledgedAt,
         )
@@ -144,6 +150,7 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
       admin_level: 0,
       signup_number: signupNumber,
       privacy_policy_accepted: true,
+      terms_of_service_accepted: true,
       age_13_confirmed: true,
     });
 

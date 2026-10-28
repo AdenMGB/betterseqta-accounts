@@ -104,6 +104,22 @@
             </label>
             <label class="flex items-start gap-2 cursor-pointer">
               <input
+                v-model="termsOfServiceAccepted"
+                type="checkbox"
+                class="mt-0.5 rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500"
+              />
+              <span class="text-sm text-zinc-700 dark:text-zinc-300">
+                I agree to the
+                <a
+                  href="https://betterseqta.org/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="font-medium text-primary-600 dark:text-primary-500 hover:text-primary-500 dark:hover:text-primary-400"
+                >Terms of Service</a>
+              </span>
+            </label>
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input
                 v-model="age13Confirmed"
                 type="checkbox"
                 class="mt-0.5 rounded border-zinc-300 dark:border-zinc-700 text-primary-500 focus:ring-primary-500"
@@ -162,6 +178,7 @@ const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const privacyPolicyAccepted = ref(false)
+const termsOfServiceAccepted = ref(false)
 const age13Confirmed = ref(false)
 const error = ref('')
 const loading = ref(false)
@@ -185,14 +202,16 @@ onMounted(async () => {
   checkingSession.value = false
 })
 
-const canSubmit = computed(() => privacyPolicyAccepted.value && age13Confirmed.value)
+const canSubmit = computed(
+  () => privacyPolicyAccepted.value && termsOfServiceAccepted.value && age13Confirmed.value,
+)
 
 const onSubmit = async () => {
   error.value = ''
   loading.value = true
 
   if (!canSubmit.value) {
-    error.value = 'Please accept the privacy policy and confirm you are over 13.'
+    error.value = 'Please accept the privacy policy, terms of service, and confirm you are over 13.'
     loading.value = false
     return
   }
@@ -213,6 +232,7 @@ const onSubmit = async () => {
         username: username.value,
         displayName: displayName.value,
         privacyPolicyAccepted: privacyPolicyAccepted.value,
+        termsOfServiceAccepted: termsOfServiceAccepted.value,
         age13Confirmed: age13Confirmed.value,
       },
     })

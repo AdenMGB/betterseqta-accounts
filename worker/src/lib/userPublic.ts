@@ -4,7 +4,7 @@ import { complianceFlagsFromRow } from "./userCompliance";
 
 /** Columns for API user objects (camelCase pfpHash). */
 export const USER_PUBLIC_SELECT =
-  "id, email, username, displayName, pfpUrl, pfp_hash AS pfpHash, admin_level, signup_number, privacy_policy_accepted_at, age_13_confirmed_at";
+  "id, email, username, displayName, pfpUrl, pfp_hash AS pfpHash, admin_level, signup_number, privacy_policy_accepted_at, terms_of_service_accepted_at, age_13_confirmed_at";
 
 export type PublicUserRow = {
   id: string;
@@ -18,6 +18,7 @@ export type PublicUserRow = {
   badges?: UserBadge[];
   is_founding_2500?: boolean;
   privacy_policy_accepted?: boolean;
+  terms_of_service_accepted?: boolean;
   age_13_confirmed?: boolean;
 };
 
@@ -27,6 +28,7 @@ export function mapUserPublic(row: Record<string, unknown> | null): PublicUserRo
     row.signup_number != null ? (row.signup_number as number) : (row.signupNumber as number | null | undefined);
   const compliance = complianceFlagsFromRow({
     privacy_policy_accepted_at: row.privacy_policy_accepted_at as number | null | undefined,
+    terms_of_service_accepted_at: row.terms_of_service_accepted_at as number | null | undefined,
     age_13_confirmed_at: row.age_13_confirmed_at as number | null | undefined,
   });
   return {
@@ -47,6 +49,8 @@ export function publicUserFromCredentials(row: Record<string, string>): PublicUs
   const signupNumber = row.signup_number != null ? Number(row.signup_number) : null;
   const compliance = complianceFlagsFromRow({
     privacy_policy_accepted_at: row.privacy_policy_accepted_at != null ? Number(row.privacy_policy_accepted_at) : null,
+    terms_of_service_accepted_at:
+      row.terms_of_service_accepted_at != null ? Number(row.terms_of_service_accepted_at) : null,
     age_13_confirmed_at: row.age_13_confirmed_at != null ? Number(row.age_13_confirmed_at) : null,
   });
   return {
