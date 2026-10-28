@@ -173,17 +173,20 @@
           Final choices per picture (including edits). Newest first.
         </p>
 
-        <p v-if="!canViewOtherAdmins || !historyAdminFilter.trim()" class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
-          Showing your audit history.
+        <p v-if="!historyAdminFilter.trim()" class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+          Showing audit decisions from all admins. Newest first.
+        </p>
+        <p v-else class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+          Filtered to one admin — clear the field and load again for everyone.
         </p>
 
-        <div v-if="canViewOtherAdmins" class="mb-4">
-          <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">Other admin (username or ID, senior only)</label>
+        <div class="mb-4">
+          <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">Filter by admin (username or ID, optional)</label>
           <div class="flex gap-2">
             <input
               v-model="historyAdminFilter"
               type="text"
-              placeholder="Leave empty for yours"
+              placeholder="Leave empty for all admins"
               class="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-white"
               @keydown.enter="reloadHistory"
             />
@@ -198,7 +201,7 @@
         </div>
         <p v-else-if="historyLoadError" class="text-sm text-red-500 dark:text-red-400 text-center py-8">{{ historyLoadError }}</p>
         <p v-else-if="!historyItems.length" class="text-sm text-zinc-500 text-center py-8">
-          {{ historyAdminFilter.trim() ? 'No audit decisions for this admin.' : 'No audit decisions yet.' }}
+          {{ historyAdminFilter.trim() ? 'No audit decisions for this admin.' : 'No audit decisions yet from any admin.' }}
         </p>
 
         <ul v-else class="divide-y divide-zinc-200 dark:divide-zinc-700">
@@ -219,7 +222,7 @@
                 {{ item.subjectDisplayName || item.subjectUsername }}
                 <span class="text-zinc-500 font-normal text-sm">@{{ item.subjectUsername }}</span>
               </p>
-              <p v-if="item.adminUsername && historyAdminFilter.trim()" class="text-xs text-zinc-500 mt-0.5">
+              <p v-if="item.adminUsername" class="text-xs text-zinc-500 mt-0.5">
                 Admin: @{{ item.adminUsername }}
               </p>
               <div class="flex flex-wrap items-center gap-2 mt-1.5">
@@ -278,7 +281,7 @@
                 </div>
               </div>
               <button
-                v-else
+                v-else-if="canReviseDecision(item)"
                 type="button"
                 class="mt-2 text-sm text-primary-600 dark:text-primary-400 hover:underline"
                 @click="startEdit(item)"
@@ -438,7 +441,9 @@ const SWIPE_AXIS_LOCK_PX = 10
 const FLY_OFF_PX = 520
 const FLY_OFF_MS = 300
 
-const canViewOtherAdmins = computed(() => (auth.user.value?.admin_level ?? 0) >= 3)
+const currentAdminId = computed(() => auth.user.value?.id ?? '')
+
+const canReviseDecision = (item: AuditDecision) => item.adminUserId === currentAdminId.value
 const swipeModeActive = computed(() => isMobileViewport.value && swipeMode.value)
 const showRemoveReason = computed(() => removeMode.value || swipeRemovePending.value)
 
@@ -499,7 +504,7 @@ const fetchHistory = async (append: boolean) => {
       query.cursor = String(historyNextCursor.value)
     }
     const adminId = historyAdminFilter.value.trim()
-    if (adminId && canViewOtherAdmins.value) {
+    if (adminId) {
       query.admin_user_id = adminId
     }
     const res = await $fetch<{ decisions: AuditDecision[]; nextCursor: number | null }>(

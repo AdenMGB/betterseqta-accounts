@@ -1153,7 +1153,7 @@ export async function handleAdminPfpAuditHistory({ env, request, url, jwtSecret 
   }
 
   const adminFilterRaw = url.searchParams.get("admin_user_id")?.trim();
-  let targetAdminId = admin.id as string;
+  let filterAdminId: string | null = null;
   if (adminFilterRaw) {
     const resolved = await resolveAdminUserId(env, adminFilterRaw);
     if (!resolved) {
@@ -1162,16 +1162,7 @@ export async function handleAdminPfpAuditHistory({ env, request, url, jwtSecret 
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    targetAdminId = resolved;
-  }
-  if (targetAdminId !== admin.id) {
-    const maxLevel = await getMaxAdminLevel(env);
-    if ((admin.adminLevel || 0) < maxLevel) {
-      return new Response(JSON.stringify({ error: "Only senior admins can view another admin's audit history" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    filterAdminId = resolved;
   }
 
   const limit = parseInt(url.searchParams.get("limit") || "40", 10);
@@ -1179,7 +1170,7 @@ export async function handleAdminPfpAuditHistory({ env, request, url, jwtSecret 
   const cursorUpdatedAt = cursorRaw ? parseInt(cursorRaw, 10) : null;
 
   const { decisions, nextCursor } = await listPfpAuditDecisions(env, {
-    adminUserId: targetAdminId,
+    adminUserId: filterAdminId,
     limit: Number.isFinite(limit) ? limit : 40,
     cursorUpdatedAt: cursorUpdatedAt != null && Number.isFinite(cursorUpdatedAt) ? cursorUpdatedAt : null,
   });

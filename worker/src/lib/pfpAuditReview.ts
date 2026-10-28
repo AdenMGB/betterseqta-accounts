@@ -236,7 +236,8 @@ export async function resolveAdminUserId(env: Env, identifier: string): Promise<
 export async function listPfpAuditDecisions(
   env: Env,
   input: {
-    adminUserId: string;
+    /** When set, only decisions by this admin; otherwise all admins (shared audit history). */
+    adminUserId?: string | null;
     limit?: number;
     cursorUpdatedAt?: number | null;
   },
@@ -249,12 +250,16 @@ export async function listPfpAuditDecisions(
         d.pfp_hash, d.pfp_url, d.pfp_history_id, d.decision, d.remove_reason,
         d.created_at, d.updated_at
       FROM pfp_audit_decisions d
-      LEFT JOIN users a ON a.id = d.admin_user_id
-      WHERE d.admin_user_id = ?`;
-    const binds: unknown[] = [input.adminUserId];
+      LEFT JOIN users a ON a.id = d.admin_user_id`;
+    const binds: unknown[] = [];
+
+    if (input.adminUserId) {
+      query += " WHERE d.admin_user_id = ?";
+      binds.push(input.adminUserId);
+    }
 
     if (input.cursorUpdatedAt != null) {
-      query += " AND d.updated_at < ?";
+      query += input.adminUserId ? " AND d.updated_at < ?" : " WHERE d.updated_at < ?";
       binds.push(input.cursorUpdatedAt);
     }
 
