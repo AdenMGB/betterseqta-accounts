@@ -312,6 +312,72 @@ export async function listPfpAuditDecisions(
   }
 }
 
+function hostedPfpSql(devRelaxed: boolean): string {
+  return devRelaxed
+    ? "(u.pfp_hash IS NOT NULL OR (u.pfpUrl IS NOT NULL AND TRIM(u.pfpUrl) != ''))"
+    : "u.pfp_hash IS NOT NULL";
+}
+
+function buildPfpAuditQueueFilters(
+  adminUserId: string,
+  excludeUserIds: string[],
+  devRelaxed: boolean,
+): { whereTail: string; binds: unknown[] } {
+  const capped = excludeUserIds.slice(0, 200);
+  let whereTail = `
+    WHERE u.pfp_pending_review = 1
+      AND ${hostedPfpSql(devRelaxed)}
+      AND NOT EXISTS (
+        SELECT 1 FROM pfp_audit_admin_views v
+        WHERE v.admin_user_id = ?
+          AND v.subject_user_id = u.id
+          AND v.pfp_hash = u.pfp_hash
+      )`;
+  const binds: unknown[] = [adminUserId];
+
+  if (capped.length > 0) {
+    whereTail += ` AND u.id NOT IN (${capped.map(() => "?").join(",")})`;
+    binds.push(...capped);
+  }
+
+  return { whereTail, binds };
+}
+
+/** Profile pictures this admin has not reviewed yet (same pool as pickPfpAuditCandidateForAdmin). */
+export async function countPfpAuditQueueForAdmin(
+  env: Env,
+  adminUserId: string,
+  excludeUserIds: string[],
+  options?: { devRelaxed?: boolean },
+): Promise<number> {
+  const devRelaxed = options?.devRelaxed ?? false;
+  const { whereTail, binds } = buildPfpAuditQueueFilters(adminUserId, excludeUserIds, devRelaxed);
+
+  try {
+    const row = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM users u ${whereTail}`)
+      .bind(...binds)
+      .first()) as { n: number } | null;
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Users with a hosted PFP still awaiting audit (any admin). */
+export async function countHostedPfpPendingReview(env: Env, options?: { devRelaxed?: boolean }): Promise<number> {
+  const devRelaxed = options?.devRelaxed ?? false;
+
+  try {
+    const row = (await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM users u
+       WHERE u.pfp_pending_review = 1 AND ${hostedPfpSql(devRelaxed)}`,
+    ).first()) as { n: number } | null;
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 export async function pickPfpAuditCandidateForAdmin(
   env: Env,
   adminUserId: string,
@@ -320,30 +386,12 @@ export async function pickPfpAuditCandidateForAdmin(
 ): Promise<PfpAuditCandidate | null> {
   const mode = options?.mode ?? "random";
   const devRelaxed = options?.devRelaxed ?? false;
-  const capped = excludeUserIds.slice(0, 200);
-
-  const hostedPfp = devRelaxed
-    ? "(u.pfp_hash IS NOT NULL OR (u.pfpUrl IS NOT NULL AND TRIM(u.pfpUrl) != ''))"
-    : "u.pfp_hash IS NOT NULL";
+  const { whereTail, binds } = buildPfpAuditQueueFilters(adminUserId, excludeUserIds, devRelaxed);
 
   let query = `
     SELECT u.id, u.username, u.displayName, u.pfpUrl, u.pfp_hash
     FROM users u
-    WHERE u.pfp_pending_review = 1
-      AND ${hostedPfp}
-      AND NOT EXISTS (
-        SELECT 1 FROM pfp_audit_admin_views v
-        WHERE v.admin_user_id = ?
-          AND v.subject_user_id = u.id
-          AND v.pfp_hash = u.pfp_hash
-      )`;
-
-  const binds: unknown[] = [adminUserId];
-
-  if (capped.length > 0) {
-    query += ` AND u.id NOT IN (${capped.map(() => "?").join(",")})`;
-    binds.push(...capped);
-  }
+    ${whereTail}`;
 
   query += mode === "sequential" ? " ORDER BY u.username ASC, u.id ASC LIMIT 1" : " ORDER BY RANDOM() LIMIT 1";
 

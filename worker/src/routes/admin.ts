@@ -11,6 +11,8 @@ import { buildPfpAuditContext, resolvePfpAuditRefs, type PfpAuditRef } from "../
 import { auditTargetForUser, labelFromDetails, resolveAuditTargets } from "../lib/auditTarget";
 import { processPfpUpload } from "../lib/pfpProcess";
 import {
+  countHostedPfpPendingReview,
+  countPfpAuditQueueForAdmin,
   getPfpAuditDecisionForAdmin,
   listPfpAuditDecisions,
   loadPfpReviewMetaForUsers,
@@ -1008,12 +1010,17 @@ export async function handleAdminPfpAuditNext({ env, request, url, jwtSecret }: 
     .filter(Boolean);
 
   const cfDev = env.CF_DEV === "1" || env.CF_DEV === "true";
-  const user = await pickPfpAuditCandidateForAdmin(env, admin.id as string, excludeUserIds, {
-    mode: cfDev ? "sequential" : "random",
+  const pickOptions = {
+    mode: (cfDev ? "sequential" : "random") as "sequential" | "random",
     devRelaxed: cfDev,
-  });
+  };
+  const [remaining, pendingTotal] = await Promise.all([
+    countPfpAuditQueueForAdmin(env, admin.id as string, excludeUserIds, { devRelaxed: cfDev }),
+    countHostedPfpPendingReview(env, { devRelaxed: cfDev }),
+  ]);
+  const user = await pickPfpAuditCandidateForAdmin(env, admin.id as string, excludeUserIds, pickOptions);
 
-  return new Response(JSON.stringify({ user }), {
+  return new Response(JSON.stringify({ user, remaining, pendingTotal }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }

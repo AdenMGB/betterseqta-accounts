@@ -21,7 +21,29 @@
 
     <!-- Queue -->
     <div v-if="view === 'queue'" class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
-      <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Profile picture audit</h3>
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-2">
+        <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">Profile picture audit</h3>
+        <div
+          v-if="queueRemaining !== null"
+          class="flex flex-wrap items-center gap-2 shrink-0"
+        >
+          <span
+            class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold tabular-nums transition-colors duration-200"
+            :class="queueRemaining > 0
+              ? 'bg-primary-500/15 text-primary-700 dark:text-primary-200 ring-1 ring-primary-500/30'
+              : 'bg-zinc-200/80 text-zinc-600 dark:bg-zinc-700/80 dark:text-zinc-300 ring-1 ring-zinc-300/50 dark:ring-zinc-600/50'"
+          >
+            {{ queueRemaining }} in your queue
+          </span>
+          <span
+            v-if="pendingTotal !== null && pendingTotal !== queueRemaining"
+            class="text-xs text-zinc-500 dark:text-zinc-400 tabular-nums"
+            title="Total hosted profile pictures pending review across all admins"
+          >
+            {{ pendingTotal }} team-wide
+          </span>
+        </div>
+      </div>
       <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
         Review uploaded profile pictures. Accept to approve, or remove with a reason. Change past choices under Audit history.
       </p>
@@ -414,6 +436,8 @@ const rejecting = ref(false)
 const removeMode = ref(false)
 const selectedReason = ref<PfpAuditReason | ''>('')
 const excludeIds = ref<string[]>([])
+const queueRemaining = ref<number | null>(null)
+const pendingTotal = ref<number | null>(null)
 
 const historyItems = ref<AuditDecision[]>([])
 const historyLoading = ref(false)
@@ -478,10 +502,13 @@ const fetchNext = async () => {
   try {
     const exclude = excludeIds.value.join(',')
     const qs = exclude ? `?exclude=${encodeURIComponent(exclude)}` : ''
-    const res = await $fetch<{ user: AuditCandidate | null }>(`/api/admin/pfp-audit/next${qs}`, {
-      credentials: 'include',
-    })
+    const res = await $fetch<{ user: AuditCandidate | null; remaining?: number; pendingTotal?: number }>(
+      `/api/admin/pfp-audit/next${qs}`,
+      { credentials: 'include' },
+    )
     candidate.value = res.user
+    queueRemaining.value = typeof res.remaining === 'number' ? res.remaining : (res.user ? 1 : 0)
+    pendingTotal.value = typeof res.pendingTotal === 'number' ? res.pendingTotal : null
     removeMode.value = false
     swipeRemovePending.value = false
     selectedReason.value = ''
