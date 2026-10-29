@@ -1,4 +1,5 @@
 import type { Env } from "../types/env";
+import { applyTqRelayStubObsHeaders } from "./tq-relay-observability";
 
 /** Drop a student's relay share when they opt out via REST (no WebSocket). */
 export async function relayRevokeStudentShare(
@@ -11,13 +12,15 @@ export async function relayRevokeStudentShare(
 
   const stub = ns.get(ns.idFromName(instanceHost));
   try {
+    const headers = new Headers({
+      "X-TQ-Internal-Revoke": "1",
+      "X-TQ-Seqta-Student-Id": String(seqtaStudentId),
+    });
+    applyTqRelayStubObsHeaders(env, instanceHost, headers);
     await stub.fetch(
       new Request("https://tq-relay/internal/revoke", {
         method: "POST",
-        headers: {
-          "X-TQ-Internal-Revoke": "1",
-          "X-TQ-Seqta-Student-Id": String(seqtaStudentId),
-        },
+        headers,
       }),
     );
   } catch (err) {

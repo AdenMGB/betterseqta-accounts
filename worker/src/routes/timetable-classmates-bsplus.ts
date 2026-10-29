@@ -16,6 +16,7 @@ import {
 } from "../lib/timetable-classmates";
 import { createRelayToken, verifyRelayToken } from "../lib/timetable-classmates-relay-token";
 import { relayRevokeStudentShare } from "../lib/timetable-classmates-relay-client";
+import { applyTqRelayStubObsHeaders, logTqRelayObs } from "../lib/tq-relay-observability";
 import type { RequestContext } from "../types/context";
 import type { Env } from "../types/env";
 
@@ -317,6 +318,21 @@ export async function handleTimetableClassmatesPeers(ctx: RequestContext): Promi
     return entry;
   });
 
+  if (peers.length === 0) {
+    logTqRelayObs(ctx.env, {
+      event: "peers_empty",
+      instance_host: instanceHost,
+      seqta_student_id: self.seqta_student_id,
+    });
+  } else {
+    logTqRelayObs(ctx.env, {
+      event: "peers_ok",
+      instance_host: instanceHost,
+      seqta_student_id: self.seqta_student_id,
+      peer_count: peers.length,
+    });
+  }
+
   return authJson(
     {
       self: {
@@ -418,6 +434,12 @@ export async function handleTimetableClassmatesRelaySession(ctx: RequestContext)
     ctx.jwtSecret,
   );
 
+  logTqRelayObs(ctx.env, {
+    event: "relay_session_issued",
+    instance_host: instanceHost,
+    seqta_student_id: membership.seqta_student_id,
+  });
+
   return authJson(
     {
       ws_url: relayWsUrl(ctx.env, ctx.url.origin),
@@ -472,6 +494,7 @@ export async function handleTimetableClassmatesRelayWs(ctx: RequestContext): Pro
   headers.set("X-TQ-Cloud-User-Id", claims.cloud_user_id);
   headers.set("X-TQ-Seqta-Student-Id", String(claims.seqta_student_id));
   headers.set("X-TQ-Share-Code", claims.share_code);
+  applyTqRelayStubObsHeaders(ctx.env, instanceHost, headers);
 
   return stub.fetch(new Request(ctx.request, { headers }));
 }
