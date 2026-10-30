@@ -193,8 +193,8 @@ export class TimetableClassmatesRelay implements DurableObject {
       }
 
       const shares = await loadSharesForInstance(this.env.DB, info.instanceHost);
-      const broadcast = await this.broadcastSnapshot(info.instanceHost, shares, ws);
-      const otherPeers = this.sockets.size - 1;
+      const broadcast = await this.broadcastSnapshot(info.instanceHost, shares);
+      const otherPeers = Math.max(0, this.sockets.size - 1);
       logTqRelayObs(info.obs, {
         event: "relay_publish_ok",
         instance_host: info.instanceHost || undefined,
@@ -208,7 +208,6 @@ export class TimetableClassmatesRelay implements DurableObject {
         no_ws_peers: otherPeers === 0,
         ...broadcast,
       });
-      this.closeSocketAfterSuccess(ws);
       return;
     }
 
@@ -221,7 +220,7 @@ export class TimetableClassmatesRelay implements DurableObject {
         return;
       }
       const shares = await loadSharesForInstance(this.env.DB, info.instanceHost);
-      const broadcast = await this.broadcastSnapshot(info.instanceHost, shares, ws);
+      const broadcast = await this.broadcastSnapshot(info.instanceHost, shares);
       logTqRelayObs(info.obs, {
         event: "relay_revoke_ws",
         instance_host: info.instanceHost || undefined,
@@ -229,7 +228,6 @@ export class TimetableClassmatesRelay implements DurableObject {
         share_count: shares.length,
         ...broadcast,
       });
-      this.closeSocketAfterSuccess(ws);
       return;
     }
 
@@ -255,14 +253,12 @@ export class TimetableClassmatesRelay implements DurableObject {
   private async broadcastSnapshot(
     instanceHost: string,
     shares?: StoredShare[],
-    excludeWs?: WebSocket,
   ): Promise<{ broadcast_sent: number; broadcast_failed: number }> {
     const resolved = shares ?? (await loadSharesForInstance(this.env.DB, instanceHost));
     const json = JSON.stringify(this.snapshotPayload(resolved));
     let broadcast_sent = 0;
     let broadcast_failed = 0;
     for (const [ws] of this.sockets.entries()) {
-      if (excludeWs && ws === excludeWs) continue;
       try {
         ws.send(json);
         broadcast_sent += 1;
@@ -272,15 +268,6 @@ export class TimetableClassmatesRelay implements DurableObject {
       }
     }
     return { broadcast_sent, broadcast_failed };
-  }
-
-  private closeSocketAfterSuccess(ws: WebSocket): void {
-    this.sockets.delete(ws);
-    try {
-      ws.close(1000, "OK");
-    } catch {
-      /* closed */
-    }
   }
 
   private sendError(ws: WebSocket, message: string): void {

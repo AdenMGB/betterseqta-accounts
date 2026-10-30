@@ -141,7 +141,7 @@ key = SHA-256( bundle_key || "|" || "tq-v1:" || class_key )
 3. `GET relay-session` → `bundle_key_b64`, `relay_token`, `ws_url`.
 4. WebSocket → `snapshot` → decrypt → merge roster.
 5. Local timetable → encrypt bundles → `publish`.
-6. Server closes the WebSocket with code **1000** after a successful `publish` or `revoke` (clients may also close first).
+6. Server broadcasts an updated `snapshot` to every still-connected socket (including the publisher). The client closes the WebSocket when its sync round-trip is done; the server keeps connections open for live fan-out.
 
 Opt-out: `revoke` on WS if connected, then `DELETE opt-in` (server purges relay share either way).
 
