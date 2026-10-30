@@ -619,12 +619,7 @@
       <!-- Timetable classmates Tab -->
       <div v-if="isTab('timetable-classmates')" class="admin-scroll-tab space-y-4 min-w-0 flex flex-col">
         <div class="shrink-0 bg-zinc-50 dark:bg-zinc-900/30 p-4 sm:p-5 rounded-xl border border-zinc-200 dark:border-zinc-700 min-w-0">
-          <h3 class="text-base font-semibold text-zinc-900 dark:text-white mb-1">BetterSEQTA+ timetable classmates</h3>
-          <p class="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 mb-3">
-            Active phonebook opt-ins per SEQTA school (<code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded">instance_host</code>). Revoked registrations are excluded from active totals.
-            <strong class="font-medium text-emerald-700 dark:text-emerald-400">Successful clients</strong> counts persisted relay shares in
-            <code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1 rounded">tq_relay_share</code> (completed publish sync).
-          </p>
+          <h3 class="text-base font-semibold text-zinc-900 dark:text-white mb-3">BetterSEQTA+ timetable classmates</h3>
 
           <div v-if="!tqClassmatesStats?.available" class="text-sm text-amber-600 dark:text-amber-400 mb-3">
             Timetable classmates tables are not available on this database. Run migrations <code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1 rounded">0020</code>+ locally or on D1.
