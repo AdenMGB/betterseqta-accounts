@@ -622,6 +622,8 @@
           <h3 class="text-base font-semibold text-zinc-900 dark:text-white mb-1">BetterSEQTA+ timetable classmates</h3>
           <p class="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 mb-3">
             Active phonebook opt-ins per SEQTA school (<code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded">instance_host</code>). Revoked registrations are excluded from active totals.
+            <strong class="font-medium text-emerald-700 dark:text-emerald-400">Successful clients</strong> counts persisted relay shares in
+            <code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1 rounded">tq_relay_share</code> (completed publish sync).
           </p>
 
           <div v-if="!tqClassmatesStats?.available" class="text-sm text-amber-600 dark:text-amber-400 mb-3">
@@ -633,10 +635,14 @@
             Loading stats…
           </div>
 
-          <div v-else-if="tqClassmatesStats?.available" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mb-3">
+          <div v-else-if="tqClassmatesStats?.available" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-3">
             <div class="px-2.5 py-2 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-center">
               <p class="text-lg sm:text-xl font-bold tabular-nums text-primary-600 dark:text-primary-400">{{ tqClassmatesStats.active_opt_ins }}</p>
               <p class="text-[10px] sm:text-xs text-primary-700 dark:text-primary-300 mt-0.5 leading-tight">Active opt-ins</p>
+            </div>
+            <div class="px-2.5 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-center">
+              <p class="text-lg sm:text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{{ tqClassmatesStats.relay_share_total }}</p>
+              <p class="text-[10px] sm:text-xs text-emerald-700 dark:text-emerald-300 mt-0.5 leading-tight">Successful clients</p>
             </div>
             <div class="px-2.5 py-2 rounded-lg bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
               <p class="text-lg sm:text-xl font-bold tabular-nums text-zinc-900 dark:text-white">{{ tqClassmatesStats.school_instances }}</p>
@@ -678,6 +684,7 @@
                   <tr class="border-b border-zinc-200 dark:border-zinc-700">
                     <th class="pb-2 pt-2 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-zinc-500 dark:text-zinc-400">Instance</th>
                     <th class="pb-2 pt-2 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-zinc-500 dark:text-zinc-400 text-right w-24 shrink-0">Active</th>
+                    <th class="pb-2 pt-2 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-emerald-600 dark:text-emerald-400 text-right w-28 shrink-0">Successful</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
@@ -688,6 +695,7 @@
                   >
                     <td class="py-2.5 px-3 sm:px-4 text-xs sm:text-sm text-zinc-900 dark:text-white font-mono break-all [overflow-wrap:anywhere] min-w-0">{{ row.instance_host }}</td>
                     <td class="py-2.5 px-3 sm:px-4 text-sm text-zinc-900 dark:text-white text-right font-semibold tabular-nums align-top">{{ row.active_count }}</td>
+                    <td class="py-2.5 px-3 sm:px-4 text-sm text-emerald-600 dark:text-emerald-400 text-right font-semibold tabular-nums align-top">{{ row.relay_share_count }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1480,7 +1488,8 @@ type TqClassmatesAdminStats = {
   school_instances: number
   active_last_24h: number
   active_last_7d: number
-  by_instance: { instance_host: string; active_count: number }[]
+  relay_share_total: number
+  by_instance: { instance_host: string; active_count: number; relay_share_count: number }[]
 }
 
 const tqClassmatesStats = ref<TqClassmatesAdminStats | null>(null)

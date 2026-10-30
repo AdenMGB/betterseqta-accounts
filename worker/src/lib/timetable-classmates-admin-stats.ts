@@ -3,6 +3,7 @@ import type { Env } from "../types/env";
 export type TimetableClassmatesByInstance = {
   instance_host: string;
   active_count: number;
+  relay_share_count: number;
 };
 
 export type TimetableClassmatesAdminStats = {
@@ -12,6 +13,8 @@ export type TimetableClassmatesAdminStats = {
   school_instances: number;
   active_last_24h: number;
   active_last_7d: number;
+  /** Rows in `tq_relay_share` (students with a persisted relay publish). */
+  relay_share_total: number;
   by_instance: TimetableClassmatesByInstance[];
 };
 
@@ -22,12 +25,39 @@ const EMPTY: TimetableClassmatesAdminStats = {
   school_instances: 0,
   active_last_24h: 0,
   active_last_7d: 0,
+  relay_share_total: 0,
   by_instance: [],
 };
 
 function isMissingTableError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /no such table|does not exist/i.test(msg);
+}
+
+async function loadRelayShareCounts(
+  db: Env["DB"],
+): Promise<{ total: number; byInstance: Map<string, number> }> {
+  try {
+    const totalRow = await db
+      .prepare("SELECT COUNT(*) AS c FROM tq_relay_share")
+      .first<{ c: number }>();
+    const { results } = await db
+      .prepare(
+        `SELECT instance_host, COUNT(*) AS relay_share_count
+         FROM tq_relay_share
+         GROUP BY instance_host`,
+      )
+      .all<{ instance_host: string; relay_share_count: number }>();
+
+    const byInstance = new Map<string, number>();
+    for (const row of results ?? []) {
+      byInstance.set(row.instance_host, Number(row.relay_share_count));
+    }
+    return { total: Number(totalRow?.c ?? 0), byInstance };
+  } catch (err) {
+    if (isMissingTableError(err)) return { total: 0, byInstance: new Map() };
+    throw err;
+  }
 }
 
 export async function getTimetableClassmatesAdminStats(db: Env["DB"]): Promise<TimetableClassmatesAdminStats> {
@@ -71,6 +101,8 @@ export async function getTimetableClassmatesAdminStats(db: Env["DB"]): Promise<T
       )
       .all<{ instance_host: string; active_count: number }>();
 
+    const relayShares = await loadRelayShareCounts(db);
+
     return {
       available: true,
       active_opt_ins: Number(activeRow?.c ?? 0),
@@ -78,9 +110,11 @@ export async function getTimetableClassmatesAdminStats(db: Env["DB"]): Promise<T
       school_instances: Number(instancesRow?.c ?? 0),
       active_last_24h: Number(last24Row?.c ?? 0),
       active_last_7d: Number(last7Row?.c ?? 0),
+      relay_share_total: relayShares.total,
       by_instance: (results ?? []).map((row) => ({
         instance_host: row.instance_host,
         active_count: Number(row.active_count),
+        relay_share_count: relayShares.byInstance.get(row.instance_host) ?? 0,
       })),
     };
   } catch (err) {
