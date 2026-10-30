@@ -9,6 +9,7 @@ Extension spec: [BetterSEQTA-Plus `TIMETABLE_CLASSMATES_RELAY_API.md`](https://g
 | REST phonebook | `worker/src/routes/timetable-classmates-bsplus.ts` |
 | Relay session + WS upgrade | same file (`handleTimetableClassmatesRelaySession`, `handleTimetableClassmatesRelayWs`) |
 | Durable Object | `worker/src/durable-objects/timetable-classmates-relay.ts` |
+| D1 share store | `worker/src/lib/timetable-classmates-relay-store.ts` |
 | Relay JWT | `worker/src/lib/timetable-classmates-relay-token.ts` |
 
 ## Local dev

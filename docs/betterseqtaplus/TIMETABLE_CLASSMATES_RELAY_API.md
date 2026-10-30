@@ -3,7 +3,7 @@
 BetterSEQTA+ classmate avatars use **two layers**:
 
 1. **Phonebook (REST, D1)** — who opted in per SEQTA `instance_host` (ids + identity binding). No timetable data.
-2. **Class relay (Durable Object + WebSocket)** — opaque, encrypted class-enrollment blobs keyed by `classRosterKey`. Fan-out hub only.
+2. **Class relay (Durable Object + WebSocket + D1)** — opaque, encrypted class-enrollment blobs keyed by `classRosterKey`. Ciphertext shares persist in D1 per `(instance_host, seqta_student_id)`; the DO coordinates WebSocket fan-out.
 
 SEQTA direct messages are **not** used. **`GET .../sync-hint` is not implemented** (legacy DM design).
 
@@ -11,7 +11,7 @@ Base URL: `https://accounts.betterseqta.org`
 
 Auth: `Authorization: Bearer <bsplus access token>` on all REST routes.
 
-Implementation: `worker/src/routes/timetable-classmates-bsplus.ts`, `worker/src/durable-objects/timetable-classmates-relay.ts`.
+Implementation: `worker/src/routes/timetable-classmates-bsplus.ts`, `worker/src/durable-objects/timetable-classmates-relay.ts`, `worker/src/lib/timetable-classmates-relay-store.ts`.
 
 ---
 
@@ -47,7 +47,7 @@ REST opt-out also removes the caller’s share from the instance relay (internal
 ```
 
 - **`relay_token`**: JWT claims only `instance_host`, `cloud_user_id`, `seqta_student_id`, `share_code` (no bundle key — token appears in WebSocket query string).
-- **`bundle_key_b64`**: session-only AES root; never stored on server or embedded in JWT.
+- **`bundle_key_b64`**: instance-stable AES root (stored on `tq_instance.relay_bundle_key_b64`); not embedded in JWT.
 - **`share_code`**: first 8 hex chars of `identity_binding_digest`.
 
 **401** · **404** not opted in · **422** bad host or missing binding.
@@ -64,7 +64,7 @@ Worker validates JWT + active D1 membership, forwards to Durable Object `Timetab
 
 ### Wire format (JSON text frames, `"v": 1`)
 
-**Server → client `snapshot`** (on connect; after each `publish` / `revoke`):
+**Server → client `snapshot`** (on connect, loaded from D1; after each peer `publish` / `revoke` to still-connected sockets):
 
 ```json
 {
@@ -130,7 +130,7 @@ Per-class key (v1):
 key = SHA-256( bundle_key || "|" || "tq-v1:" || class_key )
 ```
 
-`bundle_key` from relay-session only; rotates each session.
+`bundle_key` from relay-session (same value for all opted-in students on the instance until rotation).
 
 ---
 
@@ -141,7 +141,7 @@ key = SHA-256( bundle_key || "|" || "tq-v1:" || class_key )
 3. `GET relay-session` → `bundle_key_b64`, `relay_token`, `ws_url`.
 4. WebSocket → `snapshot` → decrypt → merge roster.
 5. Local timetable → encrypt bundles → `publish`.
-6. Close socket (optional: keep open on timetable tab).
+6. Server closes the WebSocket with code **1000** after a successful `publish` or `revoke` (clients may also close first).
 
 Opt-out: `revoke` on WS if connected, then `DELETE opt-in` (server purges relay share either way).
 
@@ -160,4 +160,5 @@ Opt-out: `revoke` on WS if connected, then `DELETE opt-in` (server purges relay 
 ## Privacy
 
 - **D1:** instance, SEQTA ids, cloud user id, binding digest, timestamps.
-- **DO:** ciphertext + share headers (`seqta_student_id`, `share_code`, `cloud_user_id`). No class names in metadata.
+- **D1 (`tq_relay_share`):** ciphertext bundles (JSON) + share headers (`seqta_student_id`, `share_code`, `cloud_user_id`, period). No class names in metadata.
+- **DO:** connected WebSocket sessions only; share payload is read from D1 for snapshots.
