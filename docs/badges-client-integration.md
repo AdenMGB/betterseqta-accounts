@@ -251,10 +251,10 @@ External apps should maintain their own `ACHIEVEMENT_KEYS` set (or fetch labels 
 
 ### Admin dashboard (manual assignment)
 
-Middle Admins (level 2+) can assign achievement badges without the interop API:
+Middle Admins (level 2+) can assign achievement badges to **any** user, including other admins.
 
 1. **Admin → Users** → user row **⋯** menu → **Manage badges**
 2. Toggle achievement badges (e.g. Theme Submitter). Founder tiers are not editable here—use **Signup Order** backfill instead.
 3. Changes are audited as `user.badge.award` / `user.badge.revoke` in the activity log.
 
-Requires the same permission as editing a user’s profile fields (cannot modify users at your admin level or higher).
+**Revoke rule:** moderators can remove achievement badges from normal users. For accounts with `admin_level > 0`, only that user can uncheck/remove their own badges (open **Manage badges** on your own row).

@@ -914,6 +914,53 @@ async function resolveAdminModifyUserTarget(
   return { ok: true, user: targetUser };
 }
 
+/** Badge management: any middle+ admin; no “level below you” restriction for awarding. */
+async function resolveAdminBadgeUserTarget(
+  env: RequestContext["env"],
+  admin: { adminLevel?: number },
+  userId: string,
+): Promise<{ ok: true; user: AdminModifyUserTarget } | { ok: false; response: Response }> {
+  if ((admin.adminLevel || 0) < 2) {
+    return { ok: false, response: middleAdminForbidden() };
+  }
+  if (!userId) {
+    return {
+      ok: false,
+      response: new Response(JSON.stringify({ error: "User ID is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }),
+    };
+  }
+
+  const targetUser = (await env.DB.prepare(
+    "SELECT id, email, username, displayName, admin_level, signup_number FROM users WHERE id = ?",
+  )
+    .bind(userId)
+    .first()) as AdminModifyUserTarget | null;
+
+  if (!targetUser) {
+    return {
+      ok: false,
+      response: new Response(JSON.stringify({ error: "User not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }),
+    };
+  }
+
+  return { ok: true, user: targetUser };
+}
+
+function canAdminRevokeUserAchievementBadge(
+  actorAdminId: string | undefined,
+  target: AdminModifyUserTarget,
+): boolean {
+  const targetLevel = target.admin_level || 0;
+  if (targetLevel <= 0) return true;
+  return Boolean(actorAdminId && actorAdminId === target.id);
+}
+
 export async function handleAdminUserBadgesGet({
   env,
   request,
@@ -924,12 +971,13 @@ export async function handleAdminUserBadgesGet({
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
   const userId = url.searchParams.get("userId")?.trim() ?? "";
-  const resolved = await resolveAdminModifyUserTarget(env, admin, userId);
+  const resolved = await resolveAdminBadgeUserTarget(env, admin, userId);
   if (!resolved.ok) return resolved.response;
 
   const rawBadges = await getUserBadges(env.DB, userId);
   const achievementKeys = rawBadges.filter((b) => isAwardableBadgeKey(b.key)).map((b) => b.key);
   const badges = displayUserBadges(rawBadges, resolved.user.signup_number);
+  const canRevokeAchievements = canAdminRevokeUserAchievementBadge(admin.id, resolved.user);
 
   return new Response(
     JSON.stringify({
@@ -938,6 +986,7 @@ export async function handleAdminUserBadgesGet({
       badges,
       achievement_keys: achievementKeys,
       awardable: listAwardableBadges(),
+      can_revoke_achievements: canRevokeAchievements,
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
@@ -964,8 +1013,17 @@ export async function handleAdminUserBadgesSet({ env, request, jwtSecret }: Requ
     });
   }
 
-  const resolved = await resolveAdminModifyUserTarget(env, admin, userId);
+  const resolved = await resolveAdminBadgeUserTarget(env, admin, userId);
   if (!resolved.ok) return resolved.response;
+
+  if (action === "revoke" && !canAdminRevokeUserAchievementBadge(admin.id, resolved.user)) {
+    return new Response(
+      JSON.stringify({
+        error: "Only this admin user can remove their own achievement badges",
+      }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
 
   if (action === "award") {
     const result = await awardBadgeToUser(env.DB, userId, badgeKey);

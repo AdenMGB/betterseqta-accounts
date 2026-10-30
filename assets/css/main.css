@@ -418,6 +418,11 @@ body {
   .admin-table-scroll {
     touch-action: pan-x;
   }
+
+  .admin-table-scroll-y {
+    touch-action: pan-y;
+    overflow-x: hidden;
+  }
 }
 
 /* Users / Activity Log tabs: fill remaining panel space, table scrolls internally */
@@ -447,6 +452,14 @@ body {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   max-width: 100%;
+}
+
+.admin-table-scroll-y {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  overscroll-behavior: contain;
 }
 
 @media (max-width: 767px) {

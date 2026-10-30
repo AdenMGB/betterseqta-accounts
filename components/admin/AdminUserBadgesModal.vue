@@ -80,6 +80,12 @@
               <p class="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
                 Founder badges come from signup order (Admin → Signup Order). Only achievement badges can be assigned here.
               </p>
+              <p
+                v-if="!canRevokeAchievements"
+                class="text-xs leading-relaxed text-amber-700 dark:text-amber-400/90 rounded-lg border border-amber-200/80 dark:border-amber-900/40 bg-amber-50/80 dark:bg-amber-950/30 px-3 py-2"
+              >
+                This user is an admin. You can grant achievement badges, but only they can remove their own.
+              </p>
 
               <div class="overflow-hidden rounded-xl border border-zinc-200/80 bg-white/40 dark:border-zinc-700/60 dark:bg-zinc-950/20">
                 <ul class="divide-y divide-zinc-200/70 dark:divide-zinc-700/70">
@@ -96,9 +102,13 @@
                         {{ item.key }}
                       </p>
                     </div>
-                    <label class="inline-flex items-center gap-2 shrink-0 cursor-pointer group">
+                    <label
+                      class="inline-flex items-center gap-2 shrink-0"
+                      :class="checkboxDisabled(item.key) ? 'cursor-not-allowed opacity-70' : 'cursor-pointer group'"
+                    >
                       <span
-                        class="text-xs font-medium text-zinc-500 dark:text-zinc-400 transition-colors duration-200 group-has-[:checked]:text-primary-600 dark:group-has-[:checked]:text-primary-400"
+                        class="text-xs font-medium text-zinc-500 dark:text-zinc-400 transition-colors duration-200"
+                        :class="grantedKeys.has(item.key) ? 'text-primary-600 dark:text-primary-400' : ''"
                       >
                         {{ grantedKeys.has(item.key) ? 'Granted' : 'Off' }}
                       </span>
@@ -106,7 +116,7 @@
                         type="checkbox"
                         class="rounded border-zinc-300 dark:border-zinc-600 text-primary-500 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-zinc-900 disabled:opacity-50"
                         :checked="grantedKeys.has(item.key)"
-                        :disabled="togglingKey === item.key"
+                        :disabled="checkboxDisabled(item.key)"
                         @change="onToggle(item.key, ($event.target as HTMLInputElement).checked)"
                       />
                     </label>
@@ -172,6 +182,7 @@ const grantedKeys = ref<Set<string>>(new Set())
 const displayBadges = ref<BadgeItem[]>([])
 const signupNumber = ref<number | null>(null)
 const togglingKey = ref<string | null>(null)
+const canRevokeAchievements = ref(true)
 
 async function loadBadges() {
   if (!props.user?.id) return
@@ -183,6 +194,7 @@ async function loadBadges() {
       badges: BadgeItem[]
       achievement_keys: string[]
       awardable: AwardableRow[]
+      can_revoke_achievements?: boolean
     }>('/api/admin/user/badges', {
       query: { userId: props.user.id },
       credentials: 'include',
@@ -191,6 +203,7 @@ async function loadBadges() {
     displayBadges.value = res.badges ?? []
     awardable.value = res.awardable ?? []
     grantedKeys.value = new Set(res.achievement_keys ?? [])
+    canRevokeAchievements.value = res.can_revoke_achievements !== false
   } catch (e: any) {
     loadError.value = e?.data?.error || 'Failed to load badges'
   } finally {
@@ -200,6 +213,11 @@ async function loadBadges() {
 
 async function onToggle(badgeKey: string, shouldGrant: boolean) {
   if (!props.user?.id || togglingKey.value) return
+
+  if (!shouldGrant && !canRevokeAchievements.value) {
+    loadError.value = 'Only this admin can remove their own achievement badges.'
+    return
+  }
 
   const previous = new Set(grantedKeys.value)
   if (shouldGrant) {
@@ -246,4 +264,10 @@ watch(
     }
   },
 )
+
+function checkboxDisabled(badgeKey: string): boolean {
+  if (togglingKey.value === badgeKey) return true
+  if (grantedKeys.value.has(badgeKey) && !canRevokeAchievements.value) return true
+  return false
+}
 </script>

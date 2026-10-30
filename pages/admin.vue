@@ -617,67 +617,67 @@
       </div>
 
       <!-- Timetable classmates Tab -->
-      <div v-if="isTab('timetable-classmates')" class="admin-scroll-tab space-y-6">
-        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
-          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">BetterSEQTA+ timetable classmates</h3>
-          <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
-            Counts active phonebook opt-ins per SEQTA school (<code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded">instance_host</code>). Revoked registrations are excluded from active totals.
+      <div v-if="isTab('timetable-classmates')" class="admin-scroll-tab space-y-4 min-w-0 flex flex-col">
+        <div class="shrink-0 bg-zinc-50 dark:bg-zinc-900/30 p-4 sm:p-5 rounded-xl border border-zinc-200 dark:border-zinc-700 min-w-0">
+          <h3 class="text-base font-semibold text-zinc-900 dark:text-white mb-1">BetterSEQTA+ timetable classmates</h3>
+          <p class="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 mb-3">
+            Active phonebook opt-ins per SEQTA school (<code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded">instance_host</code>). Revoked registrations are excluded from active totals.
           </p>
 
-          <div v-if="!tqClassmatesStats?.available" class="text-sm text-amber-600 dark:text-amber-400 mb-4">
+          <div v-if="!tqClassmatesStats?.available" class="text-sm text-amber-600 dark:text-amber-400 mb-3">
             Timetable classmates tables are not available on this database. Run migrations <code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1 rounded">0020</code>+ locally or on D1.
           </div>
 
-          <div v-if="tqClassmatesStatsLoading" class="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+          <div v-if="tqClassmatesStatsLoading" class="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 mb-3">
             <LoadingSpinner size="sm" />
             Loading stats…
           </div>
 
-          <div v-else-if="tqClassmatesStats?.available" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-            <div class="p-4 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-center">
-              <p class="text-3xl font-bold text-primary-600 dark:text-primary-400">{{ tqClassmatesStats.active_opt_ins }}</p>
-              <p class="text-sm text-primary-700 dark:text-primary-300 mt-1">Active opt-ins</p>
+          <div v-else-if="tqClassmatesStats?.available" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mb-3">
+            <div class="px-2.5 py-2 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-center">
+              <p class="text-lg sm:text-xl font-bold tabular-nums text-primary-600 dark:text-primary-400">{{ tqClassmatesStats.active_opt_ins }}</p>
+              <p class="text-[10px] sm:text-xs text-primary-700 dark:text-primary-300 mt-0.5 leading-tight">Active opt-ins</p>
             </div>
-            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
-              <p class="text-3xl font-bold text-zinc-900 dark:text-white">{{ tqClassmatesStats.school_instances }}</p>
-              <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">School instances</p>
+            <div class="px-2.5 py-2 rounded-lg bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-lg sm:text-xl font-bold tabular-nums text-zinc-900 dark:text-white">{{ tqClassmatesStats.school_instances }}</p>
+              <p class="text-[10px] sm:text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">School instances</p>
             </div>
-            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
-              <p class="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{{ tqClassmatesStats.active_last_24h }}</p>
-              <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Heartbeat 24h</p>
+            <div class="px-2.5 py-2 rounded-lg bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-lg sm:text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{{ tqClassmatesStats.active_last_24h }}</p>
+              <p class="text-[10px] sm:text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">Heartbeat 24h</p>
             </div>
-            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
-              <p class="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{{ tqClassmatesStats.active_last_7d }}</p>
-              <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Active 7d</p>
+            <div class="px-2.5 py-2 rounded-lg bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center">
+              <p class="text-lg sm:text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{{ tqClassmatesStats.active_last_7d }}</p>
+              <p class="text-[10px] sm:text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">Active 7d</p>
             </div>
-            <div class="p-4 rounded-xl bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center col-span-2 sm:col-span-1">
-              <p class="text-3xl font-bold text-zinc-500 dark:text-zinc-400">{{ tqClassmatesStats.revoked_total }}</p>
-              <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Revoked (all time)</p>
+            <div class="px-2.5 py-2 rounded-lg bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-center col-span-2 sm:col-span-1">
+              <p class="text-lg sm:text-xl font-bold tabular-nums text-zinc-500 dark:text-zinc-400">{{ tqClassmatesStats.revoked_total }}</p>
+              <p class="text-[10px] sm:text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">Revoked (all time)</p>
             </div>
           </div>
 
           <button
             @click="loadTqClassmatesStats"
             :disabled="tqClassmatesStatsLoading"
-            class="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center gap-2"
+            class="px-3 py-1.5 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center gap-2"
           >
-            <ArrowPathIcon class="w-5 h-5" />
+            <ArrowPathIcon class="w-4 h-4" />
             Refresh
           </button>
         </div>
 
         <div
           v-if="tqClassmatesStats?.available && tqClassmatesStats.by_instance.length"
-          class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700"
+          class="flex-1 min-h-0 min-w-0 flex flex-col bg-zinc-50 dark:bg-zinc-900/30 p-4 sm:p-6 rounded-xl border border-zinc-200 dark:border-zinc-700"
         >
-          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-4">By school instance</h3>
-          <div class="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
-            <div class="admin-table-scroll max-h-[28rem]">
-              <table class="admin-data-table w-full text-left">
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-3 shrink-0">By school instance</h3>
+          <div class="flex-1 min-h-[min(55vh,32rem)] min-w-0 border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+            <div class="h-full max-h-[min(70vh,40rem)] overflow-y-auto overscroll-y-contain min-w-0 overflow-x-hidden admin-table-scroll-y">
+              <table class="w-full text-left min-w-0">
                 <thead class="sticky top-0 bg-zinc-50 dark:bg-zinc-800/95 backdrop-blur-sm z-10">
                   <tr class="border-b border-zinc-200 dark:border-zinc-700">
-                    <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400">Instance</th>
-                    <th class="pb-3 pt-3 px-4 text-sm font-semibold text-zinc-500 dark:text-zinc-400 text-right">Active users</th>
+                    <th class="pb-2 pt-2 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-zinc-500 dark:text-zinc-400">Instance</th>
+                    <th class="pb-2 pt-2 px-3 sm:px-4 text-xs sm:text-sm font-semibold text-zinc-500 dark:text-zinc-400 text-right w-24 shrink-0">Active</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-200 dark:divide-zinc-700">
@@ -686,8 +686,8 @@
                     :key="row.instance_host"
                     class="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors duration-200"
                   >
-                    <td class="py-3 px-4 text-sm text-zinc-900 dark:text-white font-mono break-all">{{ row.instance_host }}</td>
-                    <td class="py-3 px-4 text-sm text-zinc-900 dark:text-white text-right font-semibold">{{ row.active_count }}</td>
+                    <td class="py-2.5 px-3 sm:px-4 text-xs sm:text-sm text-zinc-900 dark:text-white font-mono break-all [overflow-wrap:anywhere] min-w-0">{{ row.instance_host }}</td>
+                    <td class="py-2.5 px-3 sm:px-4 text-sm text-zinc-900 dark:text-white text-right font-semibold tabular-nums align-top">{{ row.active_count }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1686,11 +1686,7 @@ const canModerateUsers = (): boolean => {
     return currentLevel >= 2
 }
 
-const canManageUserBadges = (user: any): boolean => {
-    if (!canModerateUsers()) return false
-    const adminLevel = getCurrentAdminLevel()
-    return (user.admin_level || 0) < adminLevel
-}
+const canManageUserBadges = (_user: any): boolean => canModerateUsers()
 
 const badgesModalOpen = ref(false)
 const badgesModalUser = ref<any>(null)
