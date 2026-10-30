@@ -7,7 +7,7 @@ import {
   apiKeyForbiddenScope,
 } from "../../lib/auth";
 import { checkRateLimit } from "../../lib/rate-limit";
-import { isFounding2500, getUserBadges, displayUserBadges, FOUNDING_2500_THRESHOLD } from "../../lib/badges";
+import { isFounding2500, getUserBadges, displayUserBadges, awardBadgeToUser, revokeBadgeFromUser, AWARDABLE_BADGE_KEYS, FOUNDING_2500_THRESHOLD } from "../../lib/badges";
 import { mapUserPublic, USER_PUBLIC_SELECT, enrichUserPublic } from "../../lib/userPublic";
 import type { RequestContext } from "../../types/context";
 
@@ -117,6 +117,87 @@ export async function handleV1UserBadges({ env, request, url }: RequestContext):
       userRow.signup_number ?? null,
     );
     return jsonResponse({ userId, badges });
+  } catch (e) {
+    return apiKeyDbError(e);
+  }
+}
+
+export async function handleV1UserBadgeAward({ env, request, url }: RequestContext): Promise<Response> {
+  try {
+    const rateLimited = await checkRateLimit(env, request, "v1-badges-write", { limit: 120, windowSec: 3600 });
+    if (rateLimited) return rateLimited;
+
+    const auth = await requireScopedApiKey(env, request, "badges:write");
+    if (auth instanceof Response) return auth;
+
+    const userId = extractPathParam(url.pathname, /^\/api\/v1\/users\/([^/]+)\/badges$/);
+    if (!userId) return jsonResponse({ error: "Invalid user id" }, 400);
+
+    let body: { badge_key?: string };
+    try {
+      body = (await request.json()) as { badge_key?: string };
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400);
+    }
+
+    const badgeKey = typeof body.badge_key === "string" ? body.badge_key.trim() : "";
+    if (!badgeKey) {
+      return jsonResponse({ error: "badge_key is required" }, 400);
+    }
+
+    const result = await awardBadgeToUser(env.DB, userId, badgeKey);
+    if (!result.ok) {
+      if (result.reason === "user_not_found") return jsonResponse({ error: "User not found" }, 404);
+      return jsonResponse(
+        {
+          error: "Invalid badge_key",
+          allowed: [...AWARDABLE_BADGE_KEYS],
+        },
+        400,
+      );
+    }
+
+    return jsonResponse({
+      userId,
+      badge_key: badgeKey,
+      awarded: true,
+      created: result.created,
+    });
+  } catch (e) {
+    return apiKeyDbError(e);
+  }
+}
+
+export async function handleV1UserBadgeRevoke({ env, request, url }: RequestContext): Promise<Response> {
+  try {
+    const rateLimited = await checkRateLimit(env, request, "v1-badges-write", { limit: 120, windowSec: 3600 });
+    if (rateLimited) return rateLimited;
+
+    const auth = await requireScopedApiKey(env, request, "badges:write");
+    if (auth instanceof Response) return auth;
+
+    const match = url.pathname.match(/^\/api\/v1\/users\/([^/]+)\/badges\/([^/]+)$/);
+    const userId = match?.[1] ?? null;
+    const badgeKey = match?.[2] ? decodeURIComponent(match[2]) : null;
+    if (!userId || !badgeKey) return jsonResponse({ error: "Invalid path" }, 400);
+
+    const result = await revokeBadgeFromUser(env.DB, userId, badgeKey);
+    if (!result.ok) {
+      if (result.reason === "user_not_found") return jsonResponse({ error: "User not found" }, 404);
+      return jsonResponse(
+        {
+          error: "Invalid badge_key",
+          allowed: [...AWARDABLE_BADGE_KEYS],
+        },
+        400,
+      );
+    }
+
+    return jsonResponse({
+      userId,
+      badge_key: badgeKey,
+      revoked: result.removed,
+    });
   } catch (e) {
     return apiKeyDbError(e);
   }

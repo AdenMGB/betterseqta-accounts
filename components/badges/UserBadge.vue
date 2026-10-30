@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { badgeRankLabel, type BadgeItem } from '~/utils/badges'
+import { badgeDescription, badgeRankLabel, isAchievementBadgeKey, type BadgeItem } from '~/utils/badges'
 import FounderBadgeGlass from '~/components/badges/FounderBadgeGlass.vue'
 
 const props = defineProps<{
@@ -55,6 +55,9 @@ const formattedSignupDate = computed(() => {
 })
 
 const tooltipDetail = computed(() => {
+  if (isAchievementBadgeKey(props.badge.key)) {
+    return badgeDescription(props.badge.key)
+  }
   const parts: string[] = []
   if (props.signupNumber != null) {
     parts.push(`Cloud user #${props.signupNumber.toLocaleString()}`)

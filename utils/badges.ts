@@ -59,6 +59,17 @@ export const BADGE_TIERS = [
   },
 ] as const
 
+export const ACHIEVEMENT_BADGES = [
+  {
+    key: 'theme_submitter',
+    label: 'Theme Submitter',
+    rankLabel: 'Community',
+    description:
+      'Submitted a custom theme that was accepted into the BetterSEQTA theme gallery.',
+  },
+] as const
+
+export type AchievementBadgeKey = (typeof ACHIEVEMENT_BADGES)[number]['key']
 export type BadgeKey = (typeof BADGE_TIERS)[number]['key']
 
 export type BadgeItem = {
@@ -68,17 +79,30 @@ export type BadgeItem = {
 }
 
 const TIER_BY_KEY = new Map(BADGE_TIERS.map((t) => [t.key, t]))
+const ACHIEVEMENT_BY_KEY = new Map(ACHIEVEMENT_BADGES.map((b) => [b.key, b]))
 
 export function tierForBadgeKey(key: string) {
   return TIER_BY_KEY.get(key as BadgeKey)
 }
 
 export function badgeRankLabel(key: string): string {
-  return tierForBadgeKey(key)?.rankLabel ?? ''
+  return tierForBadgeKey(key)?.rankLabel ?? ACHIEVEMENT_BY_KEY.get(key as AchievementBadgeKey)?.rankLabel ?? ''
 }
 
 export function badgeDescription(key: string): string {
-  return tierForBadgeKey(key)?.description ?? 'A founder badge linked to your BetterSEQTA Cloud account.'
+  return (
+    tierForBadgeKey(key)?.description ??
+    ACHIEVEMENT_BY_KEY.get(key as AchievementBadgeKey)?.description ??
+    'A badge linked to your BetterSEQTA Cloud account.'
+  )
+}
+
+export function isAchievementBadgeKey(key: string): key is AchievementBadgeKey {
+  return ACHIEVEMENT_BY_KEY.has(key as AchievementBadgeKey)
+}
+
+export function achievementBadgesFromList(badges: BadgeItem[]): BadgeItem[] {
+  return badges.filter((b) => isAchievementBadgeKey(b.key))
 }
 
 export function primaryFounderBadgeKey(signupNumber: number): BadgeKey | null {

@@ -51,6 +51,14 @@ const routes: Route[] = [
     test: (m, p) => m === "GET" && /^\/api\/v1\/users\/badges\/[^/]+$/.test(p),
     handle: (c) => v1Users.handleV1UserBadges(c),
   },
+  {
+    test: (m, p) => m === "POST" && /^\/api\/v1\/users\/[^/]+\/badges$/.test(p),
+    handle: (c) => v1Users.handleV1UserBadgeAward(c),
+  },
+  {
+    test: (m, p) => m === "DELETE" && /^\/api\/v1\/users\/[^/]+\/badges\/[^/]+$/.test(p),
+    handle: (c) => v1Users.handleV1UserBadgeRevoke(c),
+  },
   { test: (m, p) => m === "POST" && p === "/api/auth/register", handle: (c) => auth.handleRegister(c) },
   { test: (m, p) => m === "POST" && p === "/api/auth/login", handle: (c) => auth.handleLogin(c) },
   { test: (m, p) => m === "GET" && p === "/api/auth/me", handle: (c) => auth.handleMe(c) },

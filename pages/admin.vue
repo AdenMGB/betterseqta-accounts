@@ -309,6 +309,8 @@
             <li><code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">GET /api/export/users/count</code> — <code>{ total }</code> (user count only)</li>
             <li><code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">GET /api/export/reserved-clients</code> — <code>{ count }</code> (reserved DesQTA client instances)</li>
             <li><code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">GET /api/export/users/full</code> — <code>{ users, count }</code> (full user table, excludes password)</li>
+            <li><code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">POST /api/v1/users/:userId/badges</code> — award achievement badge (<code>badges:write</code>). See <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">docs/api-badges-award.md</code>.</li>
+            <li><code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">GET /api/v1/users/badges/:userId</code> — read badges (<code>badges:read</code>)</li>
           </ul>
         </div>
 

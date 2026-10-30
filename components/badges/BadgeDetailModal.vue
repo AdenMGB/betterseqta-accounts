@@ -31,7 +31,7 @@
           >
             <div class="founder-badge-popup-header">
               <h1>{{ badge.label }}</h1>
-              <p>{{ rankLabel }}</p>
+              <p v-if="rankLabel">{{ rankLabel }}</p>
             </div>
 
             <div class="founder-badge-popup-hero-wrap">

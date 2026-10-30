@@ -14,8 +14,16 @@
       :signed-up-at="signedUpAt"
       @open-detail="openDetail"
     />
+    <UserBadge
+      v-for="achievement in achievementBadges"
+      :key="achievement.key"
+      :badge="achievement"
+      :signup-number="signupNumber"
+      :signed-up-at="signedUpAt"
+      @open-detail="openDetail"
+    />
     <span
-      v-else-if="signupNumber != null"
+      v-if="!founderBadge && signupNumber != null"
       class="signup-chip inline-flex items-center rounded-md border border-zinc-200/80 bg-zinc-100/90 px-2 py-0.5 text-[11px] font-medium tabular-nums text-zinc-600 dark:border-zinc-600/60 dark:bg-zinc-800/80 dark:text-zinc-300"
       :title="`BetterSEQTA Cloud user #${signupNumber.toLocaleString()}`"
     >
@@ -37,7 +45,7 @@ import { computed, ref } from 'vue'
 import AdminRoleBadge from '~/components/badges/AdminRoleBadge.vue'
 import BadgeDetailModal from '~/components/badges/BadgeDetailModal.vue'
 import UserBadge from '~/components/badges/UserBadge.vue'
-import { displayFounderBadges, type BadgeItem } from '~/utils/badges'
+import { achievementBadgesFromList, displayFounderBadges, type BadgeItem } from '~/utils/badges'
 
 const props = withDefaults(
   defineProps<{
@@ -67,10 +75,13 @@ const founderBadge = computed(() => {
   return displayed[0] ?? null
 })
 
+const achievementBadges = computed(() => achievementBadgesFromList(props.badges ?? []))
+
 const hasBadges = computed(
   () =>
     (props.adminLevel ?? 0) > 0
     || founderBadge.value != null
+    || achievementBadges.value.length > 0
     || props.signupNumber != null,
 )
 </script>

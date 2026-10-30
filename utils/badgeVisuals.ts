@@ -39,6 +39,10 @@ export const BADGE_VISUALS: Record<string, BadgeVisual> = {
     base: '#713f12',
     blobs: ['rgba(245,158,11,0.52)', 'rgba(234,179,8,0.46)', 'rgba(252,211,77,0.4)'],
   },
+  theme_submitter: {
+    base: '#4c1d95',
+    blobs: ['rgba(167,139,250,0.55)', 'rgba(236,72,153,0.42)', 'rgba(192,132,252,0.38)'],
+  },
 }
 
 export function badgeVisualForKey(key: string): BadgeVisual {

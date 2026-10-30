@@ -13,7 +13,23 @@ export const BADGE_TIERS = [
   { key: "founder_2500", label: "Founding Cloud", threshold: 2500 },
 ] as const;
 
+/** Manually awarded badges (via interop API), not derived from signup order. */
+export const ACHIEVEMENT_BADGES = [{ key: "theme_submitter", label: "Theme Submitter" }] as const;
+
+export type AchievementBadgeKey = (typeof ACHIEVEMENT_BADGES)[number]["key"];
 export type BadgeKey = (typeof BADGE_TIERS)[number]["key"];
+
+const ACHIEVEMENT_BY_KEY = new Map(ACHIEVEMENT_BADGES.map((b) => [b.key, b]));
+
+export const AWARDABLE_BADGE_KEYS = new Set<string>(ACHIEVEMENT_BADGES.map((b) => b.key));
+
+export function isAchievementBadgeKey(key: string): key is AchievementBadgeKey {
+  return ACHIEVEMENT_BY_KEY.has(key as AchievementBadgeKey);
+}
+
+export function isAwardableBadgeKey(key: string): boolean {
+  return AWARDABLE_BADGE_KEYS.has(key);
+}
 
 export type UserBadge = {
   key: string;
@@ -67,8 +83,15 @@ export function displayUserBadges(
   badges: UserBadge[],
   signupNumber?: number | null,
 ): UserBadge[] {
+  const displayed: UserBadge[] = [];
   const primary = pickPrimaryFounderBadge(badges, signupNumber);
-  return primary ? [primary] : [];
+  if (primary) displayed.push(primary);
+  for (const badge of badges) {
+    if (!isAchievementBadgeKey(badge.key)) continue;
+    if (displayed.some((b) => b.key === badge.key)) continue;
+    displayed.push(badge);
+  }
+  return displayed;
 }
 
 export function isFounding2500(signupNumber: number | null | undefined): boolean {
@@ -76,7 +99,59 @@ export function isFounding2500(signupNumber: number | null | undefined): boolean
 }
 
 export function labelForBadgeKey(key: string): string {
-  return TIER_BY_KEY.get(key as BadgeKey)?.label ?? key;
+  return (
+    TIER_BY_KEY.get(key as BadgeKey)?.label ??
+    ACHIEVEMENT_BY_KEY.get(key as AchievementBadgeKey)?.label ??
+    key
+  );
+}
+
+/** Award an achievement badge (idempotent). Returns true if the user exists. */
+export async function awardBadgeToUser(
+  db: Env["DB"],
+  userId: string,
+  badgeKey: string,
+): Promise<{ ok: true; created: boolean } | { ok: false; reason: "user_not_found" | "invalid_badge" }> {
+  if (!isAwardableBadgeKey(badgeKey)) {
+    return { ok: false, reason: "invalid_badge" };
+  }
+  const user = await db.prepare("SELECT id FROM users WHERE id = ?").bind(userId).first();
+  if (!user) return { ok: false, reason: "user_not_found" };
+
+  const existing = await db
+    .prepare("SELECT 1 FROM user_badges WHERE user_id = ? AND badge_key = ?")
+    .bind(userId, badgeKey)
+    .first();
+  if (existing) {
+    return { ok: true, created: false };
+  }
+
+  await db
+    .prepare(
+      "INSERT INTO user_badges (user_id, badge_key, awarded_at) VALUES (?, ?, unixepoch())",
+    )
+    .bind(userId, badgeKey)
+    .run();
+  return { ok: true, created: true };
+}
+
+/** Remove an achievement badge. Returns true if a row was deleted. */
+export async function revokeBadgeFromUser(
+  db: Env["DB"],
+  userId: string,
+  badgeKey: string,
+): Promise<{ ok: true; removed: boolean } | { ok: false; reason: "user_not_found" | "invalid_badge" }> {
+  if (!isAwardableBadgeKey(badgeKey)) {
+    return { ok: false, reason: "invalid_badge" };
+  }
+  const user = await db.prepare("SELECT id FROM users WHERE id = ?").bind(userId).first();
+  if (!user) return { ok: false, reason: "user_not_found" };
+
+  const result = await db
+    .prepare("DELETE FROM user_badges WHERE user_id = ? AND badge_key = ?")
+    .bind(userId, badgeKey)
+    .run();
+  return { ok: true, removed: (result.meta.changes ?? 0) > 0 };
 }
 
 /** Award the primary founder badge for a signup_number (idempotent). */

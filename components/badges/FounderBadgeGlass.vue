@@ -24,6 +24,7 @@ import {
   StarIcon,
   TrophyIcon,
   FireIcon,
+  SwatchIcon,
 } from '@heroicons/vue/20/solid'
 import { badgeBlobStyle } from '~/utils/badgeVisuals'
 import type { BadgeItem } from '~/utils/badges'
@@ -45,6 +46,7 @@ const tierIcons: Record<string, typeof SparklesIcon> = {
   founder_500: TrophyIcon,
   founder_1000: FireIcon,
   founder_2500: FireIcon,
+  theme_submitter: SwatchIcon,
 }
 
 const tierIcon = computed(() => tierIcons[props.badge.key] ?? SparklesIcon)
