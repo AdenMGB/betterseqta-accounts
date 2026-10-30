@@ -31,6 +31,10 @@ export function isAwardableBadgeKey(key: string): boolean {
   return AWARDABLE_BADGE_KEYS.has(key);
 }
 
+export function listAwardableBadges(): { key: string; label: string }[] {
+  return ACHIEVEMENT_BADGES.map((b) => ({ key: b.key, label: b.label }));
+}
+
 export type UserBadge = {
   key: string;
   label: string;

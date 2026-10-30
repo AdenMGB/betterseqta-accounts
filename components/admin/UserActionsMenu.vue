@@ -26,6 +26,15 @@
           @click.stop
         >
           <button
+            v-if="canManageBadges"
+            type="button"
+            role="menuitem"
+            :class="menuItemClass(false)"
+            @click="choose('badges')"
+          >
+            Manage badges
+          </button>
+          <button
             v-if="canEdit"
             type="button"
             role="menuitem"
@@ -85,6 +94,7 @@ import { EllipsisVerticalIcon } from '@heroicons/vue/24/outline'
 const props = defineProps<{
   user: { displayName?: string; username: string }
   canEdit?: boolean
+  canManageBadges?: boolean
   canPromote?: boolean
   canDemote?: boolean
   canReset?: boolean
@@ -93,7 +103,7 @@ const props = defineProps<{
   deleting?: boolean
 }>()
 
-type Action = 'edit' | 'promote' | 'demote' | 'reset' | 'delete'
+type Action = 'edit' | 'badges' | 'promote' | 'demote' | 'reset' | 'delete'
 
 const emit = defineEmits<{ (e: Action): void }>()
   

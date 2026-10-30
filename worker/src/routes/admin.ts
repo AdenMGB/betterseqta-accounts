@@ -42,7 +42,17 @@ import {
   getIntegrationSettingsPublic,
   saveIntegrationSettings,
 } from "../lib/integration-settings";
-import { backfillAllBadges, clearFounderBadges, FOUNDING_2500_THRESHOLD } from "../lib/badges";
+import {
+  backfillAllBadges,
+  clearFounderBadges,
+  FOUNDING_2500_THRESHOLD,
+  awardBadgeToUser,
+  revokeBadgeFromUser,
+  getUserBadges,
+  displayUserBadges,
+  listAwardableBadges,
+  isAwardableBadgeKey,
+} from "../lib/badges";
 import { getSignupOrderStats, recomputeAllSignupNumbers } from "../lib/signupNumber";
 import { enrichAdminUserRows, queryAdminUsersPage } from "../lib/adminUsersQuery";
 import { getTimetableClassmatesAdminStats } from "../lib/timetable-classmates-admin-stats";
@@ -844,6 +854,194 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
   return new Response(JSON.stringify({ success: true }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+type AdminModifyUserTarget = {
+  id: string;
+  email: string;
+  username: string;
+  displayName: string | null;
+  admin_level: number;
+  signup_number: number | null;
+};
+
+async function resolveAdminModifyUserTarget(
+  env: RequestContext["env"],
+  admin: { adminLevel?: number },
+  userId: string,
+): Promise<{ ok: true; user: AdminModifyUserTarget } | { ok: false; response: Response }> {
+  if ((admin.adminLevel || 0) < 2) {
+    return { ok: false, response: middleAdminForbidden() };
+  }
+  if (!userId) {
+    return {
+      ok: false,
+      response: new Response(JSON.stringify({ error: "User ID is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }),
+    };
+  }
+
+  const targetUser = (await env.DB.prepare(
+    "SELECT id, email, username, displayName, admin_level, signup_number FROM users WHERE id = ?",
+  )
+    .bind(userId)
+    .first()) as AdminModifyUserTarget | null;
+
+  if (!targetUser) {
+    return {
+      ok: false,
+      response: new Response(JSON.stringify({ error: "User not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }),
+    };
+  }
+
+  const targetLevel = targetUser.admin_level || 0;
+  const adminLevelNum = admin.adminLevel || 0;
+  if (targetLevel >= adminLevelNum) {
+    return {
+      ok: false,
+      response: new Response(JSON.stringify({ error: "Cannot modify users at your level or higher" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }),
+    };
+  }
+
+  return { ok: true, user: targetUser };
+}
+
+export async function handleAdminUserBadgesGet({
+  env,
+  request,
+  url,
+  jwtSecret,
+}: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const userId = url.searchParams.get("userId")?.trim() ?? "";
+  const resolved = await resolveAdminModifyUserTarget(env, admin, userId);
+  if (!resolved.ok) return resolved.response;
+
+  const rawBadges = await getUserBadges(env.DB, userId);
+  const achievementKeys = rawBadges.filter((b) => isAwardableBadgeKey(b.key)).map((b) => b.key);
+  const badges = displayUserBadges(rawBadges, resolved.user.signup_number);
+
+  return new Response(
+    JSON.stringify({
+      userId,
+      signup_number: resolved.user.signup_number,
+      badges,
+      achievement_keys: achievementKeys,
+      awardable: listAwardableBadges(),
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
+
+export async function handleAdminUserBadgesSet({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const body = (await request.json()) as {
+    userId?: string;
+    badge_key?: string;
+    action?: string;
+  };
+
+  const userId = body.userId?.trim() ?? "";
+  const badgeKey = typeof body.badge_key === "string" ? body.badge_key.trim() : "";
+  const action = body.action === "revoke" ? "revoke" : body.action === "award" ? "award" : null;
+
+  if (!badgeKey || !action) {
+    return new Response(JSON.stringify({ error: "userId, badge_key, and action (award|revoke) are required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const resolved = await resolveAdminModifyUserTarget(env, admin, userId);
+  if (!resolved.ok) return resolved.response;
+
+  if (action === "award") {
+    const result = await awardBadgeToUser(env.DB, userId, badgeKey);
+    if (!result.ok) {
+      if (result.reason === "invalid_badge") {
+        return new Response(
+          JSON.stringify({ error: "Invalid badge_key", awardable: listAwardableBadges() }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ error: "User not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    await audit(env, admin, {
+      action: "user.badge.award",
+      targetType: "user",
+      targetId: userId,
+      details: {
+        ...auditTargetForUser({
+          id: userId,
+          username: resolved.user.username,
+          displayName: resolved.user.displayName,
+          email: resolved.user.email,
+        }),
+        context: { badge_key: badgeKey, created: result.created },
+      },
+      success: true,
+    });
+  } else {
+    const result = await revokeBadgeFromUser(env.DB, userId, badgeKey);
+    if (!result.ok) {
+      if (result.reason === "invalid_badge") {
+        return new Response(
+          JSON.stringify({ error: "Invalid badge_key", awardable: listAwardableBadges() }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ error: "User not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    await audit(env, admin, {
+      action: "user.badge.revoke",
+      targetType: "user",
+      targetId: userId,
+      details: {
+        ...auditTargetForUser({
+          id: userId,
+          username: resolved.user.username,
+          displayName: resolved.user.displayName,
+          email: resolved.user.email,
+        }),
+        context: { badge_key: badgeKey, removed: result.removed },
+      },
+      success: true,
+    });
+  }
+
+  const rawBadges = await getUserBadges(env.DB, userId);
+  const badges = displayUserBadges(rawBadges, resolved.user.signup_number);
+  const achievementKeys = rawBadges.filter((b) => isAwardableBadgeKey(b.key)).map((b) => b.key);
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      userId,
+      badges,
+      achievement_keys: achievementKeys,
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
 }
 
 export async function handleAdminUserPfpGet({ env, request, url, jwtSecret }: RequestContext): Promise<Response> {

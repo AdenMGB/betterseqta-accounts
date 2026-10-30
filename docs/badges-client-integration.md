@@ -248,3 +248,13 @@ External apps should maintain their own `ACHIEVEMENT_KEYS` set (or fetch labels 
 
 - [api-badges-award.md](./api-badges-award.md) — award/revoke `theme_submitter` from BetterSEQTA.org or other backends
 - Accounts reference UI: `components/badges/ProfileBadgeStack.vue`, `utils/badges.ts`, `utils/badgeVisuals.ts`
+
+### Admin dashboard (manual assignment)
+
+Middle Admins (level 2+) can assign achievement badges without the interop API:
+
+1. **Admin → Users** → user row **⋯** menu → **Manage badges**
+2. Toggle achievement badges (e.g. Theme Submitter). Founder tiers are not editable here—use **Signup Order** backfill instead.
+3. Changes are audited as `user.badge.award` / `user.badge.revoke` in the activity log.
+
+Requires the same permission as editing a user’s profile fields (cannot modify users at your admin level or higher).

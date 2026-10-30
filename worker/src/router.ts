@@ -157,6 +157,8 @@ const routes: Route[] = [
   { test: (m, p) => m === "GET" && p === "/api/admin/integrations", handle: (c) => admin.handleAdminIntegrationsGet(c) },
   { test: (m, p) => m === "PUT" && p === "/api/admin/integrations", handle: (c) => admin.handleAdminIntegrationsPut(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/update-user", handle: (c) => admin.handleAdminUpdateUser(c) },
+  { test: (m, p) => m === "GET" && p === "/api/admin/user/badges", handle: (c) => admin.handleAdminUserBadgesGet(c) },
+  { test: (m, p) => m === "POST" && p === "/api/admin/user/badges", handle: (c) => admin.handleAdminUserBadgesSet(c) },
   { test: (m, p) => m === "GET" && p === "/api/admin/user/pfp", handle: (c) => admin.handleAdminUserPfpGet(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/user/pfp", handle: (c) => admin.handleAdminUserPfpUpload(c) },
   { test: (m, p) => m === "POST" && p === "/api/admin/user/pfp/revert", handle: (c) => admin.handleAdminUserPfpRevert(c) },

@@ -178,6 +178,7 @@
                                         v-else-if="hasUserActions(users[virtualRow.index])"
                                         :user="users[virtualRow.index]"
                                         :can-edit="canModerateUsers()"
+                                        :can-manage-badges="canManageUserBadges(users[virtualRow.index])"
                                         :can-promote="canPromoteUser(users[virtualRow.index].admin_level || 0)"
                                         :can-demote="canDemoteUser(users[virtualRow.index].admin_level || 0)"
                                         :can-reset="getCurrentAdminLevel() > 0 && users[virtualRow.index].id !== auth.user.value?.id"
@@ -185,6 +186,7 @@
                                         :resetting="sendingResetUserId === users[virtualRow.index].id"
                                         :deleting="deletingUserId === users[virtualRow.index].id"
                                         @edit="startUserEdit(users[virtualRow.index])"
+                                        @badges="openUserBadgesModal(users[virtualRow.index])"
                                         @promote="promoteUser(users[virtualRow.index])"
                                         @demote="demoteUser(users[virtualRow.index])"
                                         @reset="sendPasswordReset(users[virtualRow.index])"
@@ -876,6 +878,13 @@
     @cancel="closeConfirm"
     @confirm="runConfirm"
   />
+
+  <AdminUserBadgesModal
+    :is-open="badgesModalOpen"
+    :user="badgesModalUser"
+    @close="closeUserBadgesModal"
+    @updated="onUserBadgesUpdated"
+  />
 </template>
 
 <script setup lang="ts">
@@ -891,6 +900,7 @@ import PfpEditorModal from '~/components/PfpEditorModal.vue'
 import AuditContextCell from '~/components/admin/AuditContextCell.vue'
 import ConfirmDialog from '~/components/admin/ConfirmDialog.vue'
 import UserActionsMenu from '~/components/admin/UserActionsMenu.vue'
+import AdminUserBadgesModal from '~/components/admin/AdminUserBadgesModal.vue'
 import PfpAuditTab from '~/components/admin/PfpAuditTab.vue'
 import ProfileBadgeStack from '~/components/badges/ProfileBadgeStack.vue'
 import { useIntersectionObserver, useMediaQuery, watchDebounced } from '@vueuse/core'
@@ -1109,6 +1119,8 @@ const auditActionOptions = [
   { value: 'user.promote', label: 'Promote user' },
   { value: 'user.demote', label: 'Demote user' },
   { value: 'user.update', label: 'Update user' },
+  { value: 'user.badge.award', label: 'Award user badge' },
+  { value: 'user.badge.revoke', label: 'Revoke user badge' },
   { value: 'user.delete', label: 'Delete user' },
   { value: 'user.password_reset', label: 'Password reset' },
   { value: 'pfp.upload', label: 'PFP upload' },
@@ -1674,6 +1686,32 @@ const canModerateUsers = (): boolean => {
     return currentLevel >= 2
 }
 
+const canManageUserBadges = (user: any): boolean => {
+    if (!canModerateUsers()) return false
+    const adminLevel = getCurrentAdminLevel()
+    return (user.admin_level || 0) < adminLevel
+}
+
+const badgesModalOpen = ref(false)
+const badgesModalUser = ref<any>(null)
+
+const openUserBadgesModal = (user: any) => {
+    badgesModalUser.value = user
+    badgesModalOpen.value = true
+}
+
+const closeUserBadgesModal = () => {
+    badgesModalOpen.value = false
+    badgesModalUser.value = null
+}
+
+const onUserBadgesUpdated = ({ userId, badges }: { userId: string; badges: any[] }) => {
+    const idx = users.value.findIndex((u) => u.id === userId)
+    if (idx !== -1) {
+        users.value[idx] = { ...users.value[idx], badges }
+    }
+}
+
 const canDeleteUser = (user: any): boolean => {
     const currentLevel = getCurrentAdminLevel()
     if (currentLevel < maxAdminLevel.value) return false
@@ -1684,6 +1722,7 @@ const canDeleteUser = (user: any): boolean => {
 
 const hasUserActions = (user: any) =>
     canModerateUsers()
+    || canManageUserBadges(user)
     || canPromoteUser(user.admin_level || 0)
     || canDemoteUser(user.admin_level || 0)
     || (getCurrentAdminLevel() > 0 && user.id !== auth.user.value?.id)
