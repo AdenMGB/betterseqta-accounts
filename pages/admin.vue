@@ -39,7 +39,7 @@
                 v-model="searchQuery" 
                 @keyup.enter="handleSearch" 
                 type="text" 
-                placeholder="Search by username or email..." 
+                placeholder="Search by username, email, display name, or account ID…" 
                 class="w-full sm:flex-1 min-w-0 px-4 py-2 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
             >
             <div class="flex flex-wrap items-center gap-3">

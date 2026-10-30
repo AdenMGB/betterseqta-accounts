@@ -165,8 +165,16 @@ export async function handleAdminUsers({ env, request, url, jwtSecret }: Request
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  conditions.push("(username LIKE ? OR email LIKE ?)");
-  params.push(`%${query}%`, `%${query}%`);
+  const like = `%${query}%`;
+  const searchFields = ["username LIKE ?", "email LIKE ?", "displayName LIKE ?", "id LIKE ?"];
+  const searchParams: unknown[] = [like, like, like, like];
+  const trimmedQuery = query.trim();
+  if (/^\d+$/.test(trimmedQuery)) {
+    searchFields.push("signup_number = ?");
+    searchParams.push(parseInt(trimmedQuery, 10));
+  }
+  conditions.push(`(${searchFields.join(" OR ")})`);
+  params.push(...searchParams);
 
   if (hasPfp) {
     conditions.push("pfpUrl IS NOT NULL AND pfpUrl != ''");
