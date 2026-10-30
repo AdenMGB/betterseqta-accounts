@@ -1,25 +1,23 @@
+import {
+  deleteShare,
+  loadSharesForInstance,
+  upsertShare,
+} from "../lib/timetable-classmates-relay-store";
+import {
+  isValidBundle,
+  isValidPeriod,
+  sortSharesByUpdatedAt,
+  type RelayBundle,
+  type StoredShare,
+} from "../lib/timetable-classmates-relay-types";
 import { logTqRelayObs } from "../lib/tq-relay-observability";
+import type { Env } from "../types/env";
 
 type ObsEnv = { TQ_RELAY_OBS?: string };
 
 function obsEnvFromRelayHeader(enabled: boolean): ObsEnv {
   return enabled ? {} : { TQ_RELAY_OBS: "0" };
 }
-
-export type RelayBundle = {
-  class_key: string;
-  iv_b64: string;
-  ct_b64: string;
-};
-
-export type StoredShare = {
-  seqta_student_id: number;
-  cloud_user_id: string;
-  share_code: string;
-  period: { from: string; until: string };
-  updated_at: number;
-  bundles: RelayBundle[];
-};
 
 type ClientInfo = {
   cloudUserId: string;
@@ -36,42 +34,10 @@ type InboundPublish = {
   bundles: RelayBundle[];
 };
 
-type InboundRevoke = {
-  v: 1;
-  type: "revoke";
-};
-
-function isValidBundle(b: unknown): b is RelayBundle {
-  if (!b || typeof b !== "object") return false;
-  const row = b as Record<string, unknown>;
-  return (
-    typeof row.class_key === "string" &&
-    row.class_key.length > 0 &&
-    row.class_key.length <= 128 &&
-    typeof row.iv_b64 === "string" &&
-    row.iv_b64.length > 0 &&
-    row.iv_b64.length <= 64 &&
-    typeof row.ct_b64 === "string" &&
-    row.ct_b64.length > 0 &&
-    row.ct_b64.length <= 65536
-  );
-}
-
-function isValidPeriod(period: unknown): period is { from: string; until: string } {
-  if (!period || typeof period !== "object") return false;
-  const p = period as Record<string, unknown>;
-  return typeof p.from === "string" && p.from.length > 0 && typeof p.until === "string" && p.until.length > 0;
-}
-
 export class TimetableClassmatesRelay implements DurableObject {
-  private shares = new Map<number, StoredShare>();
   private sockets = new Map<WebSocket, ClientInfo>();
-  constructor(private state: DurableObjectState) {
-    void this.state.blockConcurrencyWhile(async () => {
-      const stored = await this.state.storage.get<[number, StoredShare][]>("shares");
-      if (stored) this.shares = new Map(stored);
-    });
-  }
+
+  constructor(_state: DurableObjectState, private env: Env) {}
 
   async fetch(request: Request): Promise<Response> {
     const obs = obsEnvFromRelayHeader(request.headers.get("X-TQ-Relay-Obs") === "1");
@@ -85,14 +51,21 @@ export class TimetableClassmatesRelay implements DurableObject {
           headers: { "Content-Type": "application/json" },
         });
       }
-      this.shares.delete(seqtaStudentId);
-      await this.state.storage.put("shares", [...this.shares.entries()]);
-      const broadcast = this.broadcastSnapshot();
+      if (!instanceHost) {
+        return new Response(JSON.stringify({ error: "Missing instance host" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      await deleteShare(this.env.DB, instanceHost, seqtaStudentId);
+      const shares = await loadSharesForInstance(this.env.DB, instanceHost);
+      const broadcast = await this.broadcastSnapshot(instanceHost, shares);
       logTqRelayObs(obs, {
         event: "relay_revoke",
-        instance_host: instanceHost || undefined,
+        instance_host: instanceHost,
         seqta_student_id: seqtaStudentId,
-        share_count: this.shares.size,
+        share_count: shares.length,
         ...broadcast,
       });
       return new Response(JSON.stringify({ ok: true }), {
@@ -110,6 +83,9 @@ export class TimetableClassmatesRelay implements DurableObject {
     if (!cloudUserId || !Number.isFinite(seqtaStudentId) || !shareCode) {
       return new Response("Unauthorized", { status: 401 });
     }
+    if (!instanceHost) {
+      return new Response("Missing instance host", { status: 400 });
+    }
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
@@ -120,14 +96,7 @@ export class TimetableClassmatesRelay implements DurableObject {
   private acceptSocket(ws: WebSocket, info: ClientInfo): void {
     ws.accept();
     this.sockets.set(ws, info);
-    this.sendSnapshot(ws);
-    logTqRelayObs(info.obs, {
-      event: "relay_ws_connect",
-      instance_host: info.instanceHost || undefined,
-      seqta_student_id: info.seqtaStudentId,
-      connected_sockets: this.sockets.size,
-      share_count: this.shares.size,
-    });
+    void this.sendInitialSnapshot(ws, info);
 
     ws.addEventListener("message", (event) => {
       void this.onMessage(ws, event.data);
@@ -147,6 +116,28 @@ export class TimetableClassmatesRelay implements DurableObject {
     ws.addEventListener("error", () => {
       this.sockets.delete(ws);
     });
+  }
+
+  private async sendInitialSnapshot(ws: WebSocket, info: ClientInfo): Promise<void> {
+    try {
+      const shares = await loadSharesForInstance(this.env.DB, info.instanceHost);
+      this.sendSnapshot(ws, shares);
+      logTqRelayObs(info.obs, {
+        event: "relay_ws_connect",
+        instance_host: info.instanceHost || undefined,
+        seqta_student_id: info.seqtaStudentId,
+        connected_sockets: this.sockets.size,
+        share_count: shares.length,
+      });
+    } catch (err) {
+      console.error("[tq-relay] initial snapshot failed", info.instanceHost, err);
+      this.sendError(ws, "Relay unavailable");
+      try {
+        ws.close(1011, "Relay unavailable");
+      } catch {
+        /* closed */
+      }
+    }
   }
 
   private async onMessage(ws: WebSocket, data: string | ArrayBuffer): Promise<void> {
@@ -193,9 +184,16 @@ export class TimetableClassmatesRelay implements DurableObject {
         updated_at: Date.now(),
         bundles,
       };
-      this.shares.set(info.seqtaStudentId, share);
-      await this.state.storage.put("shares", [...this.shares.entries()]);
-      const broadcast = this.broadcastSnapshot();
+      try {
+        await upsertShare(this.env.DB, info.instanceHost, share);
+      } catch (err) {
+        console.error("[tq-relay] publish persist failed", info.instanceHost, info.seqtaStudentId, err);
+        this.sendError(ws, "Publish failed");
+        return;
+      }
+
+      const shares = await loadSharesForInstance(this.env.DB, info.instanceHost);
+      const broadcast = await this.broadcastSnapshot(info.instanceHost, shares, ws);
       const otherPeers = this.sockets.size - 1;
       logTqRelayObs(info.obs, {
         event: "relay_publish_ok",
@@ -204,53 +202,67 @@ export class TimetableClassmatesRelay implements DurableObject {
         bundle_count: bundles.length,
         period_from: body.period.from,
         period_until: body.period.until,
-        share_count: this.shares.size,
+        share_count: shares.length,
         connected_sockets: this.sockets.size,
         other_connected_sockets: otherPeers,
         no_ws_peers: otherPeers === 0,
         ...broadcast,
       });
+      this.closeSocketAfterSuccess(ws);
       return;
     }
 
     if (msg.type === "revoke") {
-      this.shares.delete(info.seqtaStudentId);
-      await this.state.storage.put("shares", [...this.shares.entries()]);
-      const broadcast = this.broadcastSnapshot();
+      try {
+        await deleteShare(this.env.DB, info.instanceHost, info.seqtaStudentId);
+      } catch (err) {
+        console.error("[tq-relay] revoke persist failed", info.instanceHost, info.seqtaStudentId, err);
+        this.sendError(ws, "Revoke failed");
+        return;
+      }
+      const shares = await loadSharesForInstance(this.env.DB, info.instanceHost);
+      const broadcast = await this.broadcastSnapshot(info.instanceHost, shares, ws);
       logTqRelayObs(info.obs, {
         event: "relay_revoke_ws",
         instance_host: info.instanceHost || undefined,
         seqta_student_id: info.seqtaStudentId,
-        share_count: this.shares.size,
+        share_count: shares.length,
         ...broadcast,
       });
+      this.closeSocketAfterSuccess(ws);
       return;
     }
 
     this.sendError(ws, "Unknown message type");
   }
 
-  private snapshotPayload(): { v: 1; type: "snapshot"; shares: StoredShare[] } {
+  private snapshotPayload(shares: StoredShare[]): { v: 1; type: "snapshot"; shares: StoredShare[] } {
     return {
       v: 1,
       type: "snapshot",
-      shares: [...this.shares.values()].sort((a, b) => b.updated_at - a.updated_at),
+      shares: sortSharesByUpdatedAt(shares),
     };
   }
 
-  private sendSnapshot(ws: WebSocket): void {
+  private sendSnapshot(ws: WebSocket, shares: StoredShare[]): void {
     try {
-      ws.send(JSON.stringify(this.snapshotPayload()));
+      ws.send(JSON.stringify(this.snapshotPayload(shares)));
     } catch {
       /* closed */
     }
   }
 
-  private broadcastSnapshot(): { broadcast_sent: number; broadcast_failed: number } {
-    const json = JSON.stringify(this.snapshotPayload());
+  private async broadcastSnapshot(
+    instanceHost: string,
+    shares?: StoredShare[],
+    excludeWs?: WebSocket,
+  ): Promise<{ broadcast_sent: number; broadcast_failed: number }> {
+    const resolved = shares ?? (await loadSharesForInstance(this.env.DB, instanceHost));
+    const json = JSON.stringify(this.snapshotPayload(resolved));
     let broadcast_sent = 0;
     let broadcast_failed = 0;
-    for (const ws of this.sockets.keys()) {
+    for (const [ws] of this.sockets.entries()) {
+      if (excludeWs && ws === excludeWs) continue;
       try {
         ws.send(json);
         broadcast_sent += 1;
@@ -260,6 +272,15 @@ export class TimetableClassmatesRelay implements DurableObject {
       }
     }
     return { broadcast_sent, broadcast_failed };
+  }
+
+  private closeSocketAfterSuccess(ws: WebSocket): void {
+    this.sockets.delete(ws);
+    try {
+      ws.close(1000, "OK");
+    } catch {
+      /* closed */
+    }
   }
 
   private sendError(ws: WebSocket, message: string): void {
