@@ -1,8 +1,8 @@
 /**
  * Batch-encode hosted profile pictures on a senior admin machine (not on Cloudflare Worker).
  *
- *   pnpm admin:pfp-batch -- --cookie "bs_access_token=..." [--base-url URL] [--page 1] [--pages 5]
- *   [--jobs 24] [--workers 12]
+ *   pnpm admin:pfp-batch -- --cookie "bs_access_token=..." [--base-url URL] [--page 1]
+ *   [--all] [--pages 5] [--jobs 24] [--workers 12]
  *
  * Parallel by default: `--workers` = CPU cores (sharp/libvips per thread), `--jobs` = concurrent
  * download→encode→upload pipelines (default ~2× cores). Override with PFP_BATCH_JOBS / PFP_BATCH_WORKERS.
@@ -24,7 +24,10 @@ function parseArgs(argv: string[]) {
   let baseUrl = DEFAULT_BASE;
   let startPage = 1;
   let maxPages = 10;
-  let pageSize = 40;
+  let allPages = false;
+  let hasPfpOnly = true;
+  let skipWebp = true;
+  let pageSize = 50;
   let jobs = defaultJobConcurrency();
   let workers = defaultWorkerCount();
 
@@ -41,8 +44,16 @@ function parseArgs(argv: string[]) {
       startPage = Math.max(1, Number(argv[++i]) || 1);
     } else if (arg === "--pages" && argv[i + 1]) {
       maxPages = Math.max(1, Number(argv[++i]) || 1);
+    } else if (arg === "--all") {
+      allPages = true;
+    } else if (arg === "--everyone") {
+      allPages = true;
+    } else if (arg === "--include-no-pfp") {
+      hasPfpOnly = false;
+    } else if (arg === "--reencode-webp") {
+      skipWebp = false;
     } else if (arg === "--page-size" && argv[i + 1]) {
-      pageSize = Math.min(100, Math.max(1, Number(argv[++i]) || 40));
+      pageSize = Math.min(100, Math.max(1, Number(argv[++i]) || 50));
     } else if (arg === "--jobs" && argv[i + 1]) {
       jobs = Math.min(64, Math.max(1, Number(argv[++i]) || jobs));
     } else if (arg === "--workers" && argv[i + 1]) {
@@ -55,7 +66,7 @@ function parseArgs(argv: string[]) {
     process.exit(1);
   }
 
-  return { cookie, baseUrl, startPage, maxPages, pageSize, jobs, workers };
+  return { cookie, baseUrl, startPage, maxPages, allPages, hasPfpOnly, skipWebp, pageSize, jobs, workers };
 }
 
 const ACCESS_COOKIE_NAME = "bs_access_token";
@@ -95,6 +106,12 @@ async function apiFetch(baseUrl: string, cookie: string, path: string, init?: Re
 
 type AdminUserRow = { id: string; pfpUrl?: string | null };
 
+function isWebpBuffer(buf: Buffer): boolean {
+  return buf.length >= 12 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP";
+}
+
+type Outcome = "converted" | "skipped_no_hosted" | "skipped_already_webp" | "failed";
+
 async function runPoolWithResults<T, R>(
   concurrency: number,
   items: T[],
@@ -117,34 +134,50 @@ async function runPoolWithResults<T, R>(
 async function fetchUserPage(
   opts: ReturnType<typeof parseArgs>,
   page: number,
-): Promise<{ users: AdminUserRow[]; ok: true } | { ok: false; status: number; body: string }> {
+): Promise<
+  | { users: AdminUserRow[]; total: number; totalPages: number; page: number; ok: true }
+  | { ok: false; status: number; body: string }
+> {
+  const hasPfp = opts.hasPfpOnly ? "&has_pfp=true" : "";
   const listRes = await apiFetch(
     opts.baseUrl,
     opts.cookie,
-    `/api/admin/users?q=&page=${page}&sort=username:asc&include_history=false&limit=${opts.pageSize}`,
+    `/api/admin/users?q=&page=${page}&sort=username:asc&include_history=false${hasPfp}`,
   );
   if (!listRes.ok) {
     return { ok: false, status: listRes.status, body: await listRes.text() };
   }
-  const listJson = (await listRes.json()) as { users?: AdminUserRow[] };
-  return { ok: true, users: listJson.users ?? [] };
+  const listJson = (await listRes.json()) as {
+    users?: AdminUserRow[];
+    total?: number;
+    totalPages?: number;
+    page?: number;
+  };
+  return {
+    ok: true,
+    users: listJson.users ?? [],
+    total: listJson.total ?? 0,
+    totalPages: listJson.totalPages ?? 0,
+    page: listJson.page ?? page,
+  };
 }
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const cores = os.cpus().length;
   console.log(
-    `Parallel batch: ${opts.workers} encode worker(s), ${opts.jobs} job(s), ${cores} logical CPU(s)`,
+    `Parallel batch: ${opts.workers} encode worker(s), ${opts.jobs} job(s), ${cores} logical CPU(s)` +
+      (opts.allPages ? ", scanning ALL pages" : `, max ${opts.maxPages} page(s)`) +
+      (opts.hasPfpOnly ? ", users with pfp only" : ", all users") +
+      (opts.skipWebp ? ", skip existing WebP" : ", re-encode WebP"),
   );
 
   const pool = new PfpWorkerPool(opts.workers);
 
-  type Outcome = "converted" | "skipped" | "failed";
-
   const processUser = async (user: AdminUserRow): Promise<Outcome> => {
     const pfpUrl = user.pfpUrl ?? "";
     if (!pfpUrl.includes("/api/user/pfp/") || pfpUrl.includes("/hist/")) {
-      return "skipped";
+      return "skipped_no_hosted";
     }
 
     try {
@@ -156,6 +189,9 @@ async function main() {
         return "failed";
       }
       const raw = Buffer.from(await imgRes.arrayBuffer());
+      if (opts.skipWebp && isWebpBuffer(raw)) {
+        return "skipped_already_webp";
+      }
       const processed = await pool.process(raw);
       const blob = new Blob([processed], { type: "image/webp" });
       const form = new FormData();
@@ -181,11 +217,16 @@ async function main() {
   };
 
   let converted = 0;
-  let skipped = 0;
+  let skippedNoHosted = 0;
+  let skippedAlreadyWebp = 0;
   let failed = 0;
+  let directoryTotal = 0;
+  let directoryPages = 0;
 
   try {
-    for (let pageOffset = 0; pageOffset < opts.maxPages; pageOffset++) {
+    for (let pageOffset = 0; ; pageOffset++) {
+      if (!opts.allPages && pageOffset >= opts.maxPages) break;
+
       const page = opts.startPage + pageOffset;
       const result = await fetchUserPage(opts, page);
       if (!result.ok) {
@@ -196,6 +237,19 @@ async function main() {
         console.error(result.body.slice(0, 200));
         break;
       }
+
+      if (pageOffset === 0 && result.total > 0) {
+        directoryTotal = result.total;
+        directoryPages = result.totalPages;
+        const pagesPlanned = opts.allPages
+          ? Math.max(0, directoryPages - opts.startPage + 1)
+          : Math.min(opts.maxPages, Math.max(0, directoryPages - opts.startPage + 1));
+        console.log(
+          `Directory: ${directoryTotal} user(s) match filter, ${directoryPages} page(s) of 50` +
+            (pagesPlanned > 0 ? `, will scan ${pagesPlanned} page(s) from page ${opts.startPage}` : ""),
+        );
+      }
+
       const users = result.users;
       if (users.length === 0) break;
 
@@ -203,19 +257,26 @@ async function main() {
       const outcomes = await runPoolWithResults(opts.jobs, users, processUser);
       for (const o of outcomes) {
         if (o === "converted") converted++;
-        else if (o === "skipped") skipped++;
+        else if (o === "skipped_no_hosted") skippedNoHosted++;
+        else if (o === "skipped_already_webp") skippedAlreadyWebp++;
         else failed++;
       }
       const sec = ((performance.now() - t0) / 1000).toFixed(1);
       console.log(
-        `Page ${page}: ${users.length} users in ${sec}s (${converted} converted total)`,
+        `Page ${page}/${directoryPages || "?"}: ${users.length} users in ${sec}s (${converted} converted total)`,
       );
+
+      if (directoryPages > 0 && page >= directoryPages) break;
+      if (users.length < 50) break;
     }
   } finally {
     await pool.close();
   }
 
-  console.log(`Done: ${converted} converted, ${skipped} skipped, ${failed} failed`);
+  const skipped = skippedNoHosted + skippedAlreadyWebp;
+  console.log(
+    `Done: ${converted} converted, ${skipped} skipped (${skippedNoHosted} no hosted PFP, ${skippedAlreadyWebp} already WebP), ${failed} failed`,
+  );
 }
 
 main().catch((err) => {

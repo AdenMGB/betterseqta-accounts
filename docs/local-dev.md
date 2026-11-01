@@ -72,7 +72,7 @@ PFP audit review state uses migrations `0023_pfp_audit_review.sql` and `0024_pfp
 Bulk PFP resize/WebP (production): run on a senior admin machine (not on the Worker). Uses **sharp** in Node (not @jsquash WASM):
 
 ```bash
-pnpm admin:pfp-batch -- --cookie "bs_access_token=..." --base-url https://accounts.betterseqta.org
-# Defaults: one worker thread per CPU core for WebP encode; ~2× cores concurrent download/upload pipelines.
-# Tune: --workers 12 --jobs 24  (or env PFP_BATCH_WORKERS / PFP_BATCH_JOBS)
+pnpm admin:pfp-batch -- --cookie "bs_access_token=..." --base-url https://accounts.betterseqta.org --all --workers 12 --jobs 24
+# --all = every page until the user list ends (API uses 50 users/page; --pages 50 stops early).
+# Default: only users with any pfp (has_pfp), skip files already WebP. Use --include-no-pfp to scan everyone.
 ```
