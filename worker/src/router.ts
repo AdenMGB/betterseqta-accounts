@@ -19,6 +19,7 @@ import * as health from "./routes/health";
 import * as customThemesProxy from "./routes/custom-themes-proxy";
 import * as timetableClassmates from "./routes/timetable-classmates-bsplus";
 import * as pfpBsplus from "./routes/pfp-bsplus";
+import * as bsplusInstalls from "./routes/bsplus-installs";
 
 type Route = {
   test: (method: string, pathname: string) => boolean;
@@ -93,6 +94,15 @@ const routes: Route[] = [
   { test: (m, p) => m === "GET" && p === "/api/bsplus/config", handle: (c) => bsplus.handleBsplusConfig(c) },
   { test: (m, p) => m === "POST" && p === "/api/bsplus/refresh", handle: (c) => bsplus.handleBsplusRefresh(c) },
   { test: (m, p) => m === "POST" && p === "/api/bsplus/login", handle: (c) => bsplus.handleBsplusLogin(c) },
+  { test: (m, p) => m === "POST" && p === "/api/bsplus/installs/link", handle: (c) => bsplusInstalls.handleBsplusInstallLink(c) },
+  { test: (m, p) => m === "GET" && p === "/api/bsplus/installs", handle: (c) => bsplusInstalls.handleBsplusInstallsList(c) },
+  {
+    test: (m, p) =>
+      m === "DELETE" &&
+      p.startsWith("/api/bsplus/installs/") &&
+      p !== "/api/bsplus/installs/link",
+    handle: (c) => bsplusInstalls.handleBsplusInstallDelete(c),
+  },
   { test: (m, p) => m === "GET" && p === "/api/bsplus/pfp", handle: (c) => pfpBsplus.handleBsplusPfpGet(c) },
   { test: (m, p) => m === "POST" && p === "/api/bsplus/pfp", handle: (c) => pfpBsplus.handleBsplusPfpUpload(c) },
   { test: (m, p) => m === "GET" && p === "/api/bsplus/pfp/history", handle: (c) => pfpBsplus.handleBsplusPfpHistory(c) },

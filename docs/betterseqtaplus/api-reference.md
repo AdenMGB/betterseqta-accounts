@@ -292,3 +292,15 @@ BetterSEQTA+ extensions upload avatars to Accounts storage (WebP, 512px max edge
 | POST | `/api/bsplus/pfp/revert` |
 
 Auth: `Authorization: Bearer <access_token>`.
+
+---
+
+## Install linking (extension devices)
+
+Associates persistent extension install UUIDs with the signed-in user. Full spec: **[CLOUD_INSTALL_LINKING.md](./CLOUD_INSTALL_LINKING.md)**.
+
+| Method | Path |
+|--------|------|
+| POST | `/api/bsplus/installs/link` |
+| GET | `/api/bsplus/installs` |
+| DELETE | `/api/bsplus/installs/{installId}` |

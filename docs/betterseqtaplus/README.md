@@ -23,6 +23,7 @@ https://accounts.betterseqta.org
 |----------|-------------|
 | [API Reference](./api-reference.md) | Full endpoint reference with request/response examples |
 | [Profile picture API](./profile-picture-api.md) | Upload, history, clear, revert for extension avatars |
+| [Install linking](./CLOUD_INSTALL_LINKING.md) | Extension install UUID ↔ cloud user (devices) |
 | [Integration Guide](./integration-guide.md) | Step-by-step integration for the extension |
 | [Auth Flow](./auth-flow.md) | Token lifecycle, refresh, and error handling |
 
