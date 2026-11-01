@@ -75,6 +75,7 @@ const routes: Route[] = [
   },
   { test: (m, p) => m === "POST" && p === "/api/auth/change-password", handle: (c) => auth.handleChangePassword(c) },
   { test: (m, p) => m === "POST" && p === "/api/auth/change-email", handle: (c) => auth.handleChangeEmail(c) },
+  { test: (m, p) => m === "POST" && p === "/api/auth/delete-account", handle: (c) => auth.handleDeleteAccount(c) },
   { test: (m, p) => m === "POST" && p === "/api/auth/forgot-password", handle: (c) => auth.handleForgotPassword(c) },
   { test: (m, p) => m === "GET" && p === "/api/auth/verify-reset-token", handle: (c) => auth.handleVerifyResetToken(c) },
   { test: (m, p) => m === "POST" && p === "/api/auth/reset-password", handle: (c) => auth.handleResetPassword(c) },

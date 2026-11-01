@@ -10,6 +10,7 @@ import { recordAdminAction, AUDIT_HIDE_NOOP_UPDATES, isDisplayableAuditEntry } f
 import { buildPfpAuditContext, resolvePfpAuditRefs, type PfpAuditRef } from "../lib/auditPfpResolve";
 import { auditTargetForUser, labelFromDetails, resolveAuditTargets } from "../lib/auditTarget";
 import { uploadPfpFromFormData, restagePfpBytes } from "../lib/pfpUploadHandler";
+import { deleteUserRecords } from "../lib/deleteUser";
 import { processPfpUpload } from "../lib/pfpProcess";
 import {
   countHostedPfpPendingReview,
@@ -473,28 +474,7 @@ export async function handleAdminDeleteUser({ env, request, jwtSecret }: Request
   }
 
   try {
-    await env.DB.prepare("DELETE FROM password_reset_tokens WHERE user_id = ?").bind(userId).run();
-    try {
-      await env.DB.prepare("DELETE FROM settings_metadata WHERE user_id = ?").bind(userId).run();
-    } catch {
-      /* table may not exist on very old schemas */
-    }
-    try {
-      await env.DB.prepare("DELETE FROM bsplus_settings_sync WHERE user_id = ?").bind(userId).run();
-    } catch {
-      /* table may not exist on very old schemas */
-    }
-    await env.DB.prepare("DELETE FROM settings WHERE user_id = ?").bind(userId).run();
-    await env.DB.prepare("DELETE FROM oauth_codes WHERE user_id = ?").bind(userId).run();
-    const userSessions = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='user_sessions'").first();
-    if (userSessions) {
-      await env.DB.prepare("DELETE FROM user_sessions WHERE user_id = ?").bind(userId).run();
-    }
-    const desqtaSessions = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='desqta_sessions'").first();
-    if (desqtaSessions) {
-      await env.DB.prepare("DELETE FROM desqta_sessions WHERE user_id = ?").bind(userId).run();
-    }
-    await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
+    await deleteUserRecords(env, userId);
   } catch (err) {
     console.error("Delete user error:", err);
     await audit(env, admin, {

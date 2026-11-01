@@ -10,7 +10,9 @@ import {
   createAccessToken,
   authJson,
   authError,
+  getMaxAdminLevel,
 } from "../lib/auth";
+import { deleteUserRecords } from "../lib/deleteUser";
 import { parseCookies } from "../lib/cookies";
 import {
   clearWebsiteSessionCookies,
@@ -656,6 +658,80 @@ export async function handleResetPassword({ env, request }: RequestContext): Pro
   } catch (err) {
     console.error("Reset password error:", err);
     return new Response(JSON.stringify({ error: "An error occurred" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+}
+
+export async function handleDeleteAccount({ env, request, jwtSecret }: RequestContext): Promise<Response> {
+  const userPayload = await getUser(request, jwtSecret);
+  if (!userPayload) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+
+  try {
+    const { password, confirmPhrase } = (await request.json()) as {
+      password?: string;
+      confirmPhrase?: string;
+    };
+    if (!password || confirmPhrase !== "DELETE") {
+      return new Response(
+        JSON.stringify({ error: 'Enter your password and type DELETE in the confirmation field.' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const user = (await env.DB.prepare(
+      "SELECT id, password, admin_level, email, username FROM users WHERE id = ?",
+    )
+      .bind(userPayload.id)
+      .first()) as {
+      id: string;
+      password: string;
+      admin_level: number;
+      email: string;
+      username: string;
+    } | null;
+
+    if (!user) {
+      return new Response(JSON.stringify({ error: "User not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const maxAdminLevel = await getMaxAdminLevel(env);
+    if (((user.admin_level as number) || 0) >= maxAdminLevel) {
+      return new Response(
+        JSON.stringify({ error: "Senior admin accounts cannot be self-deleted. Contact another senior admin." }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) {
+      return new Response(JSON.stringify({ error: "Invalid password" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    await deleteUserRecords(env, user.id);
+
+    return authJson(
+      { success: true },
+      {
+        "Set-Cookie": clearWebsiteSessionCookies(),
+      },
+    );
+  } catch (err) {
+    console.error("Delete account error:", err);
+    return new Response(JSON.stringify({ error: "Failed to delete account" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

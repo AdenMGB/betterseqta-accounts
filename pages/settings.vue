@@ -146,9 +146,53 @@
                 </button>
               </div>
             </section>
-          </div>
 
-          <!-- Sessions -->
+            <section class="rounded-xl border border-red-200/80 bg-red-50/40 dark:border-red-900/50 dark:bg-red-950/20">
+              <h3 class="mb-2 px-4 pt-4 text-sm font-semibold uppercase tracking-wide text-red-700 dark:text-red-400 sm:px-5">
+                Delete account
+              </h3>
+              <p class="mb-4 px-4 text-sm text-red-800/90 dark:text-red-300/90 sm:px-5">
+                Permanently removes your BetterSEQTA account, cloud settings, profile pictures, and timetable classmates data. This cannot be undone.
+              </p>
+              <div class="overflow-hidden rounded-b-xl border-t border-red-200/80 dark:border-red-900/50">
+                <div class="divide-y divide-red-200/70 dark:divide-red-900/40">
+                  <div class="px-4 py-4 sm:px-5">
+                    <label for="delete-password" class="form-label">Password</label>
+                    <input
+                      v-model="deleteAccountPassword"
+                      id="delete-password"
+                      type="password"
+                      autocomplete="current-password"
+                      class="mt-2 w-full form-input"
+                      placeholder="Confirm your password"
+                    />
+                  </div>
+                  <div class="px-4 py-4 sm:px-5">
+                    <label for="delete-confirm" class="form-label">Type DELETE to confirm</label>
+                    <input
+                      v-model="deleteAccountConfirm"
+                      id="delete-confirm"
+                      type="text"
+                      class="mt-2 w-full form-input font-mono"
+                      placeholder="DELETE"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="flex flex-wrap items-center justify-end gap-3 px-4 py-4 sm:px-5">
+                <p v-if="deleteAccountError" class="text-sm text-red-600 dark:text-red-400">{{ deleteAccountError }}</p>
+                <button
+                  type="button"
+                  @click="deleteAccount"
+                  :disabled="deleteAccountLoading || !deleteAccountPassword || deleteAccountConfirm !== 'DELETE'"
+                  class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:scale-105 hover:bg-red-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                >
+                  <LoadingSpinner v-if="deleteAccountLoading" size="sm" />
+                  <span v-else>Delete my account</span>
+                </button>
+              </div>
+            </section>
+          </div>
           <div v-else-if="activeTab === 'sessions'" class="space-y-4">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <p class="text-sm text-zinc-600 dark:text-zinc-400">
@@ -429,7 +473,10 @@ const activeTabMeta = computed(() => {
     case 'profile':
       return { title: 'Profile Settings', description: null }
     case 'account':
-      return { title: 'Account Security', description: null }
+      return {
+        title: 'Account Security',
+        description: 'Change password or email, or permanently delete your account at the bottom of this tab.',
+      }
     case 'sessions':
       return {
         title: 'Active Sessions',
@@ -488,6 +535,11 @@ const emailPassword = ref('')
 const emailLoading = ref(false)
 const emailError = ref('')
 const emailSuccess = ref('')
+
+const deleteAccountPassword = ref('')
+const deleteAccountConfirm = ref('')
+const deleteAccountLoading = ref(false)
+const deleteAccountError = ref('')
 
 type SessionRow = {
   id: string
@@ -815,5 +867,27 @@ const changeEmail = async () => {
     } finally {
         emailLoading.value = false;
     }
+}
+
+const deleteAccount = async () => {
+  deleteAccountLoading.value = true
+  deleteAccountError.value = ''
+
+  try {
+    await $fetch('/api/auth/delete-account', {
+      method: 'POST',
+      credentials: 'include',
+      body: {
+        password: deleteAccountPassword.value,
+        confirmPhrase: deleteAccountConfirm.value,
+      },
+    })
+    await navigateTo('/login')
+  } catch (e: unknown) {
+    const err = e as { data?: { error?: string } }
+    deleteAccountError.value = err?.data?.error || 'Failed to delete account.'
+  } finally {
+    deleteAccountLoading.value = false
+  }
 }
 </script>
