@@ -134,7 +134,7 @@
           <input
             ref="fileInput"
             type="file"
-            accept="image/*"
+            accept="image/*,.heic,.heif"
             class="hidden"
             @change="onFileSelected"
           />
@@ -167,6 +167,11 @@ import { TrashIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import ImageCropper from '~/components/ui/ImageCropper.vue'
 import ConfirmDialog from '~/components/admin/ConfirmDialog.vue'
 import { useToast } from '~/composables/useToast'
+import {
+  isAllowedPfpSourceFile,
+  maxPfpSourceUploadBytes,
+  maxPfpUploadLabelMb,
+} from '~/utils/pfpUploadClient'
 import { withPfpCacheBust, formatRelativeTime, dicebearUrl } from '~/utils/pfp'
 
 type PfpHistoryItem = {
@@ -277,13 +282,14 @@ const onFileSelected = (event: Event) => {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
   if (!file) return
-  if (!file.type.startsWith('image/')) {
+  if (!isAllowedPfpSourceFile(file)) {
     showToast('Please select an image file', 'error')
     target.value = ''
     return
   }
-  if (file.size > 5 * 1024 * 1024) {
-    showToast('File too large (max 5MB)', 'error')
+  const maxBytes = maxPfpSourceUploadBytes()
+  if (file.size > maxBytes) {
+    showToast(`File too large (max ${maxPfpUploadLabelMb()}MB)`, 'error')
     target.value = ''
     return
   }
@@ -325,7 +331,8 @@ const onCropConfirm = async (file: File) => {
     emit('updated', { pfpUrl: res.pfpUrl, pfpHash: res.pfpHash, pfpHistory: res.pfpHistory })
     showToast('Profile picture updated', 'success')
   } catch (e: any) {
-    showToast(e?.data?.error || 'Failed to upload profile picture', 'error')
+    const msg = e?.data?.error ?? e?.statusMessage ?? e?.message ?? 'Failed to upload profile picture'
+    showToast(typeof msg === 'string' ? msg : 'Failed to upload profile picture', 'error')
   } finally {
     uploading.value = false
   }

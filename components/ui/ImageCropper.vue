@@ -84,7 +84,7 @@
 import { ref, watch } from 'vue'
 import { Cropper, RectangleStencil } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
-import { XMarkIcon } from '@heroicons/vue/24/outline'
+import { cropperOutputExtension, cropperOutputMimeType, cropperOutputQuality } from '~/utils/pfpUploadClient'
 
 const props = defineProps<{
   isOpen: boolean
@@ -120,9 +120,8 @@ const handleConfirm = () => {
 
   confirming.value = true
 
-  // Use JPEG for smaller file size (profile pics typically don't need transparency)
-  const mimeType = 'image/jpeg'
-  const quality = 0.9
+  const mimeType = cropperOutputMimeType()
+  const quality = cropperOutputQuality()
 
   result.canvas.toBlob(
     (blob) => {
@@ -130,8 +129,7 @@ const handleConfirm = () => {
         confirming.value = false
         return
       }
-      const ext = mimeType === 'image/jpeg' ? '.jpg' : '.png'
-      const file = new File([blob], `profile-picture${ext}`, { type: mimeType })
+      const file = new File([blob], `profile-picture${cropperOutputExtension()}`, { type: mimeType })
       emit('confirm', file)
       confirming.value = false
     },

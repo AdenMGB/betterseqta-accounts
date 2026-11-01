@@ -1,13 +1,13 @@
 import { ensureJsquashReady } from "./jsquashInit";
 import { sha256HexBytes } from "./sha256";
 
-const MAX_SIDE = 256;
-const JPEG_QUALITY = 78;
+const MAX_SIDE = 512;
+const WEBP_QUALITY = 78;
 
 export type ProcessedPfp = {
   bytes: ArrayBuffer;
   hash: string;
-  contentType: "image/jpeg";
+  contentType: "image/webp";
 };
 
 function isPng(buffer: ArrayBuffer): boolean {
@@ -20,7 +20,26 @@ function isJpeg(buffer: ArrayBuffer): boolean {
   return b[0] === 0xff && b[1] === 0xd8;
 }
 
+function isWebp(buffer: ArrayBuffer): boolean {
+  if (buffer.byteLength < 12) return false;
+  const b = new Uint8Array(buffer, 0, 12);
+  return (
+    b[0] === 0x52 &&
+    b[1] === 0x49 &&
+    b[2] === 0x46 &&
+    b[3] === 0x46 &&
+    b[8] === 0x57 &&
+    b[9] === 0x45 &&
+    b[10] === 0x42 &&
+    b[11] === 0x50
+  );
+}
+
 async function decodeImage(buffer: ArrayBuffer): Promise<ImageData> {
+  if (isWebp(buffer)) {
+    const { default: decode } = await import("@jsquash/webp/decode");
+    return decode(buffer);
+  }
   if (isJpeg(buffer)) {
     const { default: decode } = await import("@jsquash/jpeg/decode");
     return decode(buffer);
@@ -29,14 +48,31 @@ async function decodeImage(buffer: ArrayBuffer): Promise<ImageData> {
     const { default: decode } = await import("@jsquash/png/decode");
     return decode(buffer);
   }
-  // Fallback: try JPEG then PNG
-  try {
-    const { default: decode } = await import("@jsquash/jpeg/decode");
-    return decode(buffer);
-  } catch {
-    const { default: decode } = await import("@jsquash/png/decode");
-    return decode(buffer);
+
+  const attempts: Array<() => Promise<ImageData>> = [
+    async () => {
+      const { default: decode } = await import("@jsquash/webp/decode");
+      return decode(buffer);
+    },
+    async () => {
+      const { default: decode } = await import("@jsquash/jpeg/decode");
+      return decode(buffer);
+    },
+    async () => {
+      const { default: decode } = await import("@jsquash/png/decode");
+      return decode(buffer);
+    },
+  ];
+
+  let lastErr: unknown;
+  for (const attempt of attempts) {
+    try {
+      return await attempt();
+    } catch (err) {
+      lastErr = err;
+    }
   }
+  throw lastErr instanceof Error ? lastErr : new Error("Unsupported image format");
 }
 
 /** Center square crop-to-fill: side = min(w, h). */
@@ -75,13 +111,13 @@ async function downscaleIfNeeded(image: ImageData): Promise<ImageData> {
   return resize(image, { width, height, method: "lanczos3", fitMethod: "stretch" });
 }
 
-async function encodeJpeg(image: ImageData): Promise<ArrayBuffer> {
-  const { default: encode } = await import("@jsquash/jpeg/encode");
-  return encode(image, { quality: JPEG_QUALITY });
+async function encodeWebp(image: ImageData): Promise<ArrayBuffer> {
+  const { default: encode } = await import("@jsquash/webp/encode");
+  return encode(image, { quality: WEBP_QUALITY });
 }
 
 /**
- * Normalize profile picture bytes: square crop (unless pre-cropped 1:1), downscale only, JPEG.
+ * Normalize profile picture bytes: square crop (unless pre-cropped 1:1), downscale, WebP.
  */
 export async function processPfpUpload(
   raw: ArrayBuffer,
@@ -97,8 +133,8 @@ export async function processPfpUpload(
   }
 
   image = await downscaleIfNeeded(image);
-  const bytes = await encodeJpeg(image);
+  const bytes = await encodeWebp(image);
   const hash = await sha256HexBytes(bytes);
 
-  return { bytes, hash, contentType: "image/jpeg" };
+  return { bytes, hash, contentType: "image/webp" };
 }

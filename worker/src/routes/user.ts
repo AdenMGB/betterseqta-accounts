@@ -3,6 +3,7 @@ import { getUser } from "../lib/auth";
 import { enrichUserPublic, mapUserPublic, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import { validateComplianceAck } from "../lib/userCompliance";
 import { processPfpUpload } from "../lib/pfpProcess";
+import { validatePfpUploadFile } from "../lib/pfpUploadLimits";
 import {
   buildUserPfpUrl,
   clearUserPfp,
@@ -155,14 +156,18 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
     const preCropped = formData.get("preCropped") === "true";
 
     if (!file || !(file instanceof File)) {
-      return new Response("No file uploaded", { status: 400, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: "No file uploaded" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    if (!file.type.startsWith("image/")) {
-      return new Response("Invalid file type", { status: 400, headers: corsHeaders });
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      return new Response("File too large (max 5MB)", { status: 400, headers: corsHeaders });
+    const validation = validatePfpUploadFile(file);
+    if (!validation.ok) {
+      return new Response(JSON.stringify({ error: validation.message }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     try {
@@ -187,7 +192,10 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    return new Response(message, { status: 500, headers: corsHeaders });
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 }
 
@@ -285,7 +293,7 @@ export async function handleUserPfpGet({ env, url, request }: RequestContext): P
   }
 
   const headers = new Headers(corsHeaders);
-  headers.set("Content-Type", object.httpMetadata?.contentType || "image/jpeg");
+  headers.set("Content-Type", object.httpMetadata?.contentType || "image/webp");
   headers.set(
     "Cache-Control",
     isHistory ? "private, max-age=31536000, immutable" : "public, max-age=31536000, immutable",

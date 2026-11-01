@@ -1,6 +1,8 @@
 import { init as initJpegDecode } from "@jsquash/jpeg/decode";
 import { init as initJpegEncode } from "@jsquash/jpeg/encode";
 import { init as initPngDecode } from "@jsquash/png/decode";
+import { init as initWebpDecode } from "@jsquash/webp/decode";
+import { init as initWebpEncode } from "@jsquash/webp/encode";
 import { initResize } from "@jsquash/resize";
 
 // Cloudflare Workers cannot fetch WASM at runtime; static imports let wrangler bundle them.
@@ -8,6 +10,8 @@ import JPEG_DEC_WASM from "@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
 import JPEG_ENC_WASM from "@jsquash/jpeg/codec/enc/mozjpeg_enc.wasm";
 // @ts-expect-error wasm-bindgen typings omit the default export wrangler expects
 import PNG_DEC_WASM from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm";
+import WEBP_DEC_WASM from "@jsquash/webp/codec/dec/webp_dec.wasm";
+import WEBP_ENC_WASM from "@jsquash/webp/codec/enc/webp_enc_simd.wasm";
 // @ts-expect-error wasm-bindgen typings omit the default export wrangler expects
 import RESIZE_WASM from "@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm";
 
@@ -20,6 +24,8 @@ export function ensureJsquashReady(): Promise<void> {
       initJpegDecode(JPEG_DEC_WASM),
       initJpegEncode(JPEG_ENC_WASM),
       initPngDecode(PNG_DEC_WASM),
+      initWebpDecode(WEBP_DEC_WASM),
+      initWebpEncode(WEBP_ENC_WASM),
       initResize(RESIZE_WASM),
     ]).then(() => undefined);
   }
