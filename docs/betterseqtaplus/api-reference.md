@@ -276,3 +276,19 @@ Same identity fields as opt-in (no `attested_at`). **200:** `{ "ok": true }`.
 Upgrade to DO per school instance. Messages: `snapshot`, `publish`, `revoke`, `error` (all `"v": 1`). See [timetable-classmates-relay.md](./timetable-classmates-relay.md).
 
 Errors use `{ "error": "message" }` on REST.
+
+---
+
+## Profile pictures (hosted upload)
+
+BetterSEQTA+ extensions upload avatars to Accounts storage (WebP, 512px max edge). Full request/response spec: **[profile-picture-api.md](./profile-picture-api.md)**.
+
+| Method | Path |
+|--------|------|
+| GET | `/api/bsplus/pfp` |
+| POST | `/api/bsplus/pfp` |
+| GET | `/api/bsplus/pfp/history` |
+| POST | `/api/bsplus/pfp/clear` |
+| POST | `/api/bsplus/pfp/revert` |
+
+Auth: `Authorization: Bearer <access_token>`.

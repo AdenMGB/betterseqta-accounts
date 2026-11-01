@@ -3,7 +3,7 @@ import { getUser } from "../lib/auth";
 import { enrichUserPublic, mapUserPublic, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import { validateComplianceAck } from "../lib/userCompliance";
 import { processPfpUpload } from "../lib/pfpProcess";
-import { validatePfpUploadFile } from "../lib/pfpUploadLimits";
+import { uploadPfpFromFormData } from "../lib/pfpUploadHandler";
 import {
   buildUserPfpUrl,
   clearUserPfp,
@@ -152,42 +152,14 @@ export async function handleUserPfp({ env, request, jwtSecret }: RequestContext)
 
   try {
     const formData = await request.formData();
-    const file = formData.get("file");
-    const preCropped = formData.get("preCropped") === "true";
-
-    if (!file || !(file instanceof File)) {
-      return new Response(JSON.stringify({ error: "No file uploaded" }), {
-        status: 400,
+    const result = await uploadPfpFromFormData(env, user.id, formData);
+    if (!result.ok) {
+      return new Response(JSON.stringify({ error: result.message }), {
+        status: result.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const validation = validatePfpUploadFile(file);
-    if (!validation.ok) {
-      return new Response(JSON.stringify({ error: validation.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    try {
-      await saveCurrentPfpToHistory(env, user.id);
-    } catch {
-      // pfp_history table might not exist yet
-    }
-
-    const processed = await processPfpUpload(await file.arrayBuffer(), { preCropped });
-    const { pfpUrl, pfpHash } = await putCurrentPfp(env, user.id, processed);
-
-    try {
-      await prunePfpHistory(env, user.id);
-    } catch {
-      // ignore
-    }
-
-    const pfpHistory = await getPfpHistoryForUser(env, user.id);
-
-    return new Response(JSON.stringify({ pfpUrl, pfpHash, pfpHistory }), {
+    return new Response(JSON.stringify(result.data), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

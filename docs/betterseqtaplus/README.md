@@ -22,6 +22,7 @@ https://accounts.betterseqta.org
 | Document | Description |
 |----------|-------------|
 | [API Reference](./api-reference.md) | Full endpoint reference with request/response examples |
+| [Profile picture API](./profile-picture-api.md) | Upload, history, clear, revert for extension avatars |
 | [Integration Guide](./integration-guide.md) | Step-by-step integration for the extension |
 | [Auth Flow](./auth-flow.md) | Token lifecycle, refresh, and error handling |
 
