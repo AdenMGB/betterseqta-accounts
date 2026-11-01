@@ -2,8 +2,7 @@ import { corsHeaders } from "../constants";
 import { getUser } from "../lib/auth";
 import { enrichUserPublic, mapUserPublic, USER_PUBLIC_SELECT } from "../lib/userPublic";
 import { validateComplianceAck } from "../lib/userCompliance";
-import { processPfpUpload } from "../lib/pfpProcess";
-import { uploadPfpFromFormData } from "../lib/pfpUploadHandler";
+import { uploadPfpFromFormData, restagePfpBytes } from "../lib/pfpUploadHandler";
 import {
   buildUserPfpUrl,
   clearUserPfp,
@@ -203,14 +202,15 @@ export async function handleUserPfpRevert({ env, request, jwtSecret }: RequestCo
   }
 
   await saveCurrentPfpToHistory(env, user.id);
-  const processed = await processPfpUpload(await historyObject.arrayBuffer());
-  const { pfpUrl, pfpHash } = await putCurrentPfp(env, user.id, processed);
+  const { pfpUrl, pfpHash, pfpHistory } = await restagePfpBytes(
+    env,
+    user.id,
+    await historyObject.arrayBuffer(),
+    { skipArchiveCurrent: true },
+  );
 
   await env.PFP_BUCKET.delete(historyRow.r2_key);
   await env.DB.prepare("DELETE FROM pfp_history WHERE id = ?").bind(historyId).run();
-  await prunePfpHistory(env, user.id);
-
-  const pfpHistory = await getPfpHistoryForUser(env, user.id);
 
   return new Response(JSON.stringify({ pfpUrl, pfpHash, pfpHistory }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },

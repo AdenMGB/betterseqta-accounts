@@ -4,12 +4,9 @@ import {
   clearUserPfp,
   getPfpHistoryForUser,
   getUserPfpHash,
-  prunePfpHistory,
-  putCurrentPfp,
   saveCurrentPfpToHistory,
 } from "../lib/pfpHistory";
-import { processPfpUpload } from "../lib/pfpProcess";
-import { uploadPfpFromFormData } from "../lib/pfpUploadHandler";
+import { uploadPfpFromFormData, restagePfpBytes } from "../lib/pfpUploadHandler";
 import type { RequestContext } from "../types/context";
 import type { Env } from "../types/env";
 
@@ -108,13 +105,15 @@ export async function handleBsplusPfpRevert(ctx: RequestContext): Promise<Respon
   }
 
   await saveCurrentPfpToHistory(ctx.env, user.id);
-  const processed = await processPfpUpload(await historyObject.arrayBuffer());
-  const { pfpUrl, pfpHash } = await putCurrentPfp(ctx.env, user.id, processed);
+  const { pfpUrl, pfpHash, pfpHistory } = await restagePfpBytes(
+    ctx.env,
+    user.id,
+    await historyObject.arrayBuffer(),
+    { skipArchiveCurrent: true },
+  );
 
   await ctx.env.PFP_BUCKET.delete(historyRow.r2_key);
   await ctx.env.DB.prepare("DELETE FROM pfp_history WHERE id = ?").bind(historyId).run();
-  await prunePfpHistory(ctx.env, user.id);
 
-  const pfpHistory = await getPfpHistoryForUser(ctx.env, user.id);
   return authJson({ pfpUrl, pfpHash, pfpHistory });
 }

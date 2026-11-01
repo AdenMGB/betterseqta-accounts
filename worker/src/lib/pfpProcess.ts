@@ -1,13 +1,15 @@
 import { ensureJsquashReady } from "./jsquashInit";
 import { sha256HexBytes } from "./sha256";
 
-const MAX_SIDE = 512;
+export const PFP_MAX_SIDE = 512;
 const WEBP_QUALITY = 78;
+/** Max bytes for client-prepared uploads (already cropped/resized in browser). */
+export const PFP_CLIENT_PROCESSED_MAX_BYTES = 3 * 1024 * 1024;
 
 export type ProcessedPfp = {
   bytes: ArrayBuffer;
   hash: string;
-  contentType: "image/webp";
+  contentType: "image/webp" | "image/jpeg";
 };
 
 function isPng(buffer: ArrayBuffer): boolean {
@@ -101,9 +103,9 @@ function centerSquareCrop(image: ImageData): ImageData {
 
 async function downscaleIfNeeded(image: ImageData): Promise<ImageData> {
   const maxSide = Math.max(image.width, image.height);
-  if (maxSide <= MAX_SIDE) return image;
+  if (maxSide <= PFP_MAX_SIDE) return image;
 
-  const scale = MAX_SIDE / maxSide;
+  const scale = PFP_MAX_SIDE / maxSide;
   const width = Math.max(1, Math.round(image.width * scale));
   const height = Math.max(1, Math.round(image.height * scale));
 
@@ -137,4 +139,23 @@ export async function processPfpUpload(
   const hash = await sha256HexBytes(bytes);
 
   return { bytes, hash, contentType: "image/webp" };
+}
+
+/** Store browser-prepared WebP/JPEG without Worker CPU (no decode/resize). */
+export async function storeClientProcessedPfp(raw: ArrayBuffer): Promise<ProcessedPfp> {
+  if (raw.byteLength === 0) {
+    throw new Error("Empty upload");
+  }
+  if (raw.byteLength > PFP_CLIENT_PROCESSED_MAX_BYTES) {
+    throw new Error(`Processed file too large (max ${PFP_CLIENT_PROCESSED_MAX_BYTES} bytes)`);
+  }
+  if (isWebp(raw)) {
+    const hash = await sha256HexBytes(raw);
+    return { bytes: raw, hash, contentType: "image/webp" };
+  }
+  if (isJpeg(raw)) {
+    const hash = await sha256HexBytes(raw);
+    return { bytes: raw, hash, contentType: "image/jpeg" };
+  }
+  throw new Error("clientProcessed upload must be WebP or JPEG prepared at 512px square");
 }

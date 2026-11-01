@@ -744,45 +744,14 @@
         </div>
 
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
-          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Process Profile Pictures (resize + hash)</h3>
+          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Process / convert profile pictures (local)</h3>
           <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
-            Normalizes current R2 profile pictures (center crop, downscale to max 512px, WebP) and writes <code class="text-xs bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.5 rounded">pfp_hash</code> for client caching. Skips users already processed. Runs in batches to limit load.
+            Bulk resize/WebP encoding runs on your machine (not Cloudflare Workers). From this repo, with a senior admin session cookie:
           </p>
-          <button
-            @click="processAllPfps"
-            :disabled="processingPfps"
-            class="px-6 py-3 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center gap-2"
-          >
-            <LoadingSpinner v-if="processingPfps" size="sm" />
-            <template v-else>
-              <ArrowPathIcon class="w-5 h-5" />
-            </template>
-            {{ processingPfps ? 'Processing...' : 'Process all PFPs' }}
-          </button>
-          <div v-if="processPfpResult" class="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
-            Last batch: {{ processPfpResult.processed }} processed, {{ processPfpResult.skipped }} skipped, {{ processPfpResult.failed }} failed.
-          </div>
-        </div>
-
-        <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
-          <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">Convert all profile pictures to WebP</h3>
-          <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
-            Re-encodes every hosted profile picture (and past history slots) to WebP on the server. Use after enabling WebP uploads or for users on browsers that cannot compress locally.
+          <pre class="text-xs bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto mb-4">pnpm admin:pfp-batch -- --cookie "access_token=YOUR_COOKIE" --base-url https://accounts.betterseqta.org</pre>
+          <p class="text-xs text-zinc-500 dark:text-zinc-400">
+            Optional: <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">--page 1 --pages 20 --page-size 40</code>. Copy <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">access_token</code> from browser devtools while logged into admin.
           </p>
-          <button
-            @click="convertAllPfpsWebp"
-            :disabled="convertingPfpsWebp"
-            class="px-6 py-3 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center gap-2"
-          >
-            <LoadingSpinner v-if="convertingPfpsWebp" size="sm" />
-            <template v-else>
-              <ArrowPathIcon class="w-5 h-5" />
-            </template>
-            {{ convertingPfpsWebp ? 'Converting...' : 'Convert all to WebP' }}
-          </button>
-          <div v-if="convertWebpResult" class="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
-            Total: {{ convertWebpResult.converted }} converted, {{ convertWebpResult.skipped }} skipped, {{ convertWebpResult.failed }} failed.
-          </div>
         </div>
 
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
@@ -1384,88 +1353,6 @@ onUnmounted(() => stopAuditAutoRefresh())
 watchDebounced([auditSearchQuery, auditActionFilter], () => {
   if (activeTab.value === 'activity-log') loadAuditLog({ append: false })
 }, { debounce: 300 })
-
-const processingPfps = ref(false)
-const processPfpResult = ref<{ processed: number; skipped: number; failed: number } | null>(null)
-
-const convertingPfpsWebp = ref(false)
-const convertWebpResult = ref<{ converted: number; skipped: number; failed: number } | null>(null)
-
-const convertAllPfpsWebp = async () => {
-  openConfirm({
-    title: 'Convert all profile pictures to WebP',
-    message: 'Re-encode every hosted profile picture and history slot to WebP? This runs in batches and may take a while.',
-    confirmLabel: 'Convert',
-    onConfirm: async () => {
-      convertingPfpsWebp.value = true
-      let offset = 0
-      let totalConverted = 0
-      let totalSkipped = 0
-      let totalFailed = 0
-      try {
-        for (;;) {
-          const res = await $fetch<{ converted: number; skipped: number; failed: number; nextOffset: number | null }>(
-            '/api/admin/convert-pfps-webp',
-            {
-              method: 'POST',
-              credentials: 'include',
-              body: { offset, limit: 20, includeHistory: true },
-            },
-          )
-          totalConverted += res.converted
-          totalSkipped += res.skipped
-          totalFailed += res.failed
-          convertWebpResult.value = { converted: totalConverted, skipped: totalSkipped, failed: totalFailed }
-          if (res.nextOffset == null) break
-          offset = res.nextOffset
-        }
-        showToast('WebP conversion finished', 'success')
-      } catch (e: any) {
-        showToast(e?.data?.error || 'WebP conversion failed', 'error')
-      } finally {
-        convertingPfpsWebp.value = false
-      }
-    },
-  })
-}
-
-const processAllPfps = async () => {
-  openConfirm({
-    title: 'Process all profile pictures',
-    message: 'Normalize and hash all current R2 profile pictures? This may take several batches.',
-    confirmLabel: 'Process',
-    onConfirm: async () => {
-      processingPfps.value = true
-      let offset = 0
-      let totalProcessed = 0
-      let totalSkipped = 0
-      let totalFailed = 0
-      try {
-        for (;;) {
-          const res = await $fetch<{ processed: number; skipped: number; failed: number; nextOffset: number | null }>(
-            '/api/admin/process-pfps',
-            {
-              method: 'POST',
-              credentials: 'include',
-              body: { offset, limit: 20 },
-            },
-          )
-          totalProcessed += res.processed
-          totalSkipped += res.skipped
-          totalFailed += res.failed
-          processPfpResult.value = { processed: totalProcessed, skipped: totalSkipped, failed: totalFailed }
-          if (res.nextOffset == null) break
-          offset = res.nextOffset
-        }
-        showToast('Profile picture processing finished', 'success')
-      } catch (e: any) {
-        showToast(e?.data?.error || 'Processing failed', 'error')
-      } finally {
-        processingPfps.value = false
-      }
-    },
-  })
-}
 
 const pruningPfpHistory = ref(false)
 const pruneResult = ref<{ usersProcessed: number; rowsDeleted: number } | null>(null)

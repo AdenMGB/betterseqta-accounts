@@ -49,6 +49,18 @@ export function cropperOutputQuality(): number {
   return supportsClientWebP() ? 0.82 : 0.9
 }
 
+export const PFP_OUTPUT_SIDE = 512
+
+export function cropCanvasToPfpOutput(source: HTMLCanvasElement): HTMLCanvasElement {
+  const out = document.createElement('canvas')
+  out.width = PFP_OUTPUT_SIDE
+  out.height = PFP_OUTPUT_SIDE
+  const ctx = out.getContext('2d')
+  if (!ctx) return source
+  ctx.drawImage(source, 0, 0, PFP_OUTPUT_SIDE, PFP_OUTPUT_SIDE)
+  return out
+}
+
 export function cropperOutputExtension(): string {
   return supportsClientWebP() ? '.webp' : '.jpg'
 }

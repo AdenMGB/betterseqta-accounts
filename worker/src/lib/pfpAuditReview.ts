@@ -1,7 +1,7 @@
 import type { Env } from "../types/env";
-import { processPfpUpload } from "./pfpProcess";
+import { restagePfpBytes } from "./pfpUploadHandler";
 import type { PfpAuditCandidate, PfpAuditPickMode } from "./pfpHistory";
-import { putCurrentPfp, saveCurrentPfpToHistory } from "./pfpHistory";
+import { saveCurrentPfpToHistory } from "./pfpHistory";
 
 export const PFP_AUDIT_APPROVALS_REQUIRED = 2;
 
@@ -205,8 +205,12 @@ export async function restoreSubjectPfpFromLatestHistory(
     // ignore
   }
 
-  const processed = await processPfpUpload(await historyObject.arrayBuffer());
-  const { pfpUrl, pfpHash } = await putCurrentPfp(env, subjectUserId, processed);
+  const { pfpUrl, pfpHash } = await restagePfpBytes(
+    env,
+    subjectUserId,
+    await historyObject.arrayBuffer(),
+    { skipArchiveCurrent: true },
+  );
   await setPfpPendingReview(env, subjectUserId, true);
   return { pfpUrl, pfpHash };
 }

@@ -9,8 +9,8 @@ import { sendPasswordResetEmail } from "../lib/email";
 import { recordAdminAction, AUDIT_HIDE_NOOP_UPDATES, isDisplayableAuditEntry } from "../lib/adminAudit";
 import { buildPfpAuditContext, resolvePfpAuditRefs, type PfpAuditRef } from "../lib/auditPfpResolve";
 import { auditTargetForUser, labelFromDetails, resolveAuditTargets } from "../lib/auditTarget";
+import { uploadPfpFromFormData, restagePfpBytes } from "../lib/pfpUploadHandler";
 import { processPfpUpload } from "../lib/pfpProcess";
-import { validatePfpUploadFile } from "../lib/pfpUploadLimits";
 import {
   countHostedPfpPendingReview,
   countPfpAuditQueueForAdmin,
@@ -1183,14 +1183,6 @@ export async function handleAdminUserPfpUpload({ env, request, jwtSecret }: Requ
       });
     }
 
-    const validation = validatePfpUploadFile(file);
-    if (!validation.ok) {
-      return new Response(JSON.stringify({ error: validation.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const targetUser = await env.DB.prepare("SELECT id, username, displayName, email FROM users WHERE id = ?").bind(userId).first() as {
       id: string;
       username: string;
@@ -1204,17 +1196,18 @@ export async function handleAdminUserPfpUpload({ env, request, jwtSecret }: Requ
       });
     }
 
-    const preCropped = formData.get("preCropped") === "true";
-
     const archivedHistoryId = await saveCurrentPfpToHistory(env, userId);
     const fromRef = pfpRefFromArchivedHistory(archivedHistoryId, archivedHistoryId !== null);
 
-    const processed = await processPfpUpload(await file.arrayBuffer(), { preCropped });
-    const { pfpUrl, pfpHash } = await putCurrentPfp(env, userId, processed);
+    const upload = await uploadPfpFromFormData(env, userId, formData, { skipArchiveCurrent: true });
+    if (!upload.ok) {
+      return new Response(JSON.stringify({ error: upload.message }), {
+        status: upload.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    await prunePfpHistory(env, userId);
-
-    const pfpHistory = await getPfpHistoryForUser(env, userId);
+    const { pfpUrl, pfpHash, pfpHistory } = upload.data;
 
     await audit(env, admin, {
       action: "pfp.upload",
@@ -1717,15 +1710,16 @@ export async function handleAdminUserPfpRevert({ env, request, jwtSecret }: Requ
   const archivedHistoryId = await saveCurrentPfpToHistory(env, userId);
   const fromRef = pfpRefFromArchivedHistory(archivedHistoryId, archivedHistoryId !== null);
 
-  const processed = await processPfpUpload(await historyObject.arrayBuffer());
-  const { pfpUrl, pfpHash } = await putCurrentPfp(env, userId, processed);
+  const { pfpUrl, pfpHash, pfpHistory } = await restagePfpBytes(
+    env,
+    userId,
+    await historyObject.arrayBuffer(),
+    { skipArchiveCurrent: true },
+  );
 
   await env.PFP_BUCKET.delete(historyRow.r2_key);
   await env.DB.prepare("DELETE FROM pfp_history WHERE id = ?").bind(historyId).run();
 
-  await prunePfpHistory(env, userId);
-
-  const pfpHistory = await getPfpHistoryForUser(env, userId);
   const targetUser = await env.DB.prepare("SELECT id, username, displayName, email FROM users WHERE id = ?").bind(userId).first() as {
     id: string;
     username: string;
@@ -1941,192 +1935,25 @@ function auditSummaryFromDetails(details: Record<string, unknown>): string {
   return "";
 }
 
+const PFP_BATCH_ON_WORKER_MSG =
+  "Bulk PFP encoding was moved off the Worker (Cloudflare CPU limits). Run: pnpm admin:pfp-batch -- --cookie \"<session>\" on a senior admin machine. See docs/local-dev.md";
+
 export async function handleAdminProcessPfps({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   const admin = await getAdminUserWithLevel(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
-  const maxAdminLevel = await getMaxAdminLevel(env);
-  if ((admin.adminLevel || 0) < maxAdminLevel) {
-    return new Response(JSON.stringify({ error: "Only Senior Admins can process profile pictures" }), {
-      status: 403,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  let body: { offset?: number; limit?: number; includeHistory?: boolean } = {};
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    body = {};
-  }
-
-  const offset = Math.max(0, body.offset ?? 0);
-  const limit = Math.min(50, Math.max(1, body.limit ?? 20));
-  const includeHistory = body.includeHistory === true;
-
-  const userRows = await env.DB.prepare(
-    `SELECT id, pfp_hash FROM users
-     WHERE pfpUrl IS NOT NULL AND pfpUrl != '' AND pfpUrl LIKE '%/api/user/pfp/%' AND pfpUrl NOT LIKE '%/hist/%'
-     ORDER BY id LIMIT ? OFFSET ?`,
-  )
-    .bind(limit, offset)
-    .all();
-
-  const users = (userRows.results || []) as { id: string; pfp_hash: string | null }[];
-  let processed = 0;
-  let skipped = 0;
-  let failed = 0;
-
-  for (const user of users) {
-    const currentKey = `pfp/${user.id}`;
-    const current = await env.PFP_BUCKET.get(currentKey);
-
-    if (!current) {
-      if (user.pfp_hash) {
-        await env.DB.prepare("UPDATE users SET pfp_hash = NULL WHERE id = ?").bind(user.id).run();
-      }
-      skipped++;
-      continue;
-    }
-
-    if (user.pfp_hash) {
-      skipped++;
-      continue;
-    }
-
-    try {
-      const processedPfp = await processPfpUpload(await current.arrayBuffer());
-      await putCurrentPfp(env, user.id, processedPfp);
-      processed++;
-    } catch {
-      failed++;
-    }
-
-    if (includeHistory) {
-      const histRows = await env.DB.prepare(
-        "SELECT r2_key FROM pfp_history WHERE user_id = ?",
-      )
-        .bind(user.id)
-        .all();
-      for (const row of (histRows.results || []) as { r2_key: string }[]) {
-        try {
-          const obj = await env.PFP_BUCKET.get(row.r2_key);
-          if (!obj) continue;
-          const histProcessed = await processPfpUpload(await obj.arrayBuffer());
-          await env.PFP_BUCKET.put(row.r2_key, histProcessed.bytes, {
-            httpMetadata: { contentType: histProcessed.contentType },
-          });
-        } catch {
-          // ignore per-history failures
-        }
-      }
-    }
-  }
-
-  const nextOffset = users.length < limit ? null : offset + limit;
-
-  return new Response(
-    JSON.stringify({ processed, skipped, failed, nextOffset }),
-    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-  );
+  return new Response(JSON.stringify({ error: PFP_BATCH_ON_WORKER_MSG }), {
+    status: 410,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
 export async function handleAdminConvertPfpsWebp({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   const admin = await getAdminUserWithLevel(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
-  const maxAdminLevel = await getMaxAdminLevel(env);
-  if ((admin.adminLevel || 0) < maxAdminLevel) {
-    return new Response(JSON.stringify({ error: "Only Senior Admins can convert profile pictures to WebP" }), {
-      status: 403,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  let body: { offset?: number; limit?: number; includeHistory?: boolean } = {};
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    body = {};
-  }
-
-  const offset = Math.max(0, body.offset ?? 0);
-  const limit = Math.min(50, Math.max(1, body.limit ?? 20));
-  const includeHistory = body.includeHistory !== false;
-
-  const userRows = await env.DB.prepare(
-    `SELECT id FROM users
-     WHERE pfpUrl IS NOT NULL AND pfpUrl != '' AND pfpUrl LIKE '%/api/user/pfp/%' AND pfpUrl NOT LIKE '%/hist/%'
-     ORDER BY id LIMIT ? OFFSET ?`,
-  )
-    .bind(limit, offset)
-    .all();
-
-  const users = (userRows.results || []) as { id: string }[];
-  let converted = 0;
-  let skipped = 0;
-  let failed = 0;
-
-  for (const user of users) {
-    const currentKey = `pfp/${user.id}`;
-    const current = await env.PFP_BUCKET.get(currentKey);
-
-    if (!current) {
-      skipped++;
-      continue;
-    }
-
-    try {
-      const processed = await processPfpUpload(await current.arrayBuffer());
-      await putCurrentPfp(env, user.id, processed);
-      converted++;
-
-      if (includeHistory) {
-        const histRows = await env.DB.prepare(
-          "SELECT r2_key FROM pfp_history WHERE user_id = ?",
-        )
-          .bind(user.id)
-          .all();
-        for (const row of (histRows.results || []) as { r2_key: string }[]) {
-          try {
-            const obj = await env.PFP_BUCKET.get(row.r2_key);
-            if (!obj) continue;
-            const histProcessed = await processPfpUpload(await obj.arrayBuffer());
-            await env.PFP_BUCKET.put(row.r2_key, histProcessed.bytes, {
-              httpMetadata: { contentType: histProcessed.contentType },
-            });
-          } catch {
-            /* per-history failure */
-          }
-        }
-      }
-    } catch {
-      failed++;
-    }
-  }
-
-  const nextOffset = users.length < limit ? null : offset + limit;
-
-  const payload = { converted, skipped, failed, nextOffset, includeHistory };
-
-  await audit(env, admin, {
-    action: "pfp.convert_webp",
-    targetType: "system",
-    targetId: null,
-    details: {
-      context: {
-        batchOffset: offset,
-        batchLimit: limit,
-        converted,
-        skipped,
-        failed,
-        includeHistory,
-      },
-    },
-    success: true,
-  });
-
-  return new Response(JSON.stringify(payload), {
+  return new Response(JSON.stringify({ error: PFP_BATCH_ON_WORKER_MSG }), {
+    status: 410,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }

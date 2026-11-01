@@ -315,6 +315,7 @@ const onCropConfirm = async (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('preCropped', 'true')
+    formData.append('clientProcessed', 'true')
     if (mode.value === 'admin') {
       formData.append('userId', props.user.id)
     }

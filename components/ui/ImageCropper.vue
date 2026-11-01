@@ -84,7 +84,7 @@
 import { ref, watch } from 'vue'
 import { Cropper, RectangleStencil } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
-import { cropperOutputExtension, cropperOutputMimeType, cropperOutputQuality } from '~/utils/pfpUploadClient'
+import { cropCanvasToPfpOutput, cropperOutputExtension, cropperOutputMimeType, cropperOutputQuality } from '~/utils/pfpUploadClient'
 
 const props = defineProps<{
   isOpen: boolean
@@ -122,8 +122,9 @@ const handleConfirm = () => {
 
   const mimeType = cropperOutputMimeType()
   const quality = cropperOutputQuality()
+  const outputCanvas = cropCanvasToPfpOutput(result.canvas)
 
-  result.canvas.toBlob(
+  outputCanvas.toBlob(
     (blob) => {
       if (!blob) {
         confirming.value = false

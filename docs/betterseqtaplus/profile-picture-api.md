@@ -60,8 +60,9 @@ Upload replaces the current picture. The previous current image is moved into hi
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `file` | file | Yes | Image bytes (see client guidance below) |
-| `preCropped` | string | No | Set to `"true"` when the client already cropped to a **square** (skips server center-crop) |
+| `file` | file | Yes | **512×512** WebP or JPEG prepared in the client |
+| `clientProcessed` | string | **Yes** | Must be `"true"` — Worker does not run image encoding (Cloudflare CPU limits) |
+| `preCropped` | string | No | Set to `"true"` when already square (recommended) |
 
 **200**
 
@@ -76,16 +77,13 @@ Upload replaces the current picture. The previous current image is moved into hi
 **400** — Missing file, invalid type, or over size limit (max **20MB** on server).  
 **401** — Unauthorized.  
 **429** — Rate limit.  
-**500** — Processing failed (unsupported corrupt image, etc.).
+**500** — Storage or unexpected failure.
 
-### Server processing
+### Server behavior
 
-Regardless of input format (JPEG, PNG, WebP, etc. that decodes successfully):
+The Worker **does not decode or re-encode** uploads. It validates WebP/JPEG magic bytes, stores bytes in R2, updates `pfp_hash`, and sets `pfp_pending_review` for the audit queue.
 
-1. Optional square center-crop (unless `preCropped=true` and image is already square)
-2. Downscale so the longest side is **512px**
-3. Encode **WebP** to R2
-4. Set `pfp_pending_review` for hosted uploads (admin audit queue)
+All resize/crop/WebP encoding must happen **in the extension or browser** before upload.
 
 ---
 
@@ -147,17 +145,18 @@ Obtain the access token via `POST /api/bsplus/login` or `POST /api/bsplus/refres
 
 1. Let the user pick any image (PNG, JPEG, HEIC where the browser can decode, WebP, etc.).
 2. **Crop to a square** in the extension (required for predictable framing).
-3. Export **WebP** from a canvas when supported; otherwise JPEG.
+3. Export **512×512** **WebP** from a canvas when supported; otherwise JPEG.
 4. Enforce size **before** upload:
    - **20MB** max source file when WebP export is available
    - **10MB** max when WebP is not supported (legacy browsers)
-5. `POST` multipart with `preCropped=true`.
+5. `POST` multipart with `clientProcessed=true` and `preCropped=true`.
 
 Example (extension / fetch):
 
 ```typescript
 const form = new FormData();
 form.append("file", croppedFile, croppedFile.name);
+form.append("clientProcessed", "true");
 form.append("preCropped", "true");
 
 const res = await fetch("https://accounts.betterseqta.org/api/bsplus/pfp", {
