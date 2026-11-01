@@ -748,9 +748,10 @@
           <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
             Bulk resize/WebP encoding runs on your machine (not Cloudflare Workers). From this repo, with a senior admin session cookie:
           </p>
-          <pre class="text-xs bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto mb-4">pnpm admin:pfp-batch -- --cookie "access_token=YOUR_COOKIE" --base-url https://accounts.betterseqta.org</pre>
+          <pre class="text-xs bg-zinc-900 text-zinc-100 p-4 rounded-lg overflow-x-auto mb-4">pnpm admin:pfp-batch -- --cookie "bs_access_token=YOUR_COOKIE" --base-url https://accounts.betterseqta.org
+# optional: --workers 12 --jobs 24 (defaults: 1 worker/CPU, ~2× jobs)</pre>
           <p class="text-xs text-zinc-500 dark:text-zinc-400">
-            Optional: <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">--page 1 --pages 20 --page-size 40</code>. Copy <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">access_token</code> from browser devtools while logged into admin.
+            Optional: <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">--page 1 --pages 20 --page-size 40</code>. Copy <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">bs_access_token</code> from browser devtools while logged into admin.
           </p>
         </div>
 

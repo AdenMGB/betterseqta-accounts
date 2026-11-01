@@ -1,12 +1,21 @@
 /**
  * Batch-encode hosted profile pictures on a senior admin machine (not on Cloudflare Worker).
  *
- *   pnpm admin:pfp-batch -- --cookie "access_token=..." [--base-url https://accounts.betterseqta.org] [--page 1] [--pages 5]
+ *   pnpm admin:pfp-batch -- --cookie "bs_access_token=..." [--base-url URL] [--page 1] [--pages 5]
+ *   [--jobs 24] [--workers 12]
  *
- * Copy the `access_token` cookie from a logged-in senior admin session in the browser.
+ * Parallel by default: `--workers` = CPU cores (sharp/libvips per thread), `--jobs` = concurrent
+ * download→encode→upload pipelines (default ~2× cores). Override with PFP_BATCH_JOBS / PFP_BATCH_WORKERS.
+ * Image work is CPU-only (no GPU in sharp); workers use all cores efficiently.
+ *
+ * Copy the `bs_access_token` cookie from a logged-in admin session (DevTools → Storage → Cookies).
  */
-import { ensureJsquashReady } from "../worker/src/lib/jsquashInit.ts";
-import { processPfpUpload } from "../worker/src/lib/pfpProcess.ts";
+import os from "node:os";
+import {
+  defaultJobConcurrency,
+  defaultWorkerCount,
+  PfpWorkerPool,
+} from "./admin-pfp-batch-pool.mts";
 
 const DEFAULT_BASE = process.env.ACCOUNTS_BASE_URL?.replace(/\/$/, "") ?? "https://accounts.betterseqta.org";
 
@@ -16,9 +25,14 @@ function parseArgs(argv: string[]) {
   let startPage = 1;
   let maxPages = 10;
   let pageSize = 40;
+  let jobs = defaultJobConcurrency();
+  let workers = defaultWorkerCount();
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+    if (arg === "--" && argv[i + 1] === "--") {
+      continue;
+    }
     if (arg === "--cookie" && argv[i + 1]) {
       cookie = argv[++i]!;
     } else if (arg === "--base-url" && argv[i + 1]) {
@@ -29,92 +43,176 @@ function parseArgs(argv: string[]) {
       maxPages = Math.max(1, Number(argv[++i]) || 1);
     } else if (arg === "--page-size" && argv[i + 1]) {
       pageSize = Math.min(100, Math.max(1, Number(argv[++i]) || 40));
+    } else if (arg === "--jobs" && argv[i + 1]) {
+      jobs = Math.min(64, Math.max(1, Number(argv[++i]) || jobs));
+    } else if (arg === "--workers" && argv[i + 1]) {
+      workers = Math.min(64, Math.max(1, Number(argv[++i]) || workers));
     }
   }
 
   if (!cookie) {
-    console.error("Missing --cookie (access_token from admin browser session)");
+    console.error(`Missing --cookie (${ACCESS_COOKIE_NAME} from admin browser session)`);
     process.exit(1);
   }
 
-  return { cookie, baseUrl, startPage, maxPages, pageSize };
+  return { cookie, baseUrl, startPage, maxPages, pageSize, jobs, workers };
+}
+
+const ACCESS_COOKIE_NAME = "bs_access_token";
+
+function normalizeSessionCookie(cookie: string): string {
+  const trimmed = cookie.trim();
+  if (!trimmed.includes("=")) {
+    return `${ACCESS_COOKIE_NAME}=${trimmed}`;
+  }
+  if (trimmed.startsWith("access_token=")) {
+    return `${ACCESS_COOKIE_NAME}=${trimmed.slice("access_token=".length)}`;
+  }
+  return trimmed;
+}
+
+function sessionHeaders(cookie: string): { Cookie: string; Authorization?: string } {
+  const normalized = normalizeSessionCookie(cookie);
+  const jwt = normalized.startsWith(`${ACCESS_COOKIE_NAME}=`)
+    ? normalized.slice(`${ACCESS_COOKIE_NAME}=`.length)
+    : null;
+  return {
+    Cookie: normalized,
+    ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+  };
 }
 
 async function apiFetch(baseUrl: string, cookie: string, path: string, init?: RequestInit) {
-  const res = await fetch(`${baseUrl}${path}`, {
+  const session = sessionHeaders(cookie);
+  return fetch(`${baseUrl}${path}`, {
     ...init,
     headers: {
+      ...session,
       ...(init?.headers ?? {}),
-      Cookie: cookie.includes("=") ? cookie : `access_token=${cookie}`,
     },
   });
-  return res;
 }
 
 type AdminUserRow = { id: string; pfpUrl?: string | null };
 
+async function runPoolWithResults<T, R>(
+  concurrency: number,
+  items: T[],
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let index = 0;
+  async function worker() {
+    for (;;) {
+      const i = index++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i]!);
+    }
+  }
+  const n = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return results;
+}
+
+async function fetchUserPage(
+  opts: ReturnType<typeof parseArgs>,
+  page: number,
+): Promise<{ users: AdminUserRow[]; ok: true } | { ok: false; status: number; body: string }> {
+  const listRes = await apiFetch(
+    opts.baseUrl,
+    opts.cookie,
+    `/api/admin/users?q=&page=${page}&sort=username:asc&include_history=false&limit=${opts.pageSize}`,
+  );
+  if (!listRes.ok) {
+    return { ok: false, status: listRes.status, body: await listRes.text() };
+  }
+  const listJson = (await listRes.json()) as { users?: AdminUserRow[] };
+  return { ok: true, users: listJson.users ?? [] };
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  await ensureJsquashReady();
+  const cores = os.cpus().length;
+  console.log(
+    `Parallel batch: ${opts.workers} encode worker(s), ${opts.jobs} job(s), ${cores} logical CPU(s)`,
+  );
+
+  const pool = new PfpWorkerPool(opts.workers);
+
+  type Outcome = "converted" | "skipped" | "failed";
+
+  const processUser = async (user: AdminUserRow): Promise<Outcome> => {
+    const pfpUrl = user.pfpUrl ?? "";
+    if (!pfpUrl.includes("/api/user/pfp/") || pfpUrl.includes("/hist/")) {
+      return "skipped";
+    }
+
+    try {
+      const absolute = pfpUrl.startsWith("http") ? pfpUrl : `${opts.baseUrl}${pfpUrl}`;
+      const imgRes = await fetch(absolute, {
+        headers: sessionHeaders(opts.cookie),
+      });
+      if (!imgRes.ok) {
+        return "failed";
+      }
+      const raw = Buffer.from(await imgRes.arrayBuffer());
+      const processed = await pool.process(raw);
+      const blob = new Blob([processed], { type: "image/webp" });
+      const form = new FormData();
+      form.append("userId", user.id);
+      form.append("file", blob, "profile.webp");
+      form.append("clientProcessed", "true");
+      form.append("preCropped", "true");
+
+      const upRes = await apiFetch(opts.baseUrl, opts.cookie, "/api/admin/user/pfp", {
+        method: "POST",
+        body: form,
+      });
+      if (!upRes.ok) {
+        const err = await upRes.text();
+        console.warn(`Upload failed ${user.id}: ${upRes.status} ${err.slice(0, 120)}`);
+        return "failed";
+      }
+      return "converted";
+    } catch (err) {
+      console.warn(`Failed ${user.id}:`, err);
+      return "failed";
+    }
+  };
 
   let converted = 0;
   let skipped = 0;
   let failed = 0;
 
-  for (let pageOffset = 0; pageOffset < opts.maxPages; pageOffset++) {
-    const page = opts.startPage + pageOffset;
-    const listRes = await apiFetch(
-      opts.baseUrl,
-      opts.cookie,
-      `/api/admin/users?q=&page=${page}&sort=username:asc&include_history=false`,
-    );
-    if (!listRes.ok) {
-      console.error(`List users failed page ${page}: HTTP ${listRes.status}`);
-      break;
-    }
-    const listJson = (await listRes.json()) as { users?: AdminUserRow[] };
-    const users = listJson.users ?? [];
-    if (users.length === 0) break;
-
-    for (const user of users) {
-      const pfpUrl = user.pfpUrl ?? "";
-      if (!pfpUrl.includes("/api/user/pfp/") || pfpUrl.includes("/hist/")) {
-        skipped++;
-        continue;
-      }
-
-      try {
-        const imgRes = await fetch(pfpUrl.startsWith("http") ? pfpUrl : `${opts.baseUrl}${pfpUrl}`);
-        if (!imgRes.ok) {
-          failed++;
-          continue;
+  try {
+    for (let pageOffset = 0; pageOffset < opts.maxPages; pageOffset++) {
+      const page = opts.startPage + pageOffset;
+      const result = await fetchUserPage(opts, page);
+      if (!result.ok) {
+        console.error(`List users failed page ${page}: HTTP ${result.status}`);
+        if (result.status === 401 || result.status === 403) {
+          console.error("Check admin cookie (middle admin+ for user list). Token may be expired.");
         }
-        const raw = await imgRes.arrayBuffer();
-        const processed = await processPfpUpload(raw, { preCropped: false });
-        const blob = new Blob([processed.bytes], { type: processed.contentType });
-        const form = new FormData();
-        form.append("userId", user.id);
-        form.append("file", blob, "profile.webp");
-        form.append("clientProcessed", "true");
-        form.append("preCropped", "true");
-
-        const upRes = await apiFetch(opts.baseUrl, opts.cookie, "/api/admin/user/pfp", {
-          method: "POST",
-          body: form,
-        });
-        if (!upRes.ok) {
-          const err = await upRes.text();
-          console.warn(`Upload failed ${user.id}: ${upRes.status} ${err.slice(0, 120)}`);
-          failed++;
-          continue;
-        }
-        converted++;
-        console.log(`OK ${user.id}`);
-      } catch (err) {
-        console.warn(`Failed ${user.id}:`, err);
-        failed++;
+        console.error(result.body.slice(0, 200));
+        break;
       }
+      const users = result.users;
+      if (users.length === 0) break;
+
+      const t0 = performance.now();
+      const outcomes = await runPoolWithResults(opts.jobs, users, processUser);
+      for (const o of outcomes) {
+        if (o === "converted") converted++;
+        else if (o === "skipped") skipped++;
+        else failed++;
+      }
+      const sec = ((performance.now() - t0) / 1000).toFixed(1);
+      console.log(
+        `Page ${page}: ${users.length} users in ${sec}s (${converted} converted total)`,
+      );
     }
+  } finally {
+    await pool.close();
   }
 
   console.log(`Done: ${converted} converted, ${skipped} skipped, ${failed} failed`);

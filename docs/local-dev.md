@@ -69,8 +69,10 @@ Use the client id/secret in bsplus `.env` as `NUXT_OAUTH_CLIENT_ID` / `NUXT_OAUT
 
 PFP audit review state uses migrations `0023_pfp_audit_review.sql` and `0024_pfp_audit_decisions.sql` — run `pnpm db:migrate:local` after pulling.
 
-Bulk PFP resize/WebP (production): run on a senior admin machine, not on the Worker:
+Bulk PFP resize/WebP (production): run on a senior admin machine (not on the Worker). Uses **sharp** in Node (not @jsquash WASM):
 
 ```bash
-pnpm admin:pfp-batch -- --cookie "access_token=..." --base-url https://accounts.betterseqta.org
+pnpm admin:pfp-batch -- --cookie "bs_access_token=..." --base-url https://accounts.betterseqta.org
+# Defaults: one worker thread per CPU core for WebP encode; ~2× cores concurrent download/upload pipelines.
+# Tune: --workers 12 --jobs 24  (or env PFP_BATCH_WORKERS / PFP_BATCH_JOBS)
 ```
