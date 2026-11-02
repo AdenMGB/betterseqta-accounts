@@ -240,6 +240,7 @@
                                         :user="users[virtualRow.index]"
                                         :can-edit="canModerateUsers()"
                                         :can-manage-badges="canManageUserBadges(users[virtualRow.index])"
+                                        :can-view-instances="canModerateUsers()"
                                         :can-promote="canPromoteUser(users[virtualRow.index].admin_level || 0)"
                                         :can-demote="canDemoteUser(users[virtualRow.index].admin_level || 0)"
                                         :can-reset="getCurrentAdminLevel() > 0 && users[virtualRow.index].id !== auth.user.value?.id"
@@ -248,6 +249,7 @@
                                         :deleting="deletingUserId === users[virtualRow.index].id"
                                         @edit="startUserEdit(users[virtualRow.index])"
                                         @badges="openUserBadgesModal(users[virtualRow.index])"
+                                        @instances="openUserInstancesModal(users[virtualRow.index])"
                                         @promote="promoteUser(users[virtualRow.index])"
                                         @demote="demoteUser(users[virtualRow.index])"
                                         @reset="sendPasswordReset(users[virtualRow.index])"
@@ -726,6 +728,32 @@
             <ArrowPathIcon class="w-4 h-4" />
             Refresh
           </button>
+
+          <div
+            v-if="canModerateUsers() && tqClassmatesStats?.available"
+            class="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-700"
+          >
+            <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+              Look up registrations by account ID
+            </label>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input
+                v-model="tqInstancesLookupId"
+                type="text"
+                placeholder="User UUID"
+                class="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 dark:text-white font-mono"
+                @keydown.enter="lookupTqInstancesByAccountId"
+              />
+              <button
+                type="button"
+                class="px-4 py-2 text-sm rounded-lg bg-primary-500 text-white shrink-0 transition-all duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                :disabled="!tqInstancesLookupId.trim()"
+                @click="lookupTqInstancesByAccountId"
+              >
+                {{ 'View instances' }}
+              </button>
+            </div>
+          </div>
         </div>
 
         <div
@@ -939,6 +967,12 @@
     @close="closeUserBadgesModal"
     @updated="onUserBadgesUpdated"
   />
+
+  <AdminUserInstancesModal
+    :is-open="instancesModalOpen"
+    :user="instancesModalUser"
+    @close="closeUserInstancesModal"
+  />
 </template>
 
 <script setup lang="ts">
@@ -955,6 +989,7 @@ import AuditContextCell from '~/components/admin/AuditContextCell.vue'
 import ConfirmDialog from '~/components/admin/ConfirmDialog.vue'
 import UserActionsMenu from '~/components/admin/UserActionsMenu.vue'
 import AdminUserBadgesModal from '~/components/admin/AdminUserBadgesModal.vue'
+import AdminUserInstancesModal from '~/components/admin/AdminUserInstancesModal.vue'
 import PfpAuditTab from '~/components/admin/PfpAuditTab.vue'
 import ProfileBadgeStack from '~/components/badges/ProfileBadgeStack.vue'
 import { useIntersectionObserver, useMediaQuery, watchDebounced } from '@vueuse/core'
@@ -1829,6 +1864,26 @@ const openUserBadgesModal = (user: any) => {
 const closeUserBadgesModal = () => {
     badgesModalOpen.value = false
     badgesModalUser.value = null
+}
+
+const instancesModalOpen = ref(false)
+const instancesModalUser = ref<{ id: string; username: string; displayName?: string | null } | null>(null)
+const tqInstancesLookupId = ref('')
+
+const openUserInstancesModal = (user: { id: string; username: string; displayName?: string | null }) => {
+    instancesModalUser.value = user
+    instancesModalOpen.value = true
+}
+
+const closeUserInstancesModal = () => {
+    instancesModalOpen.value = false
+    instancesModalUser.value = null
+}
+
+const lookupTqInstancesByAccountId = () => {
+    const id = tqInstancesLookupId.value.trim()
+    if (!id) return
+    openUserInstancesModal({ id, username: '…', displayName: null })
 }
 
 const onUserBadgesUpdated = ({ userId, badges }: { userId: string; badges: any[] }) => {

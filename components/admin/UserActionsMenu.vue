@@ -35,6 +35,15 @@
             Manage badges
           </button>
           <button
+            v-if="canViewInstances"
+            type="button"
+            role="menuitem"
+            :class="menuItemClass(false)"
+            @click="choose('instances')"
+          >
+            SEQTA instances
+          </button>
+          <button
             v-if="canEdit"
             type="button"
             role="menuitem"
@@ -95,6 +104,7 @@ const props = defineProps<{
   user: { displayName?: string; username: string }
   canEdit?: boolean
   canManageBadges?: boolean
+  canViewInstances?: boolean
   canPromote?: boolean
   canDemote?: boolean
   canReset?: boolean
@@ -103,13 +113,13 @@ const props = defineProps<{
   deleting?: boolean
 }>()
 
-type Action = 'edit' | 'badges' | 'promote' | 'demote' | 'reset' | 'delete'
+type Action = 'edit' | 'badges' | 'instances' | 'promote' | 'demote' | 'reset' | 'delete'
 
 const emit = defineEmits<{ (e: Action): void }>()
   
 const MENU_WIDTH = 192
 const MENU_GAP = 4
-const ESTIMATED_MENU_HEIGHT = 220
+const ESTIMATED_MENU_HEIGHT = 260
 
 const anchorRef = ref<HTMLElement | null>(null)
 const menuRef = ref<HTMLElement | null>(null)

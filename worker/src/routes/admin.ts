@@ -59,6 +59,7 @@ import {
 import { getSignupOrderStats, recomputeAllSignupNumbers } from "../lib/signupNumber";
 import { enrichAdminUserRows, queryAdminUsersPage } from "../lib/adminUsersQuery";
 import { getTimetableClassmatesAdminStats } from "../lib/timetable-classmates-admin-stats";
+import { listTqInstancesForCloudUser } from "../lib/timetable-classmates-admin-user-instances";
 
 async function audit(
   env: RequestContext["env"],
@@ -977,6 +978,31 @@ export async function handleAdminUserBadgesGet({
       achievement_keys: achievementKeys,
       awardable: listAwardableBadges(),
       can_revoke_achievements: canRevokeAchievements,
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
+
+export async function handleAdminUserTqInstancesGet({
+  env,
+  request,
+  url,
+  jwtSecret,
+}: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const userId = url.searchParams.get("userId")?.trim() ?? "";
+  const resolved = await resolveAdminBadgeUserTarget(env, admin, userId);
+  if (!resolved.ok) return resolved.response;
+
+  const payload = await listTqInstancesForCloudUser(env.DB, userId);
+
+  return new Response(
+    JSON.stringify({
+      ...payload,
+      username: resolved.user.username,
+      displayName: resolved.user.displayName,
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
