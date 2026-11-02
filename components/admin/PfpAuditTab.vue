@@ -33,14 +33,14 @@
               ? 'bg-primary-500/15 text-primary-700 dark:text-primary-200 ring-1 ring-primary-500/30'
               : 'bg-zinc-200/80 text-zinc-600 dark:bg-zinc-700/80 dark:text-zinc-300 ring-1 ring-zinc-300/50 dark:ring-zinc-600/50'"
           >
-            {{ queueRemaining }} in your queue
+            {{ queueRemaining }} in queue
           </span>
           <span
             v-if="pendingTotal !== null && pendingTotal !== queueRemaining"
             class="text-xs text-zinc-500 dark:text-zinc-400 tabular-nums"
-            title="Total hosted profile pictures pending review across all admins"
+            title="Total profile pictures pending review (including ones another admin is reviewing right now)"
           >
-            {{ pendingTotal }} team-wide
+            {{ pendingTotal }} pending total
           </span>
         </div>
       </div>
@@ -66,7 +66,7 @@
 
       <div v-else-if="!candidate" class="text-center py-16 text-zinc-500 dark:text-zinc-400">
         <p class="font-medium text-zinc-700 dark:text-zinc-300">No more profile pictures to review</p>
-        <p class="text-sm mt-2">Everyone pending review has been seen, or the queue is empty.</p>
+        <p class="text-sm mt-2">The shared queue is empty, or every pending picture is being reviewed by another admin.</p>
         <button
           type="button"
           class="mt-4 px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"

@@ -14,13 +14,14 @@ import { deleteUserRecords } from "../lib/deleteUser";
 import { processPfpUpload } from "../lib/pfpProcess";
 import {
   countHostedPfpPendingReview,
-  countPfpAuditQueueForAdmin,
+  countSharedPfpAuditQueueAvailable,
   getPfpAuditDecisionForAdmin,
   listPfpAuditDecisions,
   loadPfpReviewMetaForUsers,
   pickPfpAuditCandidateForAdmin,
   recalculatePfpPendingReview,
   recordPfpAuditAcceptance,
+  releasePfpAuditClaim,
   removePfpAuditAcceptance,
   resolveAdminUserId,
   restoreSubjectPfpFromLatestHistory,
@@ -1263,15 +1264,14 @@ export async function handleAdminPfpAuditNext({ env, request, url, jwtSecret }: 
     .filter(Boolean);
 
   const cfDev = env.CF_DEV === "1" || env.CF_DEV === "true";
-  const pickOptions = {
-    mode: (cfDev ? "sequential" : "random") as "sequential" | "random",
-    devRelaxed: cfDev,
-  };
   const [remaining, pendingTotal] = await Promise.all([
-    countPfpAuditQueueForAdmin(env, admin.id as string, excludeUserIds, { devRelaxed: cfDev }),
+    countSharedPfpAuditQueueAvailable(env, { devRelaxed: cfDev }),
     countHostedPfpPendingReview(env, { devRelaxed: cfDev }),
   ]);
-  const user = await pickPfpAuditCandidateForAdmin(env, admin.id as string, excludeUserIds, pickOptions);
+  const user = await pickPfpAuditCandidateForAdmin(env, admin.id as string, excludeUserIds, {
+    mode: "random",
+    devRelaxed: cfDev,
+  });
 
   return new Response(JSON.stringify({ user, remaining, pendingTotal }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -1313,6 +1313,8 @@ export async function handleAdminPfpAuditAccept({ env, request, jwtSecret }: Req
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
+  await releasePfpAuditClaim(env, admin.id as string, userId, row.pfp_hash);
 
   const result = await recordPfpAuditAcceptance(env, admin.id as string, userId, row.pfp_hash);
 
@@ -1374,6 +1376,8 @@ export async function handleAdminPfpAuditReject({ env, request, jwtSecret }: Req
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
+  await releasePfpAuditClaim(env, admin.id as string, userId, subjectRow.pfp_hash);
 
   await removePfpAuditAcceptance(env, admin.id as string, userId, subjectRow.pfp_hash);
 

@@ -64,6 +64,12 @@ export async function deleteUserRecords(env: Env, userId: string): Promise<void>
     .bind(userId, userId)
     .run()
     .catch(() => undefined);
+  await env.DB.prepare(
+    "DELETE FROM pfp_audit_claims WHERE subject_user_id = ? OR admin_user_id = ?",
+  )
+    .bind(userId, userId)
+    .run()
+    .catch(() => undefined);
   await runOptional("DELETE FROM bsplus_install_link WHERE cloud_user_id = ?");
   await runOptional("DELETE FROM pfp_history WHERE user_id = ?");
   await runOptional("DELETE FROM user_badges WHERE user_id = ?");

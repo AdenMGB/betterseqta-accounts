@@ -5,6 +5,11 @@ import { saveCurrentPfpToHistory } from "./pfpHistory";
 
 export const PFP_AUDIT_APPROVALS_REQUIRED = 2;
 
+/** How long an admin holds a profile picture while reviewing (seconds). */
+export const PFP_AUDIT_CLAIM_TTL_SEC = 20 * 60;
+
+const PFP_AUDIT_PICK_MAX_ATTEMPTS = 20;
+
 export type PfpAuditDecisionType = "accept" | "remove";
 
 export type PfpAuditDecisionRow = {
@@ -322,22 +327,67 @@ function hostedPfpSql(devRelaxed: boolean): string {
     : "u.pfp_hash IS NOT NULL";
 }
 
-function buildPfpAuditQueueFilters(
+export async function purgeExpiredPfpAuditClaims(env: Env, nowSec?: number): Promise<void> {
+  const now = nowSec ?? Math.floor(Date.now() / 1000);
+  try {
+    await env.DB.prepare("DELETE FROM pfp_audit_claims WHERE expires_at <= ?").bind(now).run();
+  } catch {
+    // Pre-migration
+  }
+}
+
+export async function releasePfpAuditClaim(
+  env: Env,
+  adminUserId: string,
+  subjectUserId: string,
+  pfpHash: string,
+): Promise<void> {
+  try {
+    await env.DB.prepare(
+      `DELETE FROM pfp_audit_claims
+       WHERE subject_user_id = ? AND pfp_hash = ? AND admin_user_id = ?`,
+    )
+      .bind(subjectUserId, pfpHash, adminUserId)
+      .run();
+  } catch {
+    // Pre-migration
+  }
+}
+
+export async function releaseAllPfpAuditClaimsForAdmin(env: Env, adminUserId: string): Promise<void> {
+  try {
+    await env.DB.prepare("DELETE FROM pfp_audit_claims WHERE admin_user_id = ?").bind(adminUserId).run();
+  } catch {
+    // Pre-migration
+  }
+}
+
+function buildSharedPfpAuditQueueFilters(
   adminUserId: string,
   excludeUserIds: string[],
   devRelaxed: boolean,
+  nowSec: number,
 ): { whereTail: string; binds: unknown[] } {
   const capped = excludeUserIds.slice(0, 200);
   let whereTail = `
     WHERE u.pfp_pending_review = 1
       AND ${hostedPfpSql(devRelaxed)}
       AND NOT EXISTS (
-        SELECT 1 FROM pfp_audit_admin_views v
-        WHERE v.admin_user_id = ?
-          AND v.subject_user_id = u.id
-          AND v.pfp_hash = u.pfp_hash
+        SELECT 1 FROM pfp_audit_claims c
+        WHERE c.subject_user_id = u.id
+          AND c.pfp_hash = u.pfp_hash
+          AND c.expires_at > ?
+          AND c.admin_user_id != ?
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM pfp_audit_acceptances a
+        WHERE a.admin_user_id = ? AND a.subject_user_id = u.id AND a.pfp_hash = u.pfp_hash
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM pfp_audit_decisions d
+        WHERE d.admin_user_id = ? AND d.subject_user_id = u.id AND d.pfp_hash = u.pfp_hash
       )`;
-  const binds: unknown[] = [adminUserId];
+  const binds: unknown[] = [nowSec, adminUserId, adminUserId, adminUserId];
 
   if (capped.length > 0) {
     whereTail += ` AND u.id NOT IN (${capped.map(() => "?").join(",")})`;
@@ -347,15 +397,28 @@ function buildPfpAuditQueueFilters(
   return { whereTail, binds };
 }
 
-/** Profile pictures this admin has not reviewed yet (same pool as pickPfpAuditCandidateForAdmin). */
-export async function countPfpAuditQueueForAdmin(
+function buildSharedPfpAuditQueueAvailableFilters(devRelaxed: boolean, nowSec: number): { whereTail: string; binds: unknown[] } {
+  const whereTail = `
+    WHERE u.pfp_pending_review = 1
+      AND ${hostedPfpSql(devRelaxed)}
+      AND NOT EXISTS (
+        SELECT 1 FROM pfp_audit_claims c
+        WHERE c.subject_user_id = u.id
+          AND c.pfp_hash = u.pfp_hash
+          AND c.expires_at > ?
+      )`;
+  return { whereTail, binds: [nowSec] };
+}
+
+/** Shared queue depth: pending PFPs not currently claimed by another admin. */
+export async function countSharedPfpAuditQueueAvailable(
   env: Env,
-  adminUserId: string,
-  excludeUserIds: string[],
   options?: { devRelaxed?: boolean },
 ): Promise<number> {
   const devRelaxed = options?.devRelaxed ?? false;
-  const { whereTail, binds } = buildPfpAuditQueueFilters(adminUserId, excludeUserIds, devRelaxed);
+  await purgeExpiredPfpAuditClaims(env);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const { whereTail, binds } = buildSharedPfpAuditQueueAvailableFilters(devRelaxed, nowSec);
 
   try {
     const row = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM users u ${whereTail}`)
@@ -365,6 +428,16 @@ export async function countPfpAuditQueueForAdmin(
   } catch {
     return 0;
   }
+}
+
+/** @deprecated Use countSharedPfpAuditQueueAvailable */
+export async function countPfpAuditQueueForAdmin(
+  env: Env,
+  _adminUserId: string,
+  _excludeUserIds: string[],
+  options?: { devRelaxed?: boolean },
+): Promise<number> {
+  return countSharedPfpAuditQueueAvailable(env, options);
 }
 
 /** Users with a hosted PFP still awaiting audit (any admin). */
@@ -388,40 +461,62 @@ export async function pickPfpAuditCandidateForAdmin(
   excludeUserIds: string[],
   options?: { mode?: PfpAuditPickMode; devRelaxed?: boolean },
 ): Promise<PfpAuditCandidate | null> {
-  const mode = options?.mode ?? "random";
   const devRelaxed = options?.devRelaxed ?? false;
-  const { whereTail, binds } = buildPfpAuditQueueFilters(adminUserId, excludeUserIds, devRelaxed);
+  const mode = options?.mode ?? "random";
 
-  let query = `
-    SELECT u.id, u.username, u.displayName, u.pfpUrl, u.pfp_hash
-    FROM users u
-    ${whereTail}`;
+  await purgeExpiredPfpAuditClaims(env);
+  await releaseAllPfpAuditClaimsForAdmin(env, adminUserId);
 
-  query += mode === "sequential" ? " ORDER BY u.username ASC, u.id ASC LIMIT 1" : " ORDER BY RANDOM() LIMIT 1";
+  const nowSec = Math.floor(Date.now() / 1000);
+  const expiresAt = nowSec + PFP_AUDIT_CLAIM_TTL_SEC;
 
   try {
-    const row = (await env.DB.prepare(query)
-      .bind(...binds)
-      .first()) as {
-      id: string;
-      username: string;
-      displayName: string | null;
-      pfpUrl: string;
-      pfp_hash: string | null;
-    } | null;
+    for (let attempt = 0; attempt < PFP_AUDIT_PICK_MAX_ATTEMPTS; attempt++) {
+      const { whereTail, binds } = buildSharedPfpAuditQueueFilters(adminUserId, excludeUserIds, devRelaxed, nowSec);
 
-    if (!row?.pfp_hash) return null;
+      let query = `
+        SELECT u.id, u.username, u.displayName, u.pfpUrl, u.pfp_hash
+        FROM users u
+        ${whereTail}`;
 
-    const candidate: PfpAuditCandidate = {
-      id: row.id,
-      username: row.username,
-      displayName: row.displayName,
-      pfpUrl: row.pfpUrl,
-      pfpHash: row.pfp_hash,
-    };
+      query +=
+        mode === "sequential"
+          ? " ORDER BY u.username ASC, u.id ASC LIMIT 1"
+          : " ORDER BY RANDOM() LIMIT 1";
 
-    await recordPfpAuditAdminView(env, adminUserId, row.id, row.pfp_hash);
-    return candidate;
+      const row = (await env.DB.prepare(query)
+        .bind(...binds)
+        .first()) as {
+        id: string;
+        username: string;
+        displayName: string | null;
+        pfpUrl: string;
+        pfp_hash: string | null;
+      } | null;
+
+      if (!row?.pfp_hash) return null;
+
+      const claim = await env.DB.prepare(
+        `INSERT INTO pfp_audit_claims (subject_user_id, pfp_hash, admin_user_id, claimed_at, expires_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+        .bind(row.id, row.pfp_hash, adminUserId, nowSec, expiresAt)
+        .run();
+
+      if ((claim.meta?.changes ?? 0) === 0) {
+        continue;
+      }
+
+      return {
+        id: row.id,
+        username: row.username,
+        displayName: row.displayName,
+        pfpUrl: row.pfpUrl,
+        pfpHash: row.pfp_hash,
+      };
+    }
+
+    return null;
   } catch {
     return null;
   }

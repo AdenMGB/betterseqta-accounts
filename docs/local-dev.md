@@ -67,7 +67,7 @@ http://localhost:8787/api/auth/callback
 
 Use the client id/secret in bsplus `.env` as `NUXT_OAUTH_CLIENT_ID` / `NUXT_OAUTH_CLIENT_SECRET`.
 
-PFP audit review state uses migrations `0023_pfp_audit_review.sql` and `0024_pfp_audit_decisions.sql` — run `pnpm db:migrate:local` after pulling.
+PFP audit review state uses migrations `0023_pfp_audit_review.sql`, `0024_pfp_audit_decisions.sql`, and `0029_pfp_audit_claims.sql` — run `pnpm db:migrate:local` after pulling.
 
 Bulk PFP resize/WebP (production): run on a senior admin machine (not on the Worker). Uses **sharp** in Node (not @jsquash WASM):
 
