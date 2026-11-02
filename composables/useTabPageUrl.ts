@@ -36,17 +36,26 @@ export const SETTINGS_TAB_PAGE = createTabPageConfig({
 })
 
 export const ADMIN_TAB_PAGE = createTabPageConfig({
-  defaultTab: 'users',
-  tabs: ['users', 'clients', 'apikeys', 'activity-log', 'signup-order', 'timetable-classmates', 'pfp-audit', 'pfp-migration'],
+  defaultTab: 'overview',
+  tabs: ['overview', 'users', 'access', 'moderation', 'platform'],
   tabToP: {
+    overview: 'home',
     users: 'users',
-    clients: 'clients',
-    apikeys: 'apikeys',
-    'activity-log': 'activity',
-    'signup-order': 'signup',
-    'timetable-classmates': 'tq-classmates',
-    'pfp-audit': 'pfp-audit',
-    'pfp-migration': 'pfp',
+    access: 'access',
+    moderation: 'moderation',
+    platform: 'platform',
+    // Legacy bookmarks → consolidated tabs
+    clients: 'access',
+    apikeys: 'access',
+    'activity-log': 'moderation',
+    activity: 'moderation',
+    'pfp-audit': 'moderation',
+    'signup-order': 'platform',
+    signup: 'platform',
+    'timetable-classmates': 'platform',
+    'tq-classmates': 'platform',
+    'pfp-migration': 'platform',
+    pfp: 'platform',
   },
 })
 

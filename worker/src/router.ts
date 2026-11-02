@@ -15,6 +15,7 @@ import * as user from "./routes/user";
 import * as googleCalendar from "./routes/google-calendar";
 import * as microsoftCalendar from "./routes/microsoft-calendar";
 import * as v1Users from "./routes/v1/users";
+import * as v1BsplusInterop from "./routes/v1/bsplus-interop";
 import * as health from "./routes/health";
 import * as customThemesProxy from "./routes/custom-themes-proxy";
 import * as timetableClassmates from "./routes/timetable-classmates-bsplus";
@@ -60,6 +61,14 @@ const routes: Route[] = [
   {
     test: (m, p) => m === "DELETE" && /^\/api\/v1\/users\/[^/]+\/badges\/[^/]+$/.test(p),
     handle: (c) => v1Users.handleV1UserBadgeRevoke(c),
+  },
+  {
+    test: (m, p) => m === "GET" && p === "/api/v1/bsplus/users/search",
+    handle: (c) => v1BsplusInterop.handleV1BsplusInteropUserSearch(c),
+  },
+  {
+    test: (m, p) => m === "GET" && p === "/api/v1/bsplus/installs/search",
+    handle: (c) => v1BsplusInterop.handleV1BsplusInteropInstallSearch(c),
   },
   { test: (m, p) => m === "POST" && p === "/api/auth/register", handle: (c) => auth.handleRegister(c) },
   { test: (m, p) => m === "POST" && p === "/api/auth/login", handle: (c) => auth.handleLogin(c) },

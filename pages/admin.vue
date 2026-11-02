@@ -18,20 +18,81 @@
       
       <!-- Tabs -->
       <div class="admin-table-scroll -mx-4 px-4 sm:mx-0 sm:px-0 mb-2 shrink-0">
-        <div class="flex gap-4 sm:gap-6 border-b border-zinc-200 dark:border-zinc-700 min-w-max sm:min-w-0">
+        <div class="flex gap-2 sm:gap-3 border-b border-zinc-200 dark:border-zinc-700 min-w-max sm:min-w-0 flex-wrap pb-1">
         <button
             v-for="tab in adminTabs"
             :key="tab.id"
-            @click="setActiveTab(tab.id)"
-            :class="['pb-2 px-1 font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === tab.id ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
+            @click="selectAdminTab(tab.id)"
+            :class="['pb-2 px-2 sm:px-3 text-sm font-medium whitespace-nowrap transition-colors duration-200 border-b-2 shrink-0', activeTab === tab.id ? 'border-primary-500 text-primary-500' : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300']"
         >
             {{ tab.label }}
         </button>
         </div>
       </div>
+      <div
+        v-if="activeTab === 'access'"
+        class="mb-4 flex flex-wrap gap-2 shrink-0"
+      >
+        <button
+          v-for="item in accessSections"
+          :key="item.id"
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200"
+          :class="accessSection === item.id ? 'bg-primary-500 text-white' : 'bg-zinc-100 dark:bg-zinc-900/50 text-zinc-600 dark:text-zinc-400'"
+          @click="accessSection = item.id"
+        >
+          {{ item.label }}
+        </button>
+      </div>
+      <div
+        v-if="activeTab === 'moderation'"
+        class="mb-4 flex flex-wrap gap-2 shrink-0"
+      >
+        <button
+          v-for="item in moderationSections"
+          :key="item.id"
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200"
+          :class="moderationSection === item.id ? 'bg-primary-500 text-white' : 'bg-zinc-100 dark:bg-zinc-900/50 text-zinc-600 dark:text-zinc-400'"
+          @click="moderationSection = item.id"
+        >
+          {{ item.label }}
+        </button>
+      </div>
+      <div
+        v-if="activeTab === 'platform'"
+        class="mb-4 flex flex-wrap gap-2 shrink-0"
+      >
+        <button
+          v-for="item in platformSections"
+          :key="item.id"
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200"
+          :class="platformSection === item.id ? 'bg-primary-500 text-white' : 'bg-zinc-100 dark:bg-zinc-900/50 text-zinc-600 dark:text-zinc-400'"
+          @click="platformSection = item.id"
+        >
+          {{ item.label }}
+        </button>
+      </div>
       <p v-if="activeTabDescription" class="text-sm text-zinc-500 dark:text-zinc-400 mb-4 shrink-0">{{ activeTabDescription }}</p>
 
       <div class="admin-panel-body admin-panel-body-mobile-scroll max-md:flex-none max-md:min-h-0 md:min-h-0 flex-1 flex flex-col max-md:overflow-visible md:overflow-hidden">
+      <!-- Overview -->
+      <div v-if="activeTab === 'overview'" class="admin-scroll-tab space-y-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          <button
+            v-for="card in overviewCards"
+            :key="card.tab"
+            type="button"
+            class="text-left rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/30 p-5 transition-all duration-200 hover:scale-[1.02] hover:border-primary-500/40 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            @click="selectAdminTab(card.tab, card.section)"
+          >
+            <h3 class="text-base font-semibold text-zinc-900 dark:text-white">{{ card.title }}</h3>
+            <p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{{ card.description }}</p>
+            <p v-if="card.stat" class="mt-3 text-sm font-medium text-primary-600 dark:text-primary-400">{{ card.stat }}</p>
+          </button>
+        </div>
+      </div>
       <!-- Users Tab -->
       <div v-if="activeTab === 'users'" class="admin-tab-panel flex flex-col gap-4 sm:gap-6 min-w-0 min-h-0">
         <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center shrink-0">
@@ -218,7 +279,7 @@
       </div>
 
       <!-- OAuth Clients Tab -->
-      <div v-if="activeTab === 'clients'" class="admin-scroll-tab space-y-8">
+      <div v-if="isTab('clients')" class="admin-scroll-tab space-y-8">
         <!-- DesQTA Clients -->
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700">
           <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-2">DesQTA Clients</h3>
@@ -300,7 +361,7 @@
       </div>
 
       <!-- API Keys Tab -->
-      <div v-if="activeTab === 'apikeys'" class="admin-scroll-tab space-y-8">
+      <div v-if="isTab('apikeys')" class="admin-scroll-tab space-y-8">
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-4">
           <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">API Key Endpoints</h3>
           <p class="text-zinc-600 dark:text-zinc-400 text-sm">
@@ -432,7 +493,7 @@
         </div>
       </div>
       <!-- Activity Log Tab -->
-      <div v-if="activeTab === 'activity-log'" class="admin-tab-panel flex flex-col gap-4 sm:gap-6 min-w-0 min-h-0">
+      <div v-if="isTab('activity-log')" class="admin-tab-panel flex flex-col gap-4 sm:gap-6 min-w-0 min-h-0">
         <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center shrink-0">
           <input
             v-model="auditSearchQuery"
@@ -454,7 +515,7 @@
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400 shrink-0">
-          <span v-if="activeTab === 'activity-log'" class="inline-flex items-center gap-1.5">
+          <span v-if="isTab('activity-log')" class="inline-flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             Live · checks every 8s
           </span>
@@ -906,17 +967,98 @@ const SCROLL_CHAIN_CAP = 20
 const auth = useAuth()
 const { showToast } = useToast()
 const { activeTab, setActiveTab } = useTabPageUrl(ADMIN_TAB_PAGE)
+const route = useRoute()
+
+const accessSection = ref<'clients' | 'apikeys'>('clients')
+const moderationSection = ref<'activity' | 'pfp-audit'>('activity')
+const platformSection = ref<'signup' | 'tq' | 'pfp'>('signup')
 
 const adminTabs = [
-  { id: 'users', label: 'Users', description: 'Search, edit, and manage user accounts and profile pictures.' },
-  { id: 'clients', label: 'OAuth Clients', description: 'Create and manage OAuth applications.' },
-  { id: 'apikeys', label: 'API Keys', description: 'Issue and revoke API keys for integrations.' },
-  { id: 'activity-log', label: 'Activity Log', description: 'Review admin actions with live updates every 8 seconds.' },
-  { id: 'signup-order', label: 'Signup Order', description: 'Recompute join order and Founding 2500 founder badges.' },
-  { id: 'timetable-classmates', label: 'Timetable classmates', description: 'Opt-in usage for BetterSEQTA+ classmate avatars (phonebook).' },
-  { id: 'pfp-audit', label: 'PFP Audit', description: 'Review random uploaded profile pictures and remove violations.' },
-  { id: 'pfp-migration', label: 'PFP Migration', description: 'Senior admin tools for bulk profile picture maintenance.' },
+  { id: 'overview', label: 'Overview', description: 'Shortcuts to every admin area.' },
+  { id: 'users', label: 'Users', description: 'Search, edit, and manage accounts and profile pictures.' },
+  { id: 'access', label: 'Access', description: 'OAuth clients and API keys for integrations.' },
+  { id: 'moderation', label: 'Moderation', description: 'Activity log and profile picture audit queue.' },
+  { id: 'platform', label: 'Platform', description: 'Signup order, timetable classmates, and PFP maintenance.' },
 ]
+
+const accessSections = [
+  { id: 'clients', label: 'OAuth clients' },
+  { id: 'apikeys', label: 'API keys' },
+] as const
+
+const moderationSections = [
+  { id: 'activity', label: 'Activity log' },
+  { id: 'pfp-audit', label: 'PFP audit' },
+] as const
+
+const platformSections = [
+  { id: 'signup', label: 'Signup order' },
+  { id: 'tq', label: 'Timetable classmates' },
+  { id: 'pfp', label: 'PFP migration' },
+] as const
+
+function syncLegacySectionFromQuery() {
+  const p = typeof route.query.p === 'string' ? route.query.p : ''
+  if (p === 'clients') accessSection.value = 'clients'
+  if (p === 'apikeys') accessSection.value = 'apikeys'
+  if (p === 'activity' || p === 'activity-log') moderationSection.value = 'activity'
+  if (p === 'pfp-audit') moderationSection.value = 'pfp-audit'
+  if (p === 'signup' || p === 'signup-order') platformSection.value = 'signup'
+  if (p === 'tq-classmates' || p === 'timetable-classmates') platformSection.value = 'tq'
+  if (p === 'pfp' || p === 'pfp-migration') platformSection.value = 'pfp'
+}
+
+function selectAdminTab(tab: string, section?: string) {
+  setActiveTab(tab)
+  if (tab === 'access' && section === 'apikeys') accessSection.value = 'apikeys'
+  if (tab === 'access' && section === 'clients') accessSection.value = 'clients'
+  if (tab === 'moderation' && section === 'pfp-audit') moderationSection.value = 'pfp-audit'
+  if (tab === 'moderation' && section === 'activity') moderationSection.value = 'activity'
+  if (tab === 'platform' && section === 'signup') platformSection.value = 'signup'
+  if (tab === 'platform' && section === 'tq') platformSection.value = 'tq'
+  if (tab === 'platform' && section === 'pfp') platformSection.value = 'pfp'
+}
+
+const overviewCards = computed(() => [
+  {
+    tab: 'users',
+    title: 'Users',
+    description: 'Search accounts, roles, badges, and hosted profile pictures.',
+    stat: totalUsers.value ? `${totalUsers.value.toLocaleString()} accounts` : searched.value ? 'Search loaded' : 'Open user search',
+  },
+  {
+    tab: 'access',
+    section: 'clients',
+    title: 'OAuth clients',
+    description: 'Apps that sign in with BetterSEQTA accounts.',
+    stat: clients.value?.length ? `${clients.value.length} client(s)` : undefined,
+  },
+  {
+    tab: 'access',
+    section: 'apikeys',
+    title: 'API keys',
+    description: 'Service tokens for bsplus, exports, and badges.',
+    stat: apiKeys.value?.length ? `${apiKeys.value.length} key(s)` : undefined,
+  },
+  {
+    tab: 'moderation',
+    section: 'activity',
+    title: 'Activity log',
+    description: 'Live admin action history.',
+  },
+  {
+    tab: 'moderation',
+    section: 'pfp-audit',
+    title: 'PFP audit',
+    description: 'Random review queue for uploaded avatars.',
+  },
+  {
+    tab: 'platform',
+    section: 'signup',
+    title: 'Signup order',
+    description: 'Founding 2500 badges and join order backfill.',
+  },
+])
 
 const activeTabDescription = computed(() => adminTabs.find(t => t.id === activeTab.value)?.description ?? '')
 
@@ -1272,7 +1414,7 @@ const stopAuditAutoRefresh = () => {
 const startAuditAutoRefresh = () => {
   stopAuditAutoRefresh()
   auditPollTimer = setInterval(() => {
-    if (activeTab.value === 'activity-log') pollAuditLog()
+    if (isTab('activity-log')) pollAuditLog()
   }, AUDIT_POLL_MS)
 }
 
@@ -1330,7 +1472,7 @@ const ensureAuditScrollBuffer = async () => {
 useIntersectionObserver(
   auditScrollSentinel,
   ([entry]) => {
-    if (entry?.isIntersecting && activeTab.value === 'activity-log') loadMoreAudit()
+    if (entry?.isIntersecting && isTab('activity-log')) loadMoreAudit()
   },
   {
     root: computed(() => scrollRoot(auditScrollContainer.value)),
@@ -1342,16 +1484,29 @@ watch(activeTab, (tab, prevTab) => {
   if (import.meta.client) {
     history.replaceState(null, '', `#${tab}`)
   }
-  if (prevTab === 'activity-log') onActivityLogTabDeactivated()
-  if (tab === 'activity-log') onActivityLogTabActivated()
-  if (tab === 'signup-order') onSignupOrderTabActivated()
-  if (tab === 'timetable-classmates') onTqClassmatesTabActivated()
+  syncLegacySectionFromQuery()
+  if (prevTab === 'moderation') onActivityLogTabDeactivated()
+  if (tab === 'moderation' && moderationSection.value === 'activity') onActivityLogTabActivated()
+  if (tab === 'platform' && platformSection.value === 'signup') onSignupOrderTabActivated()
+  if (tab === 'platform' && platformSection.value === 'tq') onTqClassmatesTabActivated()
+})
+
+watch(moderationSection, (section, oldSection) => {
+  if (activeTab.value !== 'moderation') return
+  if (oldSection === 'activity') onActivityLogTabDeactivated()
+  if (section === 'activity') onActivityLogTabActivated()
+})
+
+watch(platformSection, (section) => {
+  if (activeTab.value !== 'platform') return
+  if (section === 'signup') onSignupOrderTabActivated()
+  if (section === 'tq') onTqClassmatesTabActivated()
 })
 
 onUnmounted(() => stopAuditAutoRefresh())
 
 watchDebounced([auditSearchQuery, auditActionFilter], () => {
-  if (activeTab.value === 'activity-log') loadAuditLog({ append: false })
+  if (isTab('activity-log')) loadAuditLog({ append: false })
 }, { debounce: 300 })
 
 const pruningPfpHistory = ref(false)
@@ -1483,7 +1638,16 @@ const runSignupOrderBackfill = () => {
   })
 }
 
-const isTab = (tab: string) => activeTab.value === tab
+const isTab = (tab: string) => {
+  if (tab === 'clients') return activeTab.value === 'access' && accessSection.value === 'clients'
+  if (tab === 'apikeys') return activeTab.value === 'access' && accessSection.value === 'apikeys'
+  if (tab === 'activity-log') return activeTab.value === 'moderation' && moderationSection.value === 'activity'
+  if (tab === 'pfp-audit') return activeTab.value === 'moderation' && moderationSection.value === 'pfp-audit'
+  if (tab === 'signup-order') return activeTab.value === 'platform' && platformSection.value === 'signup'
+  if (tab === 'timetable-classmates') return activeTab.value === 'platform' && platformSection.value === 'tq'
+  if (tab === 'pfp-migration') return activeTab.value === 'platform' && platformSection.value === 'pfp'
+  return activeTab.value === tab
+}
 
 // PFP Migration State
 // Actions
@@ -2072,19 +2236,33 @@ const migratePfps = () => {
 }
 
 onMounted(async () => {
+    if (import.meta.client && window.location.hash) {
+      const hash = window.location.hash.slice(1)
+      const legacy: Record<string, () => void> = {
+        clients: () => selectAdminTab('access', 'clients'),
+        apikeys: () => selectAdminTab('access', 'apikeys'),
+        'activity-log': () => selectAdminTab('moderation', 'activity'),
+        'pfp-audit': () => selectAdminTab('moderation', 'pfp-audit'),
+        'signup-order': () => selectAdminTab('platform', 'signup'),
+        'timetable-classmates': () => selectAdminTab('platform', 'tq'),
+        'pfp-migration': () => selectAdminTab('platform', 'pfp'),
+      }
+      legacy[hash]?.()
+    }
     showUserBadges.value = readShowUserBadgesPreference()
+    syncLegacySectionFromQuery()
     if (auth.user.value && (auth.user.value?.admin_level || 0) > 0) {
         loadClients()
         loadDesqtaClientsCount()
         loadApiKeys()
         loadIntegrations()
-        if (activeTab.value === 'activity-log') {
+        if (isTab('activity-log')) {
             await onActivityLogTabActivated()
-        } else if (activeTab.value === 'signup-order') {
+        } else if (isTab('signup-order')) {
             await onSignupOrderTabActivated()
-        } else if (activeTab.value === 'timetable-classmates') {
+        } else if (isTab('timetable-classmates')) {
             await onTqClassmatesTabActivated()
-        } else {
+        } else if (activeTab.value === 'users') {
             await searchUsers(1)
             await ensureScrollBuffer()
         }

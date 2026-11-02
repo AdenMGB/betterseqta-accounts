@@ -304,3 +304,17 @@ Associates persistent extension install UUIDs with the signed-in user. Full spec
 | POST | `/api/bsplus/installs/link` |
 | GET | `/api/bsplus/installs` |
 | DELETE | `/api/bsplus/installs/{installId}` |
+
+---
+
+## Interop search (BS+ website admin)
+
+Server-to-server only. **Auth:** API key with scope `bsplus:interop` (legacy keys with empty scopes still work).
+
+| Method | Path | Query |
+|--------|------|--------|
+| GET | `/api/v1/bsplus/users/search` | `q`, `page`, `pageSize` |
+| GET | `/api/v1/bsplus/installs/search` | `q`, `page`, `pageSize`, `cloudUserId` |
+
+User search matches the accounts admin Users tab (`username`, `email`, `displayName`, `id`, numeric `signup_number`). Install search queries `bsplus_install_link` joined to `users`.
+
