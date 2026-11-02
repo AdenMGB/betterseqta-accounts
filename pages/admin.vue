@@ -1489,6 +1489,7 @@ watch(activeTab, (tab, prevTab) => {
   if (tab === 'moderation' && moderationSection.value === 'activity') onActivityLogTabActivated()
   if (tab === 'platform' && platformSection.value === 'signup') onSignupOrderTabActivated()
   if (tab === 'platform' && platformSection.value === 'tq') onTqClassmatesTabActivated()
+  if (tab === 'users') void loadUsersTabInitial()
 })
 
 watch(moderationSection, (section, oldSection) => {
@@ -1702,6 +1703,16 @@ const ensureScrollBuffer = async () => {
     await nextTick()
     chained++
   }
+}
+
+async function loadUsersTabInitial() {
+  if (activeTab.value !== 'users') return
+  if (!auth.user.value || (auth.user.value?.admin_level || 0) <= 0) return
+  if (searched.value || usersLoading.value) return
+  await searchUsers(1, false)
+  await nextTick()
+  usersScrollContainer.value?.scrollTo(0, 0)
+  await ensureScrollBuffer()
 }
 
 const handleSearch = async () => {
@@ -2262,11 +2273,17 @@ onMounted(async () => {
             await onSignupOrderTabActivated()
         } else if (isTab('timetable-classmates')) {
             await onTqClassmatesTabActivated()
-        } else if (activeTab.value === 'users') {
-            await searchUsers(1)
-            await ensureScrollBuffer()
+        } else {
+            await loadUsersTabInitial()
         }
     }
 })
+
+watch(
+  () => auth.user.value?.id,
+  () => {
+    void loadUsersTabInitial()
+  },
+)
 </script>
 

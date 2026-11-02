@@ -36,7 +36,7 @@ export const SETTINGS_TAB_PAGE = createTabPageConfig({
 })
 
 export const ADMIN_TAB_PAGE = createTabPageConfig({
-  defaultTab: 'overview',
+  defaultTab: 'users',
   tabs: ['overview', 'users', 'access', 'moderation', 'platform'],
   tabToP: {
     overview: 'home',
@@ -106,6 +106,8 @@ export function useTabPageUrl(config: TabPageConfig) {
       syncUrlToTab(activeTab.value)
     }
   }
+
+  activeTab.value = resolveTabFromUrl()
 
   watch(
     () => route.query.p,
