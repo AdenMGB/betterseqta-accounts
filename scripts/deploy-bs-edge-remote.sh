@@ -18,7 +18,11 @@ pnpm install --filter @betterseqta/bs-edge-api...
 pnpm --filter @betterseqta/bs-edge-api build
 
 cd bs-edge-api
-docker compose up -d
+if docker ps >/dev/null 2>&1; then
+  docker compose up -d
+else
+  sudo docker compose up -d
+fi
 
 pnpm exec pm2 delete bs-edge-api 2>/dev/null || true
 pnpm exec pm2 start ecosystem.config.cjs
