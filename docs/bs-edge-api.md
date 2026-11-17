@@ -10,7 +10,7 @@ All other paths are **proxied** to `WORKER_UPSTREAM` (`https://accounts.betterse
 
 ## Reverse proxy
 
-Point `bsapi.adenmgb.com` → this server, proxy **HTTPS → `127.0.0.1:8789`**.
+Zoraxy runs in Docker: the backend must be **`http://bs-edge-api:8789`** on the **`zorazy_default`** network (not `127.0.0.1` or the host LAN IP). See `bs-edge-api/docker-compose.yml`.
 
 ## Local / server
 

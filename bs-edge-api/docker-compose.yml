@@ -2,11 +2,29 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:6379:6379"
     volumes:
       - bs-edge-redis-data:/data
     command: redis-server --appendonly yes
+    networks:
+      - edge-internal
+
+  bs-edge-api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      PORT: "8789"
+    depends_on:
+      - redis
+    networks:
+      - edge-internal
+      - zorazy_default
+
+networks:
+  edge-internal:
+  zorazy_default:
+    external: true
 
 volumes:
   bs-edge-redis-data:
