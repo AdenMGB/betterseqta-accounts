@@ -51,6 +51,9 @@ importers:
       '@vueuse/motion':
         specifier: ^2.1.0
         version: 2.2.6(magicast@0.5.1)(vue@3.5.42(typescript@5.9.3))
+      '@zip.js/zip.js':
+        specifier: ^2.23.0
+        version: 2.25.0
       aos:
         specifier: ^2.3.4
         version: 2.3.4
@@ -1822,6 +1825,10 @@ packages:
 
   '@vueuse/shared@10.11.1':
     resolution: {integrity: sha512-LHpC8711VFZlDaYUXEBbFBCQ7GS3dVU9mjOhhMhXP6txTV4EhYQg/KGnQuvt/sPAtoUKq7VVUnL6mVtFoL42sA==}
+
+  '@zip.js/zip.js@2.25.0':
+    resolution: {integrity: sha512-oNRqUuU1XFu6G5d7Z0jufJ9dS9WteO0xiU/PNxsUrb4itZCsSbn191jpJzU00Gmc6S680X3DPZeF5EV4zAEMAg==}
+    engines: {bun: '>=0.7.0', deno: '>=1.0.0', node: '>=18.0.0'}
 
   abbrev@1.1.1:
     resolution: {integrity: sha512-nne9/IiQ/hzIhY6pdDnbBtz7DjPTKrY00P/zvPSm5pOFkl6xuGrGnXn/VtTNNfNtAfZ9/1RtehkszU9qcTii0Q==}
@@ -7031,6 +7038,8 @@ snapshots:
     transitivePeerDependencies:
       - '@vue/composition-api'
       - vue
+
+  '@zip.js/zip.js@2.25.0': {}
 
   abbrev@1.1.1: {}
 
