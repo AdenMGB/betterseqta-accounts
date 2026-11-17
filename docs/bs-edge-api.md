@@ -24,11 +24,11 @@ Zoraxy runs in Docker: the backend must be **`http://bs-edge-api:8789`** on the 
 ## Local / server
 
 ```bash
-cd bs-edge-api
-cp env.example .env
-docker compose up -d
+cp bs-edge-api/env.example bs-edge-api/.env
+# from repo root (pnpm workspace):
 pnpm install
-pnpm build
+pnpm --filter @betterseqta/bs-edge-api build
+cd bs-edge-api
 docker compose build && docker compose up -d
 ```
 
