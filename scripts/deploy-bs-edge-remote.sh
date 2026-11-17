@@ -15,9 +15,9 @@ git pull --ff-only origin "$BRANCH"
 
 corepack enable
 pnpm install --filter @betterseqta/bs-edge-api...
-pnpm --filter @betterseqta/bs-edge-api build
-
 cd bs-edge-api
+npm install
+npm run build
 if docker ps >/dev/null 2>&1; then
   docker compose up -d
 else
