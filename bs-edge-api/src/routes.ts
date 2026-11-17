@@ -36,7 +36,7 @@ export async function handleSettingsSync(c: Context): Promise<Response> {
   }
 
   if (req.method === "PUT") {
-    const authProbe = await workerFetch("/api/auth/me", { method: "GET", headers: req.headers });
+    const authProbe = await workerFetch("/api/bsplus/settings/sync", { method: "GET", headers: req.headers });
     if (authProbe.status === 401) {
       const text = await authProbe.text();
       return new Response(text, { status: 401, headers: jsonCors });
