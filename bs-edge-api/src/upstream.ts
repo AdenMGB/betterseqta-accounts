@@ -37,8 +37,16 @@ function rewriteLocation(location: string): string {
   return rewritePublicUrlsInText(location);
 }
 
+function stripEncodedLengthHeaders(headers: Headers): void {
+  // Node `fetch` decompresses upstream bodies; keeping Content-Encoding: br breaks browsers.
+  headers.delete("content-encoding");
+  headers.delete("content-length");
+  headers.delete("transfer-encoding");
+}
+
 async function mergeProxyResponse(request: Request, res: Response): Promise<Response> {
   const headers = new Headers(res.headers);
+  stripEncodedLengthHeaders(headers);
   const location = headers.get("Location");
   if (location) headers.set("Location", rewriteLocation(location));
 
@@ -61,13 +69,18 @@ async function mergeProxyResponse(request: Request, res: Response): Promise<Resp
   const isJson = contentType.includes("application/json") || contentType.includes("+json");
   const isTextual = isJson || contentType.includes("text/");
 
-  if (!isTextual || res.status === 204 || res.status === 304) {
-    return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+  if (res.status === 204 || res.status === 304) {
+    return new Response(null, { status: res.status, statusText: res.statusText, headers });
   }
 
-  const text = await res.text();
-  const body = rewritePublicUrlsInText(text);
-  return new Response(body, { status: res.status, statusText: res.statusText, headers });
+  if (isTextual) {
+    const text = await res.text();
+    const body = rewritePublicUrlsInText(text);
+    return new Response(body, { status: res.status, statusText: res.statusText, headers });
+  }
+
+  const bytes = await res.arrayBuffer();
+  return new Response(bytes, { status: res.status, statusText: res.statusText, headers });
 }
 
 /** Proxy HTML, API, assets, and everything else to the Cloudflare Worker origin. */
