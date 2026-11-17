@@ -4,6 +4,7 @@ import { getDesqtaClient, isReservedClientExpired, touchDesqtaReservedClient } f
 import { checkRateLimit } from "../lib/rate-limit";
 import { createSession, getSessionByRefreshToken, touchUserSession, revokeSessionById } from "../lib/session";
 import { deviceNameForNewSession } from "../lib/session-display";
+import { readOAuthTokenFields } from "../lib/oauth-request-body";
 import { mapUserPublic, USER_PUBLIC_SELECT, enrichUserPublic } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
 
@@ -138,11 +139,7 @@ export async function handleOAuthToken({ env, request, jwtSecret }: RequestConte
     const rateLimited = await checkRateLimit(env, request, "oauth-token", { limit: 30, windowSec: 900 });
     if (rateLimited) return rateLimited;
 
-    const { code, client_id, client_secret } = (await request.json()) as {
-      code?: string;
-      client_id?: string;
-      client_secret?: string;
-    };
+    const { code, client_id, client_secret } = await readOAuthTokenFields(request);
 
     const client = await validateOAuthClient(env, client_id, client_secret);
     if (!client) {
@@ -221,12 +218,7 @@ export async function handleOAuthRefresh({ env, request, jwtSecret }: RequestCon
     const rateLimited = await checkRateLimit(env, request, "oauth-refresh", { limit: 60, windowSec: 900 });
     if (rateLimited) return rateLimited;
 
-    const body = (await request.json()) as {
-      refresh_token?: string;
-      client_id?: string;
-      client_secret?: string;
-    };
-    const { refresh_token, client_id, client_secret } = body || {};
+    const { refresh_token, client_id, client_secret } = await readOAuthTokenFields(request);
 
     const client = await validateOAuthClient(env, client_id, client_secret);
     if (!client) {
@@ -279,12 +271,7 @@ export async function handleOAuthRevoke({ env, request }: RequestContext): Promi
     const rateLimited = await checkRateLimit(env, request, "oauth-revoke", { limit: 30, windowSec: 900 });
     if (rateLimited) return rateLimited;
 
-    const body = (await request.json()) as {
-      refresh_token?: string;
-      client_id?: string;
-      client_secret?: string;
-    };
-    const { refresh_token, client_id, client_secret } = body || {};
+    const { refresh_token, client_id, client_secret } = await readOAuthTokenFields(request);
 
     const client = await validateOAuthClient(env, client_id, client_secret);
     if (!client) {

@@ -97,22 +97,60 @@ async function mergeProxyResponse(request: Request, res: Response): Promise<Resp
   return new Response(bytes, { status: res.status, statusText: res.statusText, headers });
 }
 
+async function fetchWorkerUpstream(
+  clientRequest: Request,
+  pathAndQuery: string,
+  init: { method: string; headers: Headers; body?: BodyInit | null | undefined },
+): Promise<Response> {
+  const workerOrigin = new URL(config.workerUpstream).origin;
+  const publicOrigin = new URL(config.publicOrigin).origin;
+  let target = new URL(pathAndQuery, config.workerUpstream);
+  const headers = applyForwardHeaders(init.headers);
+  const method = init.method;
+  const body = method === "GET" || method === "HEAD" ? undefined : init.body ?? undefined;
+
+  for (let hop = 0; hop < 8; hop++) {
+    const res = await fetch(target.toString(), {
+      method,
+      headers,
+      body: hop === 0 ? body : undefined,
+      redirect: "manual",
+    });
+    if (res.status < 300 || res.status >= 400) {
+      return mergeProxyResponse(clientRequest, res);
+    }
+    const location = res.headers.get("Location");
+    if (!location) {
+      return mergeProxyResponse(clientRequest, res);
+    }
+    const next = new URL(location, target);
+    if (next.origin === publicOrigin || next.origin === workerOrigin) {
+      target = new URL(next.pathname + next.search, workerOrigin);
+      continue;
+    }
+    return mergeProxyResponse(clientRequest, res);
+  }
+
+  return new Response(JSON.stringify({ error: "upstream_redirect_loop" }), {
+    status: 502,
+    headers: { ...corsHeadersForRequest(clientRequest), "Content-Type": "application/json" },
+  });
+}
+
 /** Proxy HTML, API, assets, and everything else to the Cloudflare Worker origin. */
 export async function proxyToWorker(request: Request, url: URL): Promise<Response> {
   if (isHealthPath(url.pathname) && (request.method === "GET" || request.method === "HEAD")) {
     return healthResponse(request.method);
   }
-  const target = new URL(url.pathname + url.search, config.workerUpstream);
-  const init: RequestInit = {
+  const body =
+    request.method === "GET" || request.method === "HEAD"
+      ? undefined
+      : await request.arrayBuffer();
+  return fetchWorkerUpstream(request, url.pathname + url.search, {
     method: request.method,
-    headers: applyForwardHeaders(request.headers),
-    redirect: "manual",
-  };
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = await request.arrayBuffer();
-  }
-  const res = await fetch(target.toString(), init);
-  return mergeProxyResponse(request, res);
+    headers: request.headers,
+    body,
+  });
 }
 
 export async function workerFetch(
@@ -120,15 +158,14 @@ export async function workerFetch(
   init: { method: string; headers: Headers; body?: BodyInit | null },
   clientRequest?: Request,
 ): Promise<Response> {
-  const target = new URL(pathAndQuery, config.workerUpstream);
-  const res = await fetch(target.toString(), {
+  if (clientRequest) {
+    return fetchWorkerUpstream(clientRequest, pathAndQuery, init);
+  }
+  const res = await fetch(new URL(pathAndQuery, config.workerUpstream).toString(), {
     method: init.method,
     headers: applyForwardHeaders(init.headers),
     body: init.body ?? undefined,
     redirect: "manual",
   });
-  if (clientRequest) {
-    return mergeProxyResponse(clientRequest, res);
-  }
   return res;
 }

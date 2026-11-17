@@ -56,6 +56,12 @@ curl -sS https://worker.accounts.betterseqta.org/api/health
 - Cookies and OAuth redirects should use `accounts.betterseqta.org` (`APP_URL` on Worker).
 - Timetable relay: `wss://accounts.betterseqta.org/api/bsplus/timetable-classmates/relay/ws` (edge WS proxy).
 
-## 6. Rollback
+## 6. `betterseqta.org` (bs-website) server-side API
+
+Browsers and redirects should use **`https://accounts.betterseqta.org`**.
+
+For **server-side** fetches from the `bs-website` Worker (OAuth token, `/api/oauth/userinfo`, etc.), use **`https://worker.accounts.betterseqta.org`** with header **`X-Forwarded-Host: accounts.betterseqta.org`** to avoid Cloudflare redirect loops on the public hostname.
+
+## 7. Rollback
 
 Point `accounts.betterseqta.org` DNS back to Cloudflare Worker custom domain and restore `wrangler.toml` route to `accounts.betterseqta.org`.
