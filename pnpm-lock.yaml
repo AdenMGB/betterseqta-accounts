@@ -170,6 +170,31 @@ importers:
         specifier: ^4.51.0
         version: 4.51.0(@cloudflare/workers-types@4.20260424.1)
 
+  bs-edge-api:
+    dependencies:
+      '@hono/node-server':
+        specifier: ^1.14.3
+        version: 1.19.19(hono@4.13.19)
+      dotenv:
+        specifier: ^16.5.0
+        version: 16.6.1
+      hono:
+        specifier: ^4.7.10
+        version: 4.13.19
+      ioredis:
+        specifier: ^5.6.1
+        version: 5.8.2
+    devDependencies:
+      '@types/node':
+        specifier: ^22.14.0
+        version: 22.19.1
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+
 packages:
 
   '@alloc/quick-lru@5.2.0':
@@ -590,6 +615,12 @@ packages:
     resolution: {integrity: sha512-G3dbSxoeEKqbi/DFalhRxJU4mTXJn7GwZ7ae8NuEQzd1bqdd0jAbdaBZlHPcvPD2xI1iGzNVB4k20Un2AguYPw==}
     peerDependencies:
       vue: '>= 3'
+
+  '@hono/node-server@1.19.19':
+    resolution: {integrity: sha512-Fy9R7PACOzHU9LDpfnuzVyuVYevKQRcEG2mZhmfc+DRdmayEd3RVfa2XOt2IgGcPNgA77Yk63KBszepcMFK5Ng==}
+    engines: {node: '>=18.14.1'}
+    peerDependencies:
+      hono: ^4
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -2882,6 +2913,10 @@ packages:
 
   hey-listen@1.0.8:
     resolution: {integrity: sha512-COpmrF2NOg4TBWUJ5UVyaCU2A88wEMkUPK4hNqyCkqHbxT92BbvfjoSozkAIIm6XhicGlJHhFdullInrdhwU8Q==}
+
+  hono@4.13.19:
+    resolution: {integrity: sha512-KmXvQAXwcAHV+muzbIwoJ23niEB5nMoDVr9WcRkU8mvjUECm/1+7v4Jgp7P7a+H6MLFrh+vXrGonGrGS+RQfkA==}
+    engines: {node: '>=16.9.0'}
 
   hookable@5.5.3:
     resolution: {integrity: sha512-Yc+BQe8SvoXH1643Qez1zqLRmbA5rCL+sSmk6TVos0LWVfNIB7PGncdlId77WzLGSIB5KaWgTaNTs2lNVEI6VQ==}
@@ -5519,6 +5554,10 @@ snapshots:
     dependencies:
       vue: 3.5.42(typescript@5.9.3)
 
+  '@hono/node-server@1.19.19(hono@4.13.19)':
+    dependencies:
+      hono: 4.13.19
+
   '@img/colour@1.1.0': {}
 
   '@img/sharp-darwin-arm64@0.33.5':
@@ -8082,6 +8121,8 @@ snapshots:
   he@1.2.0: {}
 
   hey-listen@1.0.8: {}
+
+  hono@4.13.19: {}
 
   hookable@5.5.3: {}
 

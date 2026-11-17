@@ -1,5 +1,6 @@
 packages:
   - '.'
+  - 'bs-edge-api'
 
 overrides:
   vite: ^8.0.0

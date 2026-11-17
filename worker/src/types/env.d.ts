@@ -21,4 +21,6 @@ export interface Env {
   CF_DEV?: string;
   /** Set to 0/false/off to silence temporary timetable relay observability logs */
   TQ_RELAY_OBS?: string;
+  /** When set (e.g. https://bsapi.adenmgb.com), hot paths proxy to the Ubuntu edge API */
+  BS_EDGE_API_URL?: string;
 }

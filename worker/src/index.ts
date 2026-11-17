@@ -1,4 +1,5 @@
 import { corsHeaders } from "./constants";
+import { proxyRequestToEdge, shouldProxyToEdge } from "./lib/edge-proxy";
 import { runSettingsBootstrapIfNeeded } from "./lib/settings-bootstrap";
 import { dispatch } from "./router";
 import type { Env } from "./types/env";
@@ -27,6 +28,10 @@ export default {
 
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: { ...corsHeaders } });
+    }
+
+    if (shouldProxyToEdge(request, env.BS_EDGE_API_URL)) {
+      return proxyRequestToEdge(request, env.BS_EDGE_API_URL!.trim());
     }
 
     const ctx = { env, request, url, jwtSecret };
