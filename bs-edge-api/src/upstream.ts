@@ -15,6 +15,10 @@ const hopByHop = new Set([
   "accept-encoding",
 ]);
 
+function workerRequestHost(): string {
+  return new URL(config.workerUpstream).host;
+}
+
 function applyForwardHeaders(incoming: Headers): Headers {
   const out = new Headers();
   incoming.forEach((value, key) => {
@@ -22,11 +26,17 @@ function applyForwardHeaders(incoming: Headers): Headers {
     if (hopByHop.has(lower)) return;
     out.set(key, value);
   });
+  out.set("Host", workerRequestHost());
   out.set("X-Forwarded-Host", publicHost());
   out.set("X-Forwarded-Proto", "https");
   // Never ask Worker for br/gzip — Node may not decode consistently before we re-serve.
   out.set("Accept-Encoding", "identity");
   return out;
+}
+
+/** API/OAuth responses must not be 3xx to clients (ofetch redirect loops on same host). */
+function mustResolveRedirectsForClient(pathname: string): boolean {
+  return pathname.startsWith("/api/") || pathname.startsWith("/oauth/");
 }
 
 function isRewriteableTextContentType(contentType: string): boolean {
@@ -97,6 +107,20 @@ async function mergeProxyResponse(request: Request, res: Response): Promise<Resp
   return new Response(bytes, { status: res.status, statusText: res.statusText, headers });
 }
 
+function samePathOnAccountsHost(location: string, pathAndQuery: string, publicOrigin: string, workerOrigin: string): boolean {
+  try {
+    const loc = new URL(location);
+  const want = new URL(pathAndQuery, config.workerUpstream);
+    return (
+      (loc.origin === publicOrigin || loc.origin === workerOrigin) &&
+      loc.pathname === want.pathname &&
+      loc.search === want.search
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function fetchWorkerUpstream(
   clientRequest: Request,
   pathAndQuery: string,
@@ -104,12 +128,14 @@ async function fetchWorkerUpstream(
 ): Promise<Response> {
   const workerOrigin = new URL(config.workerUpstream).origin;
   const publicOrigin = new URL(config.publicOrigin).origin;
+  const resolveRedirects = mustResolveRedirectsForClient(new URL(pathAndQuery, config.publicOrigin).pathname);
   let target = new URL(pathAndQuery, config.workerUpstream);
   const headers = applyForwardHeaders(init.headers);
   const method = init.method;
   const body = method === "GET" || method === "HEAD" ? undefined : init.body ?? undefined;
+  const startedOnWorker = target.toString();
 
-  for (let hop = 0; hop < 8; hop++) {
+  for (let hop = 0; hop < 16; hop++) {
     const res = await fetch(target.toString(), {
       method,
       headers,
@@ -121,16 +147,36 @@ async function fetchWorkerUpstream(
     }
     const location = res.headers.get("Location");
     if (!location) {
+      if (resolveRedirects) {
+        return new Response(JSON.stringify({ error: "upstream_redirect_missing_location" }), {
+          status: 502,
+          headers: { ...corsHeadersForRequest(clientRequest), "Content-Type": "application/json" },
+        });
+      }
       return mergeProxyResponse(clientRequest, res);
+    }
+    if (samePathOnAccountsHost(location, pathAndQuery, publicOrigin, workerOrigin)) {
+      target = new URL(pathAndQuery, workerOrigin);
+      continue;
     }
     const next = new URL(location, target);
     if (next.origin === publicOrigin || next.origin === workerOrigin) {
       target = new URL(next.pathname + next.search, workerOrigin);
       continue;
     }
+    if (resolveRedirects) {
+      return new Response(
+        JSON.stringify({ error: "upstream_redirect_external", location }),
+        {
+          status: 502,
+          headers: { ...corsHeadersForRequest(clientRequest), "Content-Type": "application/json" },
+        },
+      );
+    }
     return mergeProxyResponse(clientRequest, res);
   }
 
+  console.error("[upstream] redirect loop", method, pathAndQuery, startedOnWorker);
   return new Response(JSON.stringify({ error: "upstream_redirect_loop" }), {
     status: 502,
     headers: { ...corsHeadersForRequest(clientRequest), "Content-Type": "application/json" },

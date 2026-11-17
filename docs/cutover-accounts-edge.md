@@ -41,8 +41,10 @@ Keep `bsapi.adenmgb.com` as a staging mirror if useful.
 
 | Name | Target |
 |------|--------|
-| `accounts.betterseqta.org` | Oracle public IP (proxied **off** or through your existing edge — match how Zoraxy expects traffic) |
+| `accounts.betterseqta.org` | Oracle public IP with Cloudflare proxy **off (grey cloud)** — required so other Workers (e.g. `bs-website`) reach Zoraxy directly instead of looping on CF |
 | `worker.accounts.betterseqta.org` | Cloudflare Worker (proxied **on**) |
+
+Remove the legacy **`accounts.betterseqta.org` Worker custom domain** in the Cloudflare dashboard if it still exists (`curl https://accounts.betterseqta.org/cdn-cgi/trace` must **not** show `h=worker.accounts...`).
 
 ## 5. Smoke tests
 
@@ -60,7 +62,7 @@ curl -sS https://worker.accounts.betterseqta.org/api/health
 
 Browsers and redirects should use **`https://accounts.betterseqta.org`**.
 
-For **server-side** fetches from the `bs-website` Worker (OAuth token, `/api/oauth/userinfo`, etc.), use **`https://worker.accounts.betterseqta.org`** with header **`X-Forwarded-Host: accounts.betterseqta.org`** to avoid Cloudflare redirect loops on the public hostname.
+Prefer **`https://accounts.betterseqta.org`** for server-side OAuth too when DNS is grey-cloud (Ubuntu edge absorbs redirects). If a CF subrequest still loops, `bs-website` falls back to **`worker.accounts.betterseqta.org`** with **`X-Forwarded-Host: accounts.betterseqta.org`**.
 
 ## 7. Rollback
 
