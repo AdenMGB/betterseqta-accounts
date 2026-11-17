@@ -20,7 +20,6 @@ query ($zoneTag: string, $since: Time, $until: Time, $host: string) {
         count
         dimensions {
           userAgent
-          clientASNDescription
           clientRequestHTTPMethodName
         }
       }
@@ -43,17 +42,12 @@ if (json.errors?.length) {
 }
 const rows = json.data.viewer.zones[0].httpRequestsAdaptiveGroups;
 const byUa = new Map();
-const byAsn = new Map();
 let total = 0;
 for (const r of rows) {
   if (r.dimensions.clientRequestHTTPMethodName !== "GET") continue;
   total += r.count;
   const ua = (r.dimensions.userAgent || "(empty)").slice(0, 100);
   byUa.set(ua, (byUa.get(ua) || 0) + r.count);
-  const asn = r.dimensions.clientASNDescription || "(unknown ASN)";
-  byAsn.set(asn, (byAsn.get(asn) || 0) + r.count);
 }
 console.log(`GET /api/health total: ${total}\n--- Top user-agents ---`);
-[...byUa.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).forEach(([k, c]) => console.log(c, k));
-console.log("\n--- Top ASNs ---");
-[...byAsn.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).forEach(([k, c]) => console.log(c, k));
+[...byUa.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20).forEach(([k, c]) => console.log(c, k));
