@@ -1,3 +1,4 @@
 # Wrangler local dev secrets — copy to `.dev.vars` or run `pnpm cf:dev` (syncs from `.env`).
 JWT_SECRET=local-dev-jwt-secret-change-me
 APP_URL=http://localhost:8788
+# Production Worker (after edge cutover): APP_URL=https://accounts.betterseqta.org — see wrangler.toml [vars]

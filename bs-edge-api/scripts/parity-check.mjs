@@ -1,4 +1,4 @@
-const WORKER = process.env.WORKER_URL ?? "https://accounts.betterseqta.org";
+const WORKER = process.env.WORKER_URL ?? "https://worker.accounts.betterseqta.org";
 const EDGE = process.env.EDGE_URL ?? "https://bsapi.adenmgb.com";
 
 async function call(base, method, path, init = {}) {

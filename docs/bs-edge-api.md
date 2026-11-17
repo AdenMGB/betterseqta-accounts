@@ -6,7 +6,16 @@ Offloads high-volume routes from the Cloudflare Worker:
 - `PUT /api/bsplus/settings/sync` — queued in Redis, flushed to the Worker every **5s** (coalesced per session)
 - `GET /api/bsplus/timetable-classmates/peers` — short Redis cache, Worker on miss
 
-All other paths are **proxied** to `WORKER_UPSTREAM` (`https://accounts.betterseqta.org`) with the client `Authorization` / `Cookie` headers unchanged.
+All other paths (including **`/`** SPA HTML and static assets) are **proxied** to `WORKER_UPSTREAM` (`https://worker.accounts.betterseqta.org`) with client auth headers unchanged. Responses rewrite `Location` when they point at the worker host. WebSocket upgrades are proxied to the same upstream.
+
+## Production URLs
+
+| Role | URL |
+|------|-----|
+| Public (Zoraxy) | `https://accounts.betterseqta.org` → `PUBLIC_ORIGIN` |
+| Worker upstream | `https://worker.accounts.betterseqta.org` → `WORKER_UPSTREAM` |
+
+See [cutover-accounts-edge.md](./cutover-accounts-edge.md) for DNS and deploy order.
 
 ## Reverse proxy
 
@@ -20,9 +29,9 @@ cp env.example .env
 docker compose up -d
 pnpm install
 pnpm build
-pnpm exec pm2 start ecosystem.config.cjs
+docker compose build && docker compose up -d
 ```
 
-## Worker (optional)
+## Worker
 
-Set `BS_EDGE_API_URL=https://bsapi.adenmgb.com` on the Worker so `accounts.betterseqta.org` forwards the same three routes to the edge (auth headers forwarded; no API keys).
+Set `APP_URL=https://accounts.betterseqta.org` on the Worker (`wrangler.toml` `[vars]`). Do **not** use `BS_EDGE_API_URL` when the edge is the public entrypoint.
