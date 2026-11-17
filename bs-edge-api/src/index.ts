@@ -10,7 +10,13 @@ assertConfig();
 
 const app = new Hono();
 
-app.options("*", (c) => c.body(null, 204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-ID, X-API-Key, Cookie" }));
+app.options("*", (c) =>
+  c.body(null, 200, {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-ID, X-API-Key, Cookie",
+  }),
+);
 
 app.get("/api/health", () => handleHealth());
 app.on(["GET", "PUT"], "/api/bsplus/settings/sync", (c) => handleSettingsSync(c));

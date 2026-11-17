@@ -8,7 +8,7 @@ import { proxyToWorker, workerFetch } from "./upstream.js";
 const jsonCors = { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" };
 
 export function handleHealth(): Response {
-  return new Response(JSON.stringify({ ok: true, service: "bs-edge-api", edge: true }), {
+  return new Response(JSON.stringify({ ok: true, service: "accounts" }), {
     status: 200,
     headers: jsonCors,
   });
@@ -36,6 +36,12 @@ export async function handleSettingsSync(c: Context): Promise<Response> {
   }
 
   if (req.method === "PUT") {
+    const authProbe = await workerFetch("/api/auth/me", { method: "GET", headers: req.headers });
+    if (authProbe.status === 401) {
+      const text = await authProbe.text();
+      return new Response(text, { status: 401, headers: jsonCors });
+    }
+
     const bodyText = await req.text();
     const pending = {
       authKey,
@@ -57,15 +63,10 @@ export async function handleSettingsSync(c: Context): Promise<Response> {
       /* ignore */
     }
 
-    return new Response(
-      JSON.stringify({
-        updated_at: pending.queuedAt,
-        patch,
-        edge_queued: true,
-        flush_in_ms: config.flushIntervalMs,
-      }),
-      { status: 200, headers: jsonCors },
-    );
+    return new Response(JSON.stringify({ updated_at: pending.queuedAt, patch }), {
+      status: 200,
+      headers: jsonCors,
+    });
   }
 
   return new Response(JSON.stringify({ error: "Method not allowed" }), {
@@ -78,13 +79,6 @@ export async function handlePeers(c: Context): Promise<Response> {
   const req = c.req.raw;
   const url = new URL(req.url);
   const instanceHost = url.searchParams.get("instance_host")?.trim() ?? "";
-  if (!instanceHost) {
-    return new Response(JSON.stringify({ error: "Invalid instance_host" }), {
-      status: 422,
-      headers: jsonCors,
-    });
-  }
-
   const authKey = authKeyFromRequest(req);
   const redis = getRedis();
   const cacheKey = redisKeys.peersCache(authKey, instanceHost);
