@@ -1,10 +1,10 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm install --include=dev
+RUN npm install --include=dev && npm install -D typescript @types/node
 COPY tsconfig.json ./
 COPY src ./src
-RUN ./node_modules/.bin/tsc -p tsconfig.json
+RUN npm run build
 
 FROM node:22-alpine
 WORKDIR /app
