@@ -3,15 +3,13 @@ import { config } from "./config.js";
 import { authKeyFromRequest } from "./auth-key.js";
 import { corsHeaders } from "./cors.js";
 import { getRedis, redisKeys } from "./redis.js";
+import { healthResponse, isHealthPath } from "./health.js";
 import { proxyToWorker, workerFetch } from "./upstream.js";
 
 const jsonCors = { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" };
 
-export function handleHealth(): Response {
-  return new Response(JSON.stringify({ ok: true, service: "accounts" }), {
-    status: 200,
-    headers: jsonCors,
-  });
+export function handleHealth(method = "GET"): Response {
+  return healthResponse(method);
 }
 
 export async function handleSettingsSync(c: Context): Promise<Response> {
@@ -97,8 +95,12 @@ export async function handlePeers(c: Context): Promise<Response> {
 }
 
 export async function handleProxy(c: Context): Promise<Response> {
+  const url = new URL(c.req.url);
+  if (isHealthPath(url.pathname) && (c.req.method === "GET" || c.req.method === "HEAD")) {
+    return handleHealth(c.req.method);
+  }
   if (c.req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
-  return proxyToWorker(c.req.raw, new URL(c.req.url));
+  return proxyToWorker(c.req.raw, url);
 }

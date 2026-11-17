@@ -1,5 +1,6 @@
 import { config, publicHost } from "./config.js";
 import { corsHeaders } from "./cors.js";
+import { healthResponse, isHealthPath } from "./health.js";
 
 const hopByHop = new Set([
   "connection",
@@ -54,6 +55,9 @@ function mergeProxyResponse(res: Response): Response {
 
 /** Proxy HTML, API, assets, and everything else to the Cloudflare Worker origin. */
 export async function proxyToWorker(request: Request, url: URL): Promise<Response> {
+  if (isHealthPath(url.pathname) && (request.method === "GET" || request.method === "HEAD")) {
+    return healthResponse(request.method);
+  }
   const target = new URL(url.pathname + url.search, config.workerUpstream);
   const init: RequestInit = {
     method: request.method,

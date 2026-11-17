@@ -2,7 +2,7 @@
 
 Offloads high-volume routes from the Cloudflare Worker:
 
-- `GET /api/health` — answered locally (stops health-check Worker invocations when monitors use the edge host)
+- `GET`/`HEAD` `/api/health` and `/health` — answered locally with `X-Served-By: bs-edge-api` (never proxied to the Worker; point uptime checks at the edge hostname)
 - `PUT /api/bsplus/settings/sync` — queued in Redis, flushed to the Worker every **5s** (coalesced per session)
 - `GET /api/bsplus/timetable-classmates/peers` — short Redis cache, Worker on miss
 

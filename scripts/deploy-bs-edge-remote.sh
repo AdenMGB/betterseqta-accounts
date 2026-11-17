@@ -13,19 +13,20 @@ git fetch origin "$BRANCH"
 git checkout "$BRANCH"
 git pull --ff-only origin "$BRANCH"
 
-corepack enable
-pnpm install --filter @betterseqta/bs-edge-api...
 cd bs-edge-api
 npm install
 npm run build
+
 if docker ps >/dev/null 2>&1; then
+  docker compose build bs-edge-api
   docker compose up -d
 else
+  sudo docker compose build bs-edge-api
   sudo docker compose up -d
 fi
 
-pnpm exec pm2 delete bs-edge-api 2>/dev/null || true
-pnpm exec pm2 start ecosystem.config.cjs
-pnpm exec pm2 save
-
-echo "bs-edge-api running on port ${PORT:-8789} (set in bs-edge-api/.env)"
+sleep 2
+CID="$(docker compose ps -q bs-edge-api)"
+docker exec "$CID" wget -qO- "http://127.0.0.1:8789/api/health" || curl -fsS "http://127.0.0.1:8789/api/health"
+echo ""
+echo "bs-edge-api (Docker) up — health answered on container :8789"

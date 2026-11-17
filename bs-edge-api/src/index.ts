@@ -22,7 +22,8 @@ app.options("*", (c) =>
   }),
 );
 
-app.get("/api/health", () => handleHealth());
+app.on(["GET", "HEAD"], "/api/health", (c) => handleHealth(c.req.method));
+app.on(["GET", "HEAD"], "/health", (c) => handleHealth(c.req.method));
 app.on(["GET", "PUT"], "/api/bsplus/settings/sync", (c) => handleSettingsSync(c));
 app.get("/api/bsplus/timetable-classmates/peers", (c) => handlePeers(c));
 
@@ -35,13 +36,14 @@ const workerWsProxy = httpProxy.createProxyServer({
 });
 
 async function main(): Promise<void> {
-  await connectRedis();
-  startSyncFlushLoop();
-
   const listener = getRequestListener(app.fetch);
   const server = createServer(listener);
 
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    if (req.url && (req.url === "/api/health" || req.url.startsWith("/api/health?") || req.url === "/health")) {
+      socket.destroy();
+      return;
+    }
     req.headers["x-forwarded-host"] = publicHost();
     req.headers["x-forwarded-proto"] = "https";
     workerWsProxy.ws(req, socket, head);
@@ -52,11 +54,22 @@ async function main(): Promise<void> {
     if ("destroy" in socket && typeof socket.destroy === "function") socket.destroy();
   });
 
-  server.listen(config.port, "0.0.0.0", () => {
-    console.log(`bs-edge-api listening on :${config.port}`);
-    console.log(`public origin: ${config.publicOrigin}`);
-    console.log(`worker upstream: ${config.workerUpstream}`);
+  await new Promise<void>((resolve) => {
+    server.listen(config.port, "0.0.0.0", () => {
+      console.log(`bs-edge-api listening on :${config.port}`);
+      console.log(`public origin: ${config.publicOrigin}`);
+      console.log(`worker upstream: ${config.workerUpstream}`);
+      console.log(`/api/health answered locally (not proxied to Worker)`);
+      resolve();
+    });
   });
+
+  try {
+    await connectRedis();
+    startSyncFlushLoop();
+  } catch (err) {
+    console.error("[redis] unavailable — hot routes may fail; /api/health still OK", err);
+  }
 }
 
 main().catch((err) => {
