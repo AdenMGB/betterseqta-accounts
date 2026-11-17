@@ -6,6 +6,7 @@ import { getRequestListener } from "@hono/node-server";
 import { Hono } from "hono";
 import httpProxy from "http-proxy";
 import { assertConfig, config, publicHost } from "./config.js";
+import { corsHeadersForRequest } from "./cors.js";
 import { connectRedis } from "./redis.js";
 import { startSyncFlushLoop } from "./sync-flush.js";
 import { handleHealth, handlePeers, handleProxy, handleSettingsSync } from "./routes.js";
@@ -14,13 +15,7 @@ assertConfig();
 
 const app = new Hono();
 
-app.options("*", (c) =>
-  c.body(null, 200, {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-ID, X-API-Key, Cookie",
-  }),
-);
+app.options("*", (c) => c.body(null, 200, corsHeadersForRequest(c.req.raw)));
 
 app.on(["GET", "HEAD"], "/api/health", (c) => handleHealth(c.req.method));
 app.on(["GET", "HEAD"], "/health", (c) => handleHealth(c.req.method));

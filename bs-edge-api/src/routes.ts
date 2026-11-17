@@ -1,12 +1,18 @@
 import type { Context } from "hono";
 import { config } from "./config.js";
 import { authKeyFromRequest } from "./auth-key.js";
-import { corsHeaders } from "./cors.js";
+import { corsHeadersForRequest } from "./cors.js";
 import { getRedis, redisKeys } from "./redis.js";
 import { healthResponse, isHealthPath } from "./health.js";
-import { proxyToWorker, workerFetch } from "./upstream.js";
+import { proxyToWorker, rewritePublicUrlsInText, workerFetch } from "./upstream.js";
 
-const jsonCors = { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" };
+function jsonCorsHeaders(req: Request): Record<string, string> {
+  return {
+    ...corsHeadersForRequest(req),
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store",
+  };
+}
 
 export function handleHealth(method = "GET"): Response {
   return healthResponse(method);
@@ -20,24 +26,26 @@ export async function handleSettingsSync(c: Context): Promise<Response> {
   if (req.method === "GET") {
     const cached = await redis.get(redisKeys.syncGetCache(authKey));
     if (cached) {
-      return new Response(cached, { status: 200, headers: jsonCors });
+      return new Response(rewritePublicUrlsInText(cached), {
+        status: 200,
+        headers: jsonCorsHeaders(req),
+      });
     }
-    const res = await workerFetch("/api/bsplus/settings/sync", {
-      method: "GET",
-      headers: req.headers,
-    });
-    const text = await res.text();
-    if (res.ok) {
-      await redis.setex(redisKeys.syncGetCache(authKey), config.syncGetCacheTtlSec, text);
-    }
-    return new Response(text, { status: res.status, headers: jsonCors });
+    return workerFetch(
+      "/api/bsplus/settings/sync",
+      { method: "GET", headers: req.headers },
+      req,
+    );
   }
 
   if (req.method === "PUT") {
-    const authProbe = await workerFetch("/api/bsplus/settings/sync", { method: "GET", headers: req.headers });
+    const authProbe = await workerFetch(
+      "/api/bsplus/settings/sync",
+      { method: "GET", headers: req.headers },
+      req,
+    );
     if (authProbe.status === 401) {
-      const text = await authProbe.text();
-      return new Response(text, { status: 401, headers: jsonCors });
+      return authProbe;
     }
 
     const bodyText = await req.text();
@@ -63,13 +71,13 @@ export async function handleSettingsSync(c: Context): Promise<Response> {
 
     return new Response(JSON.stringify({ updated_at: pending.queuedAt, patch }), {
       status: 200,
-      headers: jsonCors,
+      headers: jsonCorsHeaders(req),
     });
   }
 
   return new Response(JSON.stringify({ error: "Method not allowed" }), {
     status: 405,
-    headers: jsonCors,
+    headers: jsonCorsHeaders(req),
   });
 }
 
@@ -82,16 +90,19 @@ export async function handlePeers(c: Context): Promise<Response> {
   const cacheKey = redisKeys.peersCache(authKey, instanceHost);
   const cached = await redis.get(cacheKey);
   if (cached) {
-    return new Response(cached, { status: 200, headers: jsonCors });
+    return new Response(rewritePublicUrlsInText(cached), {
+      status: 200,
+      headers: jsonCorsHeaders(req),
+    });
   }
 
   const path = `/api/bsplus/timetable-classmates/peers${url.search}`;
-  const res = await workerFetch(path, { method: "GET", headers: req.headers });
-  const text = await res.text();
+  const res = await workerFetch(path, { method: "GET", headers: req.headers }, req);
   if (res.ok) {
+    const text = await res.clone().text();
     await redis.setex(cacheKey, config.peersCacheTtlSec, text);
   }
-  return new Response(text, { status: res.status, headers: jsonCors });
+  return res;
 }
 
 export async function handleProxy(c: Context): Promise<Response> {
@@ -100,7 +111,7 @@ export async function handleProxy(c: Context): Promise<Response> {
     return handleHealth(c.req.method);
   }
   if (c.req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: corsHeadersForRequest(c.req.raw) });
   }
   return proxyToWorker(c.req.raw, url);
 }

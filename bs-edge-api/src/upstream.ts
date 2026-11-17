@@ -1,5 +1,5 @@
 import { config, publicHost } from "./config.js";
-import { corsHeaders } from "./cors.js";
+import { corsHeadersForRequest } from "./cors.js";
 import { healthResponse, isHealthPath } from "./health.js";
 
 const hopByHop = new Set([
@@ -26,31 +26,48 @@ function applyForwardHeaders(incoming: Headers): Headers {
   return out;
 }
 
-function rewriteLocation(location: string): string {
-  const workerOrigin = config.workerUpstream;
+export function rewritePublicUrlsInText(text: string): string {
+  const workerOrigin = new URL(config.workerUpstream).origin;
   const publicOrigin = config.publicOrigin;
-  if (location.startsWith(workerOrigin)) {
-    return `${publicOrigin}${location.slice(workerOrigin.length)}`;
-  }
-  try {
-    const url = new URL(location);
-    if (url.origin === new URL(workerOrigin).origin) {
-      return `${publicOrigin}${url.pathname}${url.search}${url.hash}`;
-    }
-  } catch {
-    /* relative */
-  }
-  return location;
+  if (workerOrigin === publicOrigin) return text;
+  return text.split(workerOrigin).join(publicOrigin);
 }
 
-function mergeProxyResponse(res: Response): Response {
+function rewriteLocation(location: string): string {
+  return rewritePublicUrlsInText(location);
+}
+
+async function mergeProxyResponse(request: Request, res: Response): Promise<Response> {
   const headers = new Headers(res.headers);
   const location = headers.get("Location");
   if (location) headers.set("Location", rewriteLocation(location));
-  for (const [k, v] of Object.entries(corsHeaders)) {
-    if (!headers.has(k)) headers.set(k, v);
+
+  // Replace edge CORS (reflect Origin) — avoids duplicate/conflicting worker headers.
+  for (const key of [
+    "access-control-allow-origin",
+    "access-control-allow-credentials",
+    "access-control-allow-methods",
+    "access-control-allow-headers",
+    "access-control-max-age",
+    "vary",
+  ]) {
+    headers.delete(key);
   }
-  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+  for (const [k, v] of Object.entries(corsHeadersForRequest(request))) {
+    headers.set(k, v);
+  }
+
+  const contentType = headers.get("Content-Type") ?? "";
+  const isJson = contentType.includes("application/json") || contentType.includes("+json");
+  const isTextual = isJson || contentType.includes("text/");
+
+  if (!isTextual || res.status === 204 || res.status === 304) {
+    return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+  }
+
+  const text = await res.text();
+  const body = rewritePublicUrlsInText(text);
+  return new Response(body, { status: res.status, statusText: res.statusText, headers });
 }
 
 /** Proxy HTML, API, assets, and everything else to the Cloudflare Worker origin. */
@@ -68,12 +85,13 @@ export async function proxyToWorker(request: Request, url: URL): Promise<Respons
     init.body = await request.arrayBuffer();
   }
   const res = await fetch(target.toString(), init);
-  return mergeProxyResponse(res);
+  return mergeProxyResponse(request, res);
 }
 
 export async function workerFetch(
   pathAndQuery: string,
   init: { method: string; headers: Headers; body?: BodyInit | null },
+  clientRequest?: Request,
 ): Promise<Response> {
   const target = new URL(pathAndQuery, config.workerUpstream);
   const res = await fetch(target.toString(), {
@@ -82,5 +100,8 @@ export async function workerFetch(
     body: init.body ?? undefined,
     redirect: "manual",
   });
+  if (clientRequest) {
+    return mergeProxyResponse(clientRequest, res);
+  }
   return res;
 }

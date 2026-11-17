@@ -4,7 +4,8 @@ export const BSPLUS_SYNC_MAX_BYTES = 2 * 1024 * 1024;
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-ID, X-API-Key",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, X-User-ID, X-API-Key, Cookie, Accept, Range, X-Requested-With",
 } as const;
 
 export const ACCESS_TOKEN_TTL = "1h";
