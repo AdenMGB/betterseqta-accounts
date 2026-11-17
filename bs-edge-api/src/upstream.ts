@@ -12,6 +12,7 @@ const hopByHop = new Set([
   "transfer-encoding",
   "upgrade",
   "host",
+  "accept-encoding",
 ]);
 
 function applyForwardHeaders(incoming: Headers): Headers {
@@ -23,7 +24,22 @@ function applyForwardHeaders(incoming: Headers): Headers {
   });
   out.set("X-Forwarded-Host", publicHost());
   out.set("X-Forwarded-Proto", "https");
+  // Never ask Worker for br/gzip — Node may not decode consistently before we re-serve.
+  out.set("Accept-Encoding", "identity");
   return out;
+}
+
+function isRewriteableTextContentType(contentType: string): boolean {
+  const ct = contentType.toLowerCase();
+  return (
+    ct.includes("text/") ||
+    ct.includes("application/json") ||
+    ct.includes("+json") ||
+    ct.includes("application/javascript") ||
+    ct.includes("text/javascript") ||
+    ct.includes("application/xml") ||
+    ct.includes("image/svg+xml")
+  );
 }
 
 export function rewritePublicUrlsInText(text: string): string {
@@ -66,20 +82,18 @@ async function mergeProxyResponse(request: Request, res: Response): Promise<Resp
   }
 
   const contentType = headers.get("Content-Type") ?? "";
-  const isJson = contentType.includes("application/json") || contentType.includes("+json");
-  const isTextual = isJson || contentType.includes("text/");
 
   if (res.status === 204 || res.status === 304) {
     return new Response(null, { status: res.status, statusText: res.statusText, headers });
   }
 
-  if (isTextual) {
-    const text = await res.text();
+  const bytes = await res.arrayBuffer();
+  if (isRewriteableTextContentType(contentType)) {
+    const text = new TextDecoder("utf-8").decode(bytes);
     const body = rewritePublicUrlsInText(text);
     return new Response(body, { status: res.status, statusText: res.statusText, headers });
   }
 
-  const bytes = await res.arrayBuffer();
   return new Response(bytes, { status: res.status, statusText: res.statusText, headers });
 }
 
