@@ -2,8 +2,9 @@ export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
   PFP_BUCKET: R2Bucket;
-  TIMETABLE_CLASSMATES_RELAY: DurableObjectNamespace;
   JWT_SECRET: string;
+  /** Shared secret for `POST /internal/tq-relay/revoke` on bs-edge-api */
+  EDGE_RELAY_SECRET?: string;
   APP_URL?: string;
   SMTP2GO_FROM_EMAIL?: string;
   SMTP2GO_API_KEY?: string;

@@ -1,6 +1,5 @@
 import { deleteShare } from "./timetable-classmates-relay-store";
 import type { Env } from "../types/env";
-import { applyTqRelayStubObsHeaders } from "./tq-relay-observability";
 
 /** Drop a student's relay share when they opt out via REST (no WebSocket). */
 export async function relayRevokeStudentShare(
@@ -14,22 +13,22 @@ export async function relayRevokeStudentShare(
     console.error("[tq-relay] revoke share D1 delete failed", instanceHost, seqtaStudentId, err);
   }
 
-  const ns = env.TIMETABLE_CLASSMATES_RELAY;
-  if (!ns) return;
+  const edgeSecret = env.EDGE_RELAY_SECRET?.trim();
+  const publicBase = (env.APP_URL?.trim() || "https://accounts.betterseqta.org").replace(/\/$/, "");
+  if (!edgeSecret) {
+    console.error("[tq-relay] EDGE_RELAY_SECRET not set; relay revoke broadcast skipped");
+    return;
+  }
 
-  const stub = ns.get(ns.idFromName(instanceHost));
   try {
-    const headers = new Headers({
-      "X-TQ-Internal-Revoke": "1",
-      "X-TQ-Seqta-Student-Id": String(seqtaStudentId),
+    await fetch(`${publicBase}/internal/tq-relay/revoke`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Edge-Relay-Secret": edgeSecret,
+      },
+      body: JSON.stringify({ instance_host: instanceHost, seqta_student_id: seqtaStudentId }),
     });
-    applyTqRelayStubObsHeaders(env, instanceHost, headers);
-    await stub.fetch(
-      new Request("https://tq-relay/internal/revoke", {
-        method: "POST",
-        headers,
-      }),
-    );
   } catch (err) {
     console.error("[tq-relay] revoke share broadcast failed", instanceHost, seqtaStudentId, err);
   }

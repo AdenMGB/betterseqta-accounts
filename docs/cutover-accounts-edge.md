@@ -56,7 +56,7 @@ curl -sS https://worker.accounts.betterseqta.org/api/health
 
 - `/` should return SPA HTML (proxied from Worker assets).
 - Cookies and OAuth redirects should use `accounts.betterseqta.org` (`APP_URL` on Worker).
-- Timetable relay: `wss://accounts.betterseqta.org/api/bsplus/timetable-classmates/relay/ws` (edge WS proxy).
+- Timetable relay: `wss://accounts.betterseqta.org/api/bsplus/timetable-classmates/relay/ws` (edge-hosted relay; Worker DO removed).
 
 ## 6. `betterseqta.org` (bs-website) server-side API
 

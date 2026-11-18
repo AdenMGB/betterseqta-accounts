@@ -5,8 +5,9 @@ Offloads high-volume routes from the Cloudflare Worker:
 - `GET`/`HEAD` `/api/health` and `/health` — answered locally with `X-Served-By: bs-edge-api` (never proxied to the Worker; point uptime checks at the edge hostname)
 - `PUT /api/bsplus/settings/sync` — queued in Redis, flushed to the Worker every **5s** (coalesced per session)
 - `GET /api/bsplus/timetable-classmates/peers` — short Redis cache, Worker on miss
+- `GET /api/bsplus/timetable-classmates/relay/ws` — **local** WebSocket relay (replaces Cloudflare Durable Object; D1 via API, Redis pub/sub for fan-out)
 
-All other paths (including **`/`** SPA HTML and static assets) are **proxied** to `WORKER_UPSTREAM` (`https://worker.accounts.betterseqta.org`) with client auth headers unchanged. Responses rewrite `Location` when they point at the worker host. WebSocket upgrades are proxied to the same upstream.
+All other paths (including **`/`** SPA HTML and static assets) are **proxied** to `WORKER_UPSTREAM` (`https://worker.accounts.betterseqta.org`) with client auth headers unchanged. Responses rewrite `Location` when they point at the worker host. Other WebSocket upgrades are proxied to the same upstream.
 
 ## Production URLs
 

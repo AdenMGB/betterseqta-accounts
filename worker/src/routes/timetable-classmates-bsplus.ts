@@ -14,9 +14,9 @@ import {
   shareCodeFromIdentityDigest,
   bytesToBase64,
 } from "../lib/timetable-classmates";
-import { createRelayToken, verifyRelayToken } from "../lib/timetable-classmates-relay-token";
+import { createRelayToken } from "../lib/timetable-classmates-relay-token";
 import { relayRevokeStudentShare } from "../lib/timetable-classmates-relay-client";
-import { applyTqRelayStubObsHeaders, logTqRelayObs } from "../lib/tq-relay-observability";
+import { logTqRelayObs } from "../lib/tq-relay-observability";
 import type { RequestContext } from "../types/context";
 import type { Env } from "../types/env";
 
@@ -453,48 +453,6 @@ export async function handleTimetableClassmatesRelaySession(ctx: RequestContext)
 }
 
 export async function handleTimetableClassmatesRelayWs(ctx: RequestContext): Promise<Response> {
-  if (ctx.request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
-    return new Response("Expected WebSocket", { status: 426, headers: corsHeaders });
-  }
-
-  const instanceHost = instanceHostFromQuery(ctx.url);
-  const relayToken = ctx.url.searchParams.get("relay_token")?.trim();
-  if (!instanceHost || !relayToken) {
-    return authError("Invalid relay connection", 422);
-  }
-
-  const claims = await verifyRelayToken(relayToken, ctx.jwtSecret);
-  if (!claims || claims.instance_host !== instanceHost) {
-    return authError("Invalid relay token", 401);
-  }
-
-  const membership = await getActiveMembership(ctx.env, claims.cloud_user_id, instanceHost);
-  if (!membership) {
-    return authError("Not registered on this school instance", 404);
-  }
-
-  if (membership.seqta_student_id !== claims.seqta_student_id) {
-    return authError("Relay token does not match membership", 401);
-  }
-
-  const expectedShare = shareCodeFromIdentityDigest(membership.identity_binding_digest);
-  if (!expectedShare || expectedShare !== claims.share_code) {
-    return authError("Invalid relay token", 401);
-  }
-
-  const ns = ctx.env.TIMETABLE_CLASSMATES_RELAY;
-  if (!ns) {
-    return authError("Relay not configured", 503);
-  }
-
-  const id = ns.idFromName(instanceHost);
-  const stub = ns.get(id);
-
-  const headers = new Headers(ctx.request.headers);
-  headers.set("X-TQ-Cloud-User-Id", claims.cloud_user_id);
-  headers.set("X-TQ-Seqta-Student-Id", String(claims.seqta_student_id));
-  headers.set("X-TQ-Share-Code", claims.share_code);
-  applyTqRelayStubObsHeaders(ctx.env, instanceHost, headers);
-
-  return stub.fetch(new Request(ctx.request, { headers }));
+  const wsHint = relayWsUrl(ctx.env, "https://accounts.betterseqta.org");
+  return authError(`Timetable relay WebSocket is served by the accounts edge (${wsHint})`, 410);
 }

@@ -31,11 +31,7 @@ migrations_dir = "migrations"
 binding = "PFP_BUCKET"
 bucket_name = "betterseqta-pfps"
 
-[[durable_objects.bindings]]
-name = "TIMETABLE_CLASSMATES_RELAY"
-class_name = "TimetableClassmatesRelay"
-
 [[migrations]]
-tag = "v2-timetable-classmates-relay"
-new_classes = ["TimetableClassmatesRelay"]
+tag = "v3-remove-timetable-classmates-relay-do"
+deleted_classes = ["TimetableClassmatesRelay"]
 
