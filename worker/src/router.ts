@@ -228,10 +228,6 @@ const routes: Route[] = [
     test: (m, p) => m === "GET" && p === "/api/admin/timetable-classmates/stats",
     handle: (c) => admin.handleAdminTimetableClassmatesStats(c),
   },
-  {
-    test: (m, p) => m === "GET" && p === "/api/admin/temp/worker-secrets",
-    handle: (c) => admin.handleAdminTempWorkerSecrets(c),
-  },
   { test: (m, p) => m === "POST" && p === "/api/admin/signup-order/backfill", handle: (c) => admin.handleAdminSignupOrderBackfill(c) },
 ];
 
