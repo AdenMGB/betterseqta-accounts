@@ -2268,3 +2268,40 @@ export async function handleAdminTimetableClassmatesStats({
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+/** TEMPORARY — delete after syncing bs-edge-api secrets. Senior admin only. */
+export async function handleAdminTempWorkerSecrets({
+  env,
+  request,
+  jwtSecret,
+}: RequestContext): Promise<Response> {
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
+  if (!admin) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const maxLevel = await getMaxAdminLevel(env);
+  if (admin.adminLevel < maxLevel) {
+    return new Response(JSON.stringify({ error: "Senior admin only" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const jwtSecretValue = env.JWT_SECRET?.trim() ?? "";
+  const edgeRelaySecret = env.EDGE_RELAY_SECRET?.trim() ?? "";
+
+  return new Response(
+    JSON.stringify({
+      warning: "TEMP endpoint — remove after copying into bs-edge-api .env",
+      jwt_secret: jwtSecretValue,
+      edge_relay_secret: edgeRelaySecret,
+      jwt_secret_set: jwtSecretValue.length > 0,
+      edge_relay_secret_set: edgeRelaySecret.length > 0,
+    }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } },
+  );
+}
