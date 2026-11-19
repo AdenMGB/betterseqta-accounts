@@ -11,6 +11,7 @@ import {
 import { isReservedClientExpired, expiresAtForReservedClient } from "../src/lib/desqta-client.ts";
 import { isSafeInternalPath } from "../src/lib/safe-internal-path.ts";
 import { userRequiresEmailVerification } from "../src/lib/email-verification.ts";
+import { oauthRedirectUrisEquivalent } from "../src/lib/oauth-redirect.ts";
 
 const SAMPLE_EXT_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const bsplusOpts = {
@@ -102,6 +103,32 @@ describe("isSafeInternalPath", () => {
   it("allows in-app paths except auth pages", () => {
     assert.equal(isSafeInternalPath("/oauth/authorize"), true);
     assert.equal(isSafeInternalPath("/login"), false);
+  });
+});
+
+describe("oauthRedirectUrisEquivalent", () => {
+  const chromeReserved = `chrome-extension://${SAMPLE_EXT_ID}/auth/callback`;
+  const accountsHttps = "https://accounts.betterseqta.org/auth/bsplus/callback";
+  const env = {
+    APP_URL: "https://accounts.betterseqta.org",
+    ALLOWED_CHROME_EXTENSION_IDS: SAMPLE_EXT_ID,
+  };
+
+  it("allows https accounts callback when client registered with chrome extension", () => {
+    assert.equal(oauthRedirectUrisEquivalent(accountsHttps, chromeReserved, env), true);
+  });
+
+  it("rejects unrelated https redirect", () => {
+    assert.equal(
+      oauthRedirectUrisEquivalent("https://evil.example/auth/bsplus/callback", chromeReserved, env),
+      false,
+    );
+  });
+
+  it("allows accounts extension callback against registered website client URI", () => {
+    const accountsHttps = "https://accounts.betterseqta.org/auth/bsplus/callback";
+    const website = "https://betterseqta.org/api/auth/callback";
+    assert.equal(oauthRedirectUrisEquivalent(accountsHttps, website, env), true);
   });
 });
 

@@ -8,6 +8,11 @@ import { readOAuthTokenFields } from "../lib/oauth-request-body";
 import { mapUserPublic, USER_PUBLIC_SELECT, enrichUserPublic } from "../lib/userPublic";
 import { hashOpaqueSecret, opaqueSecretMatches, shouldUpgradeStoredSecret } from "../lib/secret-hash";
 import { bsplusRedirectOptions } from "../lib/redirect-uri";
+import {
+  isAccountsBsplusHttpsCallback,
+  isSafeOAuthRedirectUri,
+  oauthRedirectUrisEquivalent,
+} from "../lib/oauth-redirect";
 import type { RequestContext } from "../types/context";
 
 async function validateOAuthClient(
@@ -61,41 +66,18 @@ export async function handleOAuthApprove({ env, request, jwtSecret }: RequestCon
 
     const { client_id, redirect_uri } = (await request.json()) as { client_id?: string; redirect_uri?: string };
 
-    const client = await env.DB.prepare("SELECT id FROM oauth_clients WHERE id = ? AND redirect_uri = ?")
-      .bind(client_id, redirect_uri)
-      .first();
-
-    if (client) {
-      const code = crypto.randomUUID();
-      const expiresAt = Math.floor(Date.now() / 1000) + 600;
-
-      await env.DB.prepare("INSERT INTO oauth_codes (code, client_id, user_id, expires_at) VALUES (?, ?, ?, ?)")
-        .bind(code, client_id, user.id, expiresAt)
-        .run();
-
-      const redirectUrl = new URL(redirect_uri!);
-      redirectUrl.searchParams.set("code", code);
-
-      return new Response(JSON.stringify({ redirectUrl: redirectUrl.toString() }), {
+    if (!client_id || !redirect_uri || !isSafeOAuthRedirectUri(redirect_uri)) {
+      return new Response(JSON.stringify({ error: "Invalid Client or Redirect URI" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const reserved = await env.DB.prepare(
-      "SELECT id, redirect_uri, expires_at FROM desqta_reserved_clients WHERE id = ? AND redirect_uri = ?",
-    )
-      .bind(client_id, redirect_uri)
-      .first();
-    if (reserved) {
-      const redirectOptions = bsplusRedirectOptions(env);
-      if (isReservedClientExpired(redirect_uri!, reserved.expires_at as number | null, env.APP_URL, redirectOptions)) {
-        return new Response(JSON.stringify({ error: "Client expired" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      await touchDesqtaReservedClient(env, client_id!);
+    const oauthClient = (await env.DB.prepare("SELECT id, redirect_uri FROM oauth_clients WHERE id = ?")
+      .bind(client_id)
+      .first()) as { id: string; redirect_uri: string } | null;
 
+    async function approveWithBsplusTokens(targetRedirectUri: string): Promise<Response> {
       const fullUser = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)
         .bind(user.id)
         .first();
@@ -110,17 +92,16 @@ export async function handleOAuthApprove({ env, request, jwtSecret }: RequestCon
         fullUser as { id: string; email?: string | null; username?: string | null },
         jwtSecret,
       );
-      const platform = redirect_uri!.startsWith("desqta://") ? "desqta" : "bsplus";
       const session = await createSession(env, {
         userId: (fullUser as { id: string }).id,
-        platform,
+        platform: "bsplus",
         clientId: client_id!,
         deviceName: deviceNameForNewSession(request),
         request,
         refreshDays: APP_REFRESH_EXPIRY_DAYS,
       });
 
-      const callbackUrl = new URL(redirect_uri!);
+      const callbackUrl = new URL(targetRedirectUri);
       callbackUrl.searchParams.set("token", accessToken);
       callbackUrl.searchParams.set("refresh_token", session.refreshToken);
       callbackUrl.searchParams.set("user_id", (fullUser as { id: string }).id);
@@ -128,6 +109,80 @@ export async function handleOAuthApprove({ env, request, jwtSecret }: RequestCon
       return new Response(JSON.stringify({ redirectUrl: callbackUrl.toString() }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    if (oauthClient && oauthRedirectUrisEquivalent(redirect_uri, oauthClient.redirect_uri, env)) {
+      if (isAccountsBsplusHttpsCallback(redirect_uri, env.APP_URL)) {
+        return approveWithBsplusTokens(redirect_uri);
+      }
+
+      const code = crypto.randomUUID();
+      const expiresAt = Math.floor(Date.now() / 1000) + 600;
+
+      await env.DB.prepare("INSERT INTO oauth_codes (code, client_id, user_id, expires_at) VALUES (?, ?, ?, ?)")
+        .bind(code, client_id, user.id, expiresAt)
+        .run();
+
+      const redirectUrl = new URL(redirect_uri);
+      redirectUrl.searchParams.set("code", code);
+
+      return new Response(JSON.stringify({ redirectUrl: redirectUrl.toString() }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const reserved = (await env.DB.prepare(
+      "SELECT id, redirect_uri, expires_at FROM desqta_reserved_clients WHERE id = ?",
+    )
+      .bind(client_id)
+      .first()) as { id: string; redirect_uri: string; expires_at: number | null } | null;
+
+    if (reserved && oauthRedirectUrisEquivalent(redirect_uri, reserved.redirect_uri, env)) {
+      const redirectOptions = bsplusRedirectOptions(env);
+      if (isReservedClientExpired(redirect_uri!, reserved.expires_at as number | null, env.APP_URL, redirectOptions)) {
+        return new Response(JSON.stringify({ error: "Client expired" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      await touchDesqtaReservedClient(env, client_id!);
+
+      const platform = redirect_uri!.startsWith("desqta://") ? "desqta" : "bsplus";
+      if (platform === "desqta") {
+        const fullUser = await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`)
+          .bind(user.id)
+          .first();
+        if (!fullUser) {
+          return new Response(JSON.stringify({ error: "User not found" }), {
+            status: 404,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const accessToken = await createAccessToken(
+          fullUser as { id: string; email?: string | null; username?: string | null },
+          jwtSecret,
+        );
+        const session = await createSession(env, {
+          userId: (fullUser as { id: string }).id,
+          platform,
+          clientId: client_id!,
+          deviceName: deviceNameForNewSession(request),
+          request,
+          refreshDays: APP_REFRESH_EXPIRY_DAYS,
+        });
+
+        const callbackUrl = new URL(redirect_uri!);
+        callbackUrl.searchParams.set("token", accessToken);
+        callbackUrl.searchParams.set("refresh_token", session.refreshToken);
+        callbackUrl.searchParams.set("user_id", (fullUser as { id: string }).id);
+
+        return new Response(JSON.stringify({ redirectUrl: callbackUrl.toString() }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return approveWithBsplusTokens(redirect_uri!);
     }
 
     return new Response(JSON.stringify({ error: "Invalid Client or Redirect URI" }), {

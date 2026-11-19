@@ -70,7 +70,7 @@ import { useAuth } from '~/composables/useAuth'
 import { ShieldExclamationIcon, CheckCircleIcon, UserCircleIcon } from '@heroicons/vue/24/solid'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import { loginLocation, setPostLoginRedirect } from '~/utils/postLoginRedirect'
-import { buildOAuthAccessDeniedUrl } from '~/utils/oauth-redirect'
+import { buildOAuthAccessDeniedUrl, oauthRedirectUrisMatchForConsent } from '~/utils/oauth-redirect'
 
 definePageMeta({ layout: false })
 
@@ -149,7 +149,7 @@ onMounted(async () => {
         if (
             redirectUri &&
             registeredRedirectUri.value &&
-            redirectUri.trim() !== registeredRedirectUri.value.trim()
+            !oauthRedirectUrisMatchForConsent(redirectUri, registeredRedirectUri.value)
         ) {
             error.value = 'redirect_uri does not match this client.'
             return

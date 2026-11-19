@@ -11,6 +11,8 @@ export interface Env {
   SMTP2GO_API_KEY?: string;
   /** Comma-separated chrome-extension IDs allowed for BS+ OAuth redirect_uri */
   ALLOWED_CHROME_EXTENSION_IDS?: string;
+  /** Comma-separated Firefox AMO add-on IDs (guid) for moz-extension OAuth redirect_uri */
+  ALLOWED_MOZ_EXTENSION_IDS?: string;
   DISCORD_CLIENT_ID?: string;
   DISCORD_CLIENT_SECRET?: string;
   DISCORD_REDIRECT_URI?: string;
