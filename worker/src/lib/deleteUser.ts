@@ -75,6 +75,7 @@ export async function deleteUserRecords(env: Env, userId: string): Promise<void>
   await runOptional("DELETE FROM user_badges WHERE user_id = ?");
 
   await env.DB.prepare("DELETE FROM password_reset_tokens WHERE user_id = ?").bind(userId).run();
+  await runOptional("DELETE FROM email_verification_tokens WHERE user_id = ?");
   await runOptional("DELETE FROM settings_metadata WHERE user_id = ?");
   await runOptional("DELETE FROM bsplus_settings_sync WHERE user_id = ?");
   await env.DB.prepare("DELETE FROM settings WHERE user_id = ?").bind(userId).run();

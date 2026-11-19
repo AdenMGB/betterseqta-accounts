@@ -11,6 +11,7 @@ import { buildPfpAuditContext, resolvePfpAuditRefs, type PfpAuditRef } from "../
 import { auditTargetForUser, labelFromDetails, resolveAuditTargets } from "../lib/auditTarget";
 import { uploadPfpFromFormData, restagePfpBytes } from "../lib/pfpUploadHandler";
 import { deleteUserRecords } from "../lib/deleteUser";
+import { revokeAllUserSessions } from "../lib/session";
 import { processPfpUpload } from "../lib/pfpProcess";
 import {
   countHostedPfpPendingReview,
@@ -363,7 +364,7 @@ export async function handleAdminPromote({ env, request, jwtSecret }: RequestCon
 }
 
 export async function handleAdminSendPasswordReset({ env, request, jwtSecret }: RequestContext): Promise<Response> {
-  const admin = await getAdminUser(env, request, jwtSecret);
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
   const { userId } = (await request.json()) as { userId?: string };
@@ -374,15 +375,27 @@ export async function handleAdminSendPasswordReset({ env, request, jwtSecret }: 
     });
   }
 
-  const user = (await env.DB.prepare("SELECT id, email, username, displayName FROM users WHERE id = ?").bind(userId).first()) as {
+  const user = (await env.DB.prepare("SELECT id, email, username, displayName, admin_level FROM users WHERE id = ?")
+    .bind(userId)
+    .first()) as {
     id: string;
     email: string;
     username: string;
     displayName?: string;
+    admin_level: number;
   } | null;
   if (!user) {
     return new Response(JSON.stringify({ error: "User not found" }), {
       status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const targetLevel = user.admin_level || 0;
+  const adminLevelNum = admin.adminLevel || 0;
+  if (targetLevel >= adminLevelNum) {
+    return new Response(JSON.stringify({ error: "Cannot reset password for users at your level or higher" }), {
+      status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -787,6 +800,8 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
   const values: unknown[] = [];
   const changes: Record<string, { from: string; to: string }> = {};
 
+  let emailChanged = false;
+
   if (email !== undefined && email !== null) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
@@ -797,6 +812,13 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
     }
     const normalizedEmail = email.toLowerCase().trim();
     if (normalizedEmail !== targetUser.email.toLowerCase()) {
+      const maxAdminLevel = await getMaxAdminLevel(env);
+      if (adminLevelNum < maxAdminLevel) {
+        return new Response(JSON.stringify({ error: "Only Senior Admins can change a user's email" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const existingUser = await env.DB.prepare("SELECT id FROM users WHERE email = ? AND id != ?")
         .bind(normalizedEmail, userId)
         .first();
@@ -808,6 +830,9 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
       }
       updates.push("email = ?");
       values.push(normalizedEmail);
+      updates.push("email_verified_at = ?");
+      values.push(null);
+      emailChanged = true;
       changes.email = { from: targetUser.email, to: normalizedEmail };
     }
   }
@@ -846,6 +871,10 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
 
   values.push(userId);
   await env.DB.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).bind(...values).run();
+
+  if (emailChanged) {
+    await revokeAllUserSessions(env, userId);
+  }
 
   await audit(env, admin, {
     action: "user.update",

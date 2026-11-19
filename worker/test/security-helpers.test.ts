@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import { escapeHtml } from "../src/lib/html-escape.ts";
 import { isValidDesqtaRedirectUri, isValidBsplusRedirectUri, isPersistentReservedRedirectUri } from "../src/lib/redirect-uri.ts";
 import { isReservedClientExpired, expiresAtForReservedClient } from "../src/lib/desqta-client.ts";
+import { isSafeInternalPath } from "../src/lib/safe-internal-path.ts";
+import { userRequiresEmailVerification } from "../src/lib/email-verification.ts";
 
 describe("escapeHtml", () => {
   it("escapes HTML special characters", () => {
@@ -67,5 +69,28 @@ describe("persistent reserved clients", () => {
     );
     assert.equal(expiresAtForReservedClient("desqta://auth/callback"), null);
     assert.notEqual(expiresAtForReservedClient("https://evil.example/callback"), null);
+  });
+});
+
+describe("isSafeInternalPath", () => {
+  it("rejects open redirects", () => {
+    assert.equal(isSafeInternalPath("//evil.com"), false);
+    assert.equal(isSafeInternalPath("https://evil.com"), false);
+  });
+
+  it("allows in-app paths except auth pages", () => {
+    assert.equal(isSafeInternalPath("/oauth/authorize"), true);
+    assert.equal(isSafeInternalPath("/login"), false);
+  });
+});
+
+describe("userRequiresEmailVerification", () => {
+  it("skips discord placeholder emails", () => {
+    assert.equal(userRequiresEmailVerification({ email: "discord_1@discord.local", email_verified_at: null }), false);
+  });
+
+  it("requires verification when timestamp missing", () => {
+    assert.equal(userRequiresEmailVerification({ email: "a@b.com", email_verified_at: null }), true);
+    assert.equal(userRequiresEmailVerification({ email: "a@b.com", email_verified_at: 1 }), false);
   });
 });

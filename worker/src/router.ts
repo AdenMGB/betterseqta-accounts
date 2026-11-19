@@ -72,6 +72,7 @@ const routes: Route[] = [
   },
   { test: (m, p) => m === "POST" && p === "/api/auth/register", handle: (c) => auth.handleRegister(c) },
   { test: (m, p) => m === "POST" && p === "/api/auth/login", handle: (c) => auth.handleLogin(c) },
+  { test: (m, p) => m === "GET" && p === "/api/auth/verify-email", handle: (c) => auth.handleVerifyEmail(c) },
   { test: (m, p) => m === "GET" && p === "/api/auth/me", handle: (c) => auth.handleMe(c) },
   { test: (m, p) => m === "POST" && p === "/api/auth/refresh", handle: (c) => auth.handleRefresh(c) },
   { test: (m, p) => m === "POST" && p === "/api/auth/migrate-session", handle: (c) => auth.handleMigrateSession(c) },

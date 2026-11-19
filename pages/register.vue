@@ -223,7 +223,7 @@ const onSubmit = async () => {
   }
 
   try {
-    const res = await $fetch<{ user?: Record<string, unknown> }>('/api/auth/register', {
+    const res = await $fetch<{ user?: Record<string, unknown>; needs_email_verification?: boolean; message?: string }>('/api/auth/register', {
       method: 'POST',
       credentials: 'include',
       body: {
@@ -236,6 +236,16 @@ const onSubmit = async () => {
         age13Confirmed: age13Confirmed.value,
       },
     })
+    if (res?.needs_email_verification) {
+      await navigateTo({
+        path: '/login',
+        query: {
+          verified: 'pending',
+          ...(route.query.redirect ? { redirect: getPostLoginRedirect(route.query.redirect) } : {}),
+        },
+      })
+      return
+    }
     if (res?.user) {
       user.value = res.user
       await fetchUser()

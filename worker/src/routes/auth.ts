@@ -21,6 +21,7 @@ import {
   websiteSessionCookies,
 } from "../lib/session-cookies";
 import { sendPasswordResetEmail } from "../lib/email";
+import { sendUserEmailVerification, userRequiresEmailVerification, verifyEmailToken } from "../lib/email-verification";
 import { checkRateLimit } from "../lib/rate-limit";
 import {
   createSession,
@@ -134,36 +135,24 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
     const signupNumber = await assignSignupNumber(env.DB, id);
     await awardBadgesForUser(env.DB, id, signupNumber);
 
-    const token = await createAccessToken({ id, email: normalizedEmail, username: trimmedUsername }, jwtSecret);
-    const session = await createSession(env, {
-      userId: id,
-      platform: "web",
-      deviceName: deviceNameForNewSession(request),
-      request,
-      refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
-    });
-    const refreshCookie = createRefreshTokenCookie(session.refreshToken);
+    try {
+      await sendUserEmailVerification(env, id, normalizedEmail, displayName || trimmedUsername);
+    } catch (emailErr) {
+      console.error("Registration verification email error:", emailErr);
+      await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(id).run();
+      return new Response(JSON.stringify({ error: "Could not send verification email. Try again later." }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const registeredUser = await enrichUserPublic(env.DB, {
-      id,
-      email: normalizedEmail,
-      username: trimmedUsername,
-      displayName: displayName || trimmedUsername,
-      admin_level: 0,
-      signup_number: signupNumber,
-      privacy_policy_accepted: true,
-      terms_of_service_accepted: true,
-      age_13_confirmed: true,
-    });
-
-    return authJson(
-      {
-        expires_in: WEBSITE_ACCESS_EXPIRES_IN,
-        user: registeredUser,
-      },
-      {
-        "Set-Cookie": [createAccessTokenCookie(token), refreshCookie],
-      },
+    return new Response(
+      JSON.stringify({
+        needs_email_verification: true,
+        message: "Check your email for a verification link before signing in.",
+        user: { id, email: normalizedEmail, username: trimmedUsername },
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -184,6 +173,16 @@ export async function handleLogin({ env, request, jwtSecret }: RequestContext): 
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    if (userRequiresEmailVerification(user)) {
+      return new Response(
+        JSON.stringify({
+          error: "Verify your email before signing in. Check your inbox or request a new verification link.",
+          code: "email_not_verified",
+        }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const token = await createAccessToken(
@@ -210,6 +209,16 @@ export async function handleLogin({ env, request, jwtSecret }: RequestContext): 
     const message = err instanceof Error ? err.message : String(err);
     return new Response(message, { status: 500, headers: corsHeaders });
   }
+}
+
+export async function handleVerifyEmail({ env, url }: RequestContext): Promise<Response> {
+  const base = env.APP_URL || "https://accounts.betterseqta.org";
+  const token = url.searchParams.get("token");
+  const result = await verifyEmailToken(env, token);
+  if (result.ok) {
+    return Response.redirect(`${base}/login?verified=1`, 302);
+  }
+  return Response.redirect(`${base}/login?error=email_verification_failed`, 302);
 }
 
 export async function handleMe({ env, request, jwtSecret }: RequestContext): Promise<Response> {
@@ -440,9 +449,23 @@ export async function handleChangeEmail({ env, request, jwtSecret }: RequestCont
       });
     }
 
-    await env.DB.prepare("UPDATE users SET email = ? WHERE id = ?").bind(normalizedNewEmail, userPayload.id).run();
+    await env.DB.prepare("UPDATE users SET email = ?, email_verified_at = NULL WHERE id = ?")
+      .bind(normalizedNewEmail, userPayload.id)
+      .run();
+    await revokeAllUserSessions(env, userPayload.id);
+    try {
+      await sendUserEmailVerification(env, userPayload.id, normalizedNewEmail, null);
+    } catch (emailErr) {
+      console.error("Change email verification send error:", emailErr);
+    }
 
-    return new Response(JSON.stringify({ success: true, email: normalizedNewEmail }), {
+    return new Response(
+      JSON.stringify({
+        success: true,
+        email: normalizedNewEmail,
+        message: "Email updated. Verify the new address from your inbox before signing in again.",
+      }),
+      {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

@@ -43,6 +43,9 @@
             </div>
           </div>
 
+          <div v-if="successMessage" class="text-green-600 dark:text-green-400 text-sm text-center">
+            {{ successMessage }}
+          </div>
           <div v-if="error" class="text-red-500 dark:text-red-400 text-sm text-center">
             {{ error }}
           </div>
@@ -99,6 +102,7 @@ definePageMeta({ layout: false })
 const login = ref('')
 const password = ref('')
 const error = ref('')
+const successMessage = ref('')
 const loading = ref(false)
 const checkingSession = ref(true)
 const route = useRoute()
@@ -107,7 +111,23 @@ const signUpTo = computed(() =>
   registerLocation(getPostLoginRedirect(route.query.redirect)),
 )
 
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  discord_email_conflict:
+    'An account with this email already exists. Sign in with your password first before using Discord.',
+  discord_account_conflict: 'This Discord account is linked to a different user.',
+  invalid_oauth_state: 'Sign-in expired or was invalid. Please try Discord again.',
+  email_verification_failed: 'That verification link is invalid or expired.',
+}
+
 onMounted(async () => {
+  const qError = route.query.error
+  if (typeof qError === 'string' && OAUTH_ERROR_MESSAGES[qError]) {
+    error.value = OAUTH_ERROR_MESSAGES[qError]
+  } else if (route.query.verified === '1') {
+    successMessage.value = 'Email verified. You can sign in now.'
+  } else if (route.query.verified === 'pending') {
+    successMessage.value = 'Account created. Check your email for a verification link, then sign in.'
+  }
   if (route.query.redirect) {
     setPostLoginRedirect(getPostLoginRedirect(route.query.redirect))
   }

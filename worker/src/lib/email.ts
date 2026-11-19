@@ -100,3 +100,88 @@ The BetterSEQTA+ Team
 
   return result;
 }
+
+export async function sendEmailVerificationEmail(
+  email: string,
+  token: string,
+  env: Env,
+  displayName: string | null = null,
+): Promise<unknown> {
+  const verifyUrl = `${env.APP_URL || "https://accounts.betterseqta.org"}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
+  const safeDisplayName = displayName ? escapeHtml(displayName) : null;
+  const greeting = safeDisplayName ? `Hello ${safeDisplayName},` : "Hello,";
+
+  const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; margin: 0; padding: 0; background-color: #18181b;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #27272a; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
+        <div style="background: linear-gradient(135deg, #FF6B00 0%, #E66000 100%); padding: 32px; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">Verify Your Email</h1>
+        </div>
+        <div style="padding: 32px; background-color: #27272a;">
+            <p style="font-size: 16px; margin-bottom: 20px; color: #e4e4e7;">${greeting}</p>
+            <p style="font-size: 16px; margin-bottom: 24px; color: #e4e4e7;">Thanks for signing up for BetterSEQTA+ Accounts. Please confirm your email address by clicking the button below:</p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${verifyUrl}" style="display: inline-block; background: #FF6B00; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Verify Email</a>
+            </div>
+            <p style="font-size: 14px; color: #a1a1aa; margin-top: 24px;">Or copy and paste this link into your browser:</p>
+            <p style="font-size: 12px; color: #71717a; word-break: break-all; background: #18181b; padding: 12px; border-radius: 6px; border: 1px solid #3f3f46; margin: 8px 0 24px 0;">${verifyUrl}</p>
+            <div style="background: #3f3f46; border-left: 4px solid #FF6B00; padding: 16px; margin: 24px 0; border-radius: 6px;">
+                <p style="margin: 0; font-size: 14px; color: #e4e4e7;"><strong style="color: #FF6B00;">Note:</strong> This link expires in 24 hours. If you did not create this account, you can ignore this message.</p>
+            </div>
+            <p style="font-size: 14px; color: #a1a1aa; margin-top: 32px; padding-top: 24px; border-top: 1px solid #3f3f46;">Best regards,<br><span style="color: #FF6B00; font-weight: 600;">The BetterSEQTA+ Team</span></p>
+        </div>
+    </div>
+</body>
+</html>
+        `;
+
+  const emailText = `Verify Your Email
+
+${greeting}
+
+Thanks for signing up. Open this link to verify your email address (expires in 24 hours):
+
+${verifyUrl}
+
+If you did not create this account, you can ignore this message.
+
+The BetterSEQTA+ Team`;
+
+  const smtp2goUrl = "https://api.smtp2go.com/v3/email/send";
+  const { apiKey: smtp2goApiKey, fromEmail: smtp2goFromEmail } = await getSmtp2goCredentials(env);
+  const requestBody = {
+    sender: smtp2goFromEmail,
+    to: [email],
+    subject: "Verify Your Email - BetterSEQTA+",
+    html_body: emailHtml,
+    text_body: emailText,
+  };
+
+  const response = await fetch(smtp2goUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Smtp2go-Api-Key": smtp2goApiKey,
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`SMTP2GO API error: ${response.status} - ${errorText}`);
+  }
+
+  const result = (await response.json()) as { data?: { error?: string } };
+  if (result.data?.error) {
+    throw new Error(`SMTP2GO API error: ${result.data.error}`);
+  }
+
+  return result;
+}
