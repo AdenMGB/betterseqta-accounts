@@ -1,7 +1,7 @@
 import { corsHeaders, WEBSITE_ACCESS_EXPIRES_IN, APP_REFRESH_EXPIRY_DAYS } from "../constants";
 import { authJson, authError, createAccessToken } from "../lib/auth";
 import { expiresAtForReservedClient, getDesqtaClient, validateDesqtaClient, touchDesqtaReservedClient } from "../lib/desqta-client";
-import { isValidBsplusRedirectUri, bsplusRedirectUriError } from "../lib/redirect-uri";
+import { bsplusRedirectOptions, isValidBsplusRedirectUri, bsplusRedirectUriError } from "../lib/redirect-uri";
 import { checkRateLimit } from "../lib/rate-limit";
 import bcrypt from "bcryptjs";
 import { createSession, getSessionByRefreshToken, touchUserSession, revokeSessionById } from "../lib/session";
@@ -24,14 +24,15 @@ export async function handleBsplusReserve({ env, request }: RequestContext): Pro
       });
     }
     const trimmedUri = redirectUri.trim();
-    if (!isValidBsplusRedirectUri(trimmedUri, env.APP_URL)) {
+    const redirectOptions = bsplusRedirectOptions(env);
+    if (!isValidBsplusRedirectUri(trimmedUri, redirectOptions)) {
       return new Response(JSON.stringify({ error: bsplusRedirectUriError() }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     const clientId = crypto.randomUUID();
-    const expiresAt = expiresAtForReservedClient(trimmedUri, env.APP_URL);
+    const expiresAt = expiresAtForReservedClient(trimmedUri, env.APP_URL, redirectOptions);
     await env.DB.prepare("INSERT INTO desqta_reserved_clients (id, redirect_uri, expires_at) VALUES (?, ?, ?)")
       .bind(clientId, trimmedUri, expiresAt)
       .run();

@@ -36,18 +36,26 @@ export async function handleBsplusInstallLink({ env, request, jwtSecret }: Reque
   const extensionJson = JSON.stringify(extension);
 
   const existing = await env.DB.prepare(
-    "SELECT install_id FROM bsplus_install_link WHERE install_id = ?",
+    "SELECT install_id, cloud_user_id FROM bsplus_install_link WHERE install_id = ?",
   )
     .bind(installId)
-    .first<{ install_id: string }>();
+    .first<{ install_id: string; cloud_user_id: string }>();
 
   if (existing) {
+    if (existing.cloud_user_id !== user.id) {
+      return new Response(
+        JSON.stringify({
+          error: "This install is linked to another account. Unlink it from the other account before pairing again.",
+        }),
+        { status: 409, headers: jsonHeaders },
+      );
+    }
     await env.DB.prepare(
       `UPDATE bsplus_install_link
-       SET cloud_user_id = ?, device_name = ?, extension_json = ?, last_seen_at = ?, updated_at = ?
-       WHERE install_id = ?`,
+       SET device_name = ?, extension_json = ?, last_seen_at = ?, updated_at = ?
+       WHERE install_id = ? AND cloud_user_id = ?`,
     )
-      .bind(user.id, deviceName, extensionJson, lastSeenAt, now, installId)
+      .bind(deviceName, extensionJson, lastSeenAt, now, installId, user.id)
       .run();
     return new Response(JSON.stringify({ success: true }), { status: 200, headers: jsonHeaders });
   }

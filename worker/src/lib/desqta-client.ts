@@ -1,19 +1,24 @@
 import type { Env } from "../types/env";
 import { DESQTA_CLIENT_TTL_DAYS } from "../constants";
-import { isPersistentReservedRedirectUri } from "./redirect-uri";
+import { bsplusRedirectOptions, isPersistentReservedRedirectUri } from "./redirect-uri";
 
 export function isReservedClientExpired(
   redirectUri: string,
   expiresAt: number | null,
   appUrl?: string,
+  redirectOptions?: Parameters<typeof isPersistentReservedRedirectUri>[1],
 ): boolean {
-  if (isPersistentReservedRedirectUri(redirectUri, appUrl)) return false;
+  if (isPersistentReservedRedirectUri(redirectUri, redirectOptions ?? { appUrl })) return false;
   if (expiresAt == null) return false;
   return expiresAt < Math.floor(Date.now() / 1000);
 }
 
-export function expiresAtForReservedClient(redirectUri: string, appUrl?: string): number | null {
-  if (isPersistentReservedRedirectUri(redirectUri, appUrl)) return null;
+export function expiresAtForReservedClient(
+  redirectUri: string,
+  appUrl?: string,
+  redirectOptions?: Parameters<typeof isPersistentReservedRedirectUri>[1],
+): number | null {
+  if (isPersistentReservedRedirectUri(redirectUri, redirectOptions ?? { appUrl })) return null;
   const now = Math.floor(Date.now() / 1000);
   return now + DESQTA_CLIENT_TTL_DAYS * 24 * 60 * 60;
 }
@@ -33,7 +38,8 @@ export async function getDesqtaClient(
     .first();
   if (reserved) {
     const redirectUri = reserved.redirect_uri as string;
-    if (isReservedClientExpired(redirectUri, reserved.expires_at as number | null, env.APP_URL)) {
+    const redirectOptions = bsplusRedirectOptions(env);
+    if (isReservedClientExpired(redirectUri, reserved.expires_at as number | null, env.APP_URL, redirectOptions)) {
       return { valid: false };
     }
     return { valid: true, redirect_uri: redirectUri, isReserved: true };
@@ -54,7 +60,8 @@ export async function touchDesqtaReservedClient(env: Env, clientId: string): Pro
   if (!reserved) return;
 
   const redirectUri = reserved.redirect_uri as string;
-  const expiresAt = expiresAtForReservedClient(redirectUri, env.APP_URL);
+  const redirectOptions = bsplusRedirectOptions(env);
+  const expiresAt = expiresAtForReservedClient(redirectUri, env.APP_URL, redirectOptions);
   await env.DB.prepare("UPDATE desqta_reserved_clients SET expires_at = ? WHERE id = ?")
     .bind(expiresAt, clientId)
     .run();

@@ -12,6 +12,8 @@ import { auditTargetForUser, labelFromDetails, resolveAuditTargets } from "../li
 import { uploadPfpFromFormData, restagePfpBytes } from "../lib/pfpUploadHandler";
 import { deleteUserRecords } from "../lib/deleteUser";
 import { revokeAllUserSessions } from "../lib/session";
+import { hashOpaqueSecret } from "../lib/secret-hash";
+import { isPfpUrlAllowedForAdminMigration } from "../lib/pfp-url";
 import { processPfpUpload } from "../lib/pfpProcess";
 import {
   countHostedPfpPendingReview,
@@ -550,9 +552,10 @@ export async function handleAdminClientsPost({ env, request, jwtSecret }: Reques
   const { name, redirect_uri } = (await request.json()) as { name?: string; redirect_uri?: string };
   const id = crypto.randomUUID();
   const secret = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  const secretHash = await hashOpaqueSecret(secret);
 
   await env.DB.prepare("INSERT INTO oauth_clients (id, name, secret, redirect_uri, created_by) VALUES (?, ?, ?, ?, ?)")
-    .bind(id, name, secret, redirect_uri, admin.id)
+    .bind(id, name, secretHash, redirect_uri, admin.id)
     .run();
 
   await audit(env, admin, {
@@ -686,9 +689,10 @@ export async function handleAdminApiKeysPost({ env, request, jwtSecret }: Reques
   }
   const id = crypto.randomUUID();
   const token = "bs_" + crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  const tokenHash = await hashOpaqueSecret(token);
   const scopesJson = JSON.stringify(scopeList);
   await env.DB.prepare("INSERT INTO api_keys (id, name, token, scopes) VALUES (?, ?, ?, ?)")
-    .bind(id, name.trim(), token, scopesJson)
+    .bind(id, name.trim(), tokenHash, scopesJson)
     .run();
 
   await audit(env, admin, {
@@ -1883,7 +1887,25 @@ export async function handleAdminMigratePfps({ env, request, jwtSecret }: Reques
 
   for (const user of rows) {
     try {
-      const response = await fetch(user.pfpUrl);
+      if (!isPfpUrlAllowedForAdminMigration(user.pfpUrl, env)) {
+        results.push({
+          userId: user.id,
+          oldUrl: user.pfpUrl,
+          success: false,
+          error: "URL host not allowed for migration",
+        });
+        continue;
+      }
+      const response = await fetch(user.pfpUrl, { redirect: "manual" });
+      if (response.status >= 300 && response.status < 400) {
+        results.push({
+          userId: user.id,
+          oldUrl: user.pfpUrl,
+          success: false,
+          error: "Redirects are not followed during migration",
+        });
+        continue;
+      }
       if (!response.ok) {
         results.push({
           userId: user.id,
@@ -2225,16 +2247,22 @@ export async function handleAdminIntegrationsGet({ env, request, jwtSecret }: Re
 }
 
 export async function handleAdminIntegrationsPut({ env, request, jwtSecret }: RequestContext): Promise<Response> {
-  const admin = await getAdminUser(env, request, jwtSecret);
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
+  const maxAdminLevel = await getMaxAdminLevel(env);
+  if ((admin.adminLevel || 0) < maxAdminLevel) {
+    return new Response(JSON.stringify({ error: "Only Senior Admins can change integration settings" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const body = (await request.json()) as {
-    smtp2goApiKey?: string;
     smtp2goFromEmail?: string;
   };
 
   await saveIntegrationSettings(env, {
-    smtp2goApiKey: body.smtp2goApiKey,
     smtp2goFromEmail: body.smtp2goFromEmail,
   });
 

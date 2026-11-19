@@ -382,25 +382,22 @@
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-4">
           <h3 class="text-lg font-semibold text-zinc-900 dark:text-white">External credentials</h3>
           <p class="text-zinc-600 dark:text-zinc-400 text-sm">
-            SMTP2GO powers password-reset emails. Stored in D1; env vars (<code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">SMTP2GO_*</code>) are used as fallback.
+            SMTP2GO powers password-reset and verification emails. The API key is a Worker secret
+            (<code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">SMTP2GO_API_KEY</code>); senior admins can set the from address here.
           </p>
           <p
             v-if="integrationSettings?.hasSmtp2goApiKey"
             class="text-sm text-green-700 dark:text-green-400"
           >
-            SMTP2GO API key is configured. Leave the key field blank below to keep the existing value.
+            SMTP2GO API key is configured via Worker secrets.
+          </p>
+          <p
+            v-else
+            class="text-sm text-amber-700 dark:text-amber-400"
+          >
+            No SMTP2GO API key detected. Set <code class="bg-zinc-200 dark:bg-zinc-800 px-1 rounded">SMTP2GO_API_KEY</code> with Wrangler.
           </p>
           <form @submit.prevent="saveIntegrations" class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">SMTP2GO API key</label>
-              <input
-                v-model="integrationForm.smtp2goApiKey"
-                type="password"
-                autocomplete="off"
-                placeholder="Paste SMTP2GO API key"
-                class="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none dark:text-white"
-              />
-            </div>
             <div>
               <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">From email</label>
               <input
@@ -1210,7 +1207,7 @@ const integrationSettings = ref<{
   smtp2goFromEmail: string
   devAccountsUrl: string
 } | null>(null)
-const integrationForm = ref({ smtp2goApiKey: '', smtp2goFromEmail: '' })
+const integrationForm = ref({ smtp2goFromEmail: '' })
 const savingIntegrations = ref(false)
 
 // PFP Management State
@@ -2191,11 +2188,9 @@ const saveIntegrations = async () => {
             method: 'PUT',
             credentials: 'include',
             body: {
-                smtp2goApiKey: integrationForm.value.smtp2goApiKey.trim() || undefined,
                 smtp2goFromEmail: integrationForm.value.smtp2goFromEmail.trim() || undefined,
             },
         })
-        integrationForm.value.smtp2goApiKey = ''
         await loadIntegrations()
         showToast('External credentials saved', 'success')
     } catch (e: any) {

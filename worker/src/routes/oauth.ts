@@ -6,6 +6,8 @@ import { createSession, getSessionByRefreshToken, touchUserSession, revokeSessio
 import { deviceNameForNewSession } from "../lib/session-display";
 import { readOAuthTokenFields } from "../lib/oauth-request-body";
 import { mapUserPublic, USER_PUBLIC_SELECT, enrichUserPublic } from "../lib/userPublic";
+import { hashOpaqueSecret, opaqueSecretMatches, shouldUpgradeStoredSecret } from "../lib/secret-hash";
+import { bsplusRedirectOptions } from "../lib/redirect-uri";
 import type { RequestContext } from "../types/context";
 
 async function validateOAuthClient(
@@ -14,10 +16,16 @@ async function validateOAuthClient(
   clientSecret: string | undefined,
 ): Promise<{ id: string; name: string } | null> {
   if (!clientId || !clientSecret) return null;
-  const client = await env.DB.prepare("SELECT id, name FROM oauth_clients WHERE id = ? AND secret = ?")
-    .bind(clientId, clientSecret)
-    .first();
-  return client ? (client as { id: string; name: string }) : null;
+  const client = (await env.DB.prepare("SELECT id, name, secret FROM oauth_clients WHERE id = ?")
+    .bind(clientId)
+    .first()) as { id: string; name: string; secret: string } | null;
+  if (!client) return null;
+  if (!(await opaqueSecretMatches(clientSecret, client.secret))) return null;
+  if (await shouldUpgradeStoredSecret(client.secret)) {
+    const hashed = await hashOpaqueSecret(clientSecret);
+    await env.DB.prepare("UPDATE oauth_clients SET secret = ? WHERE id = ?").bind(hashed, client.id).run();
+  }
+  return { id: client.id, name: client.name };
 }
 
 export async function handleOAuthClient({ env, url }: RequestContext): Promise<Response> {
@@ -79,7 +87,8 @@ export async function handleOAuthApprove({ env, request, jwtSecret }: RequestCon
       .bind(client_id, redirect_uri)
       .first();
     if (reserved) {
-      if (isReservedClientExpired(redirect_uri!, reserved.expires_at as number | null, env.APP_URL)) {
+      const redirectOptions = bsplusRedirectOptions(env);
+      if (isReservedClientExpired(redirect_uri!, reserved.expires_at as number | null, env.APP_URL, redirectOptions)) {
         return new Response(JSON.stringify({ error: "Client expired" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },

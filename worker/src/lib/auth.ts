@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import type { Env } from "../types/env";
+import { hashOpaqueSecret, opaqueSecretMatches, shouldUpgradeStoredSecret } from "./secret-hash";
 import { ACCESS_COOKIE_NAME, ACCESS_TOKEN_TTL, corsHeaders } from "../constants";
 import { parseCookies } from "./cookies";
 
@@ -106,8 +107,15 @@ export async function verifyApiKey(env: Env, req: Request): Promise<ApiKeyAuth |
   const apiKeyHeader = req.headers.get("X-API-Key");
   const token = bearer && bearer.startsWith("Bearer ") ? bearer.slice(7) : (apiKeyHeader || "").trim();
   if (!token) return null;
-  const row = await env.DB.prepare("SELECT id, scopes FROM api_keys WHERE token = ?").bind(token).first();
+  const tokenHash = await hashOpaqueSecret(token);
+  const row = (await env.DB.prepare("SELECT id, scopes, token FROM api_keys WHERE token = ? OR token = ?")
+    .bind(tokenHash, token)
+    .first()) as { id: string; scopes?: string; token: string } | null;
   if (!row) return null;
+  if (!(await opaqueSecretMatches(token, row.token))) return null;
+  if (await shouldUpgradeStoredSecret(row.token)) {
+    await env.DB.prepare("UPDATE api_keys SET token = ? WHERE id = ?").bind(tokenHash, row.id).run();
+  }
   const now = Math.floor(Date.now() / 1000);
   try {
     await env.DB.prepare("UPDATE api_keys SET last_used_at = ? WHERE id = ?").bind(now, row.id).run();

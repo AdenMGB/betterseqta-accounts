@@ -7,7 +7,10 @@ export interface Env {
   EDGE_RELAY_SECRET?: string;
   APP_URL?: string;
   SMTP2GO_FROM_EMAIL?: string;
+  /** Worker secret only — never stored in D1 */
   SMTP2GO_API_KEY?: string;
+  /** Comma-separated chrome-extension IDs allowed for BS+ OAuth redirect_uri */
+  ALLOWED_CHROME_EXTENSION_IDS?: string;
   DISCORD_CLIENT_ID?: string;
   DISCORD_CLIENT_SECRET?: string;
   DISCORD_REDIRECT_URI?: string;

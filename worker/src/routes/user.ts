@@ -13,10 +13,12 @@ import {
   saveCurrentPfpToHistory,
 } from "../lib/pfpHistory";
 import { setPfpPendingReview } from "../lib/pfpAuditReview";
+import { validateUserPfpUrlForUpdate } from "../lib/pfp-url";
 import type { RequestContext } from "../types/context";
 
-function isAccountsHostedPfpUrl(pfpUrl: string): boolean {
-  return pfpUrl.includes("/api/user/pfp/") && !pfpUrl.includes("/hist/");
+function isAccountsHostedPfpUrl(pfpUrl: string, userId: string, env: RequestContext["env"]): boolean {
+  const check = validateUserPfpUrlForUpdate(env, userId, pfpUrl);
+  return check.ok && Boolean(check.value);
 }
 
 export async function handleUserComplianceAck({ env, request, jwtSecret }: RequestContext): Promise<Response> {
@@ -89,17 +91,26 @@ export async function handleUserUpdate({ env, request, jwtSecret }: RequestConte
       updates.push("username = ?");
       values.push(username);
     }
+    let normalizedPfp: string | null | undefined;
     if (pfpUrl !== undefined) {
+      const pfpCheck = validateUserPfpUrlForUpdate(env, user.id, pfpUrl);
+      if (!pfpCheck.ok) {
+        return new Response(JSON.stringify({ error: pfpCheck.error }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      normalizedPfp = pfpCheck.value;
       updates.push("pfpUrl = ?");
-      values.push(pfpUrl);
-      if (!pfpUrl || !isAccountsHostedPfpUrl(pfpUrl)) {
+      values.push(normalizedPfp);
+      if (!normalizedPfp || !isAccountsHostedPfpUrl(normalizedPfp, user.id, env)) {
         updates.push("pfp_hash = ?");
         values.push(null);
       }
     }
 
     const clearPendingReview =
-      pfpUrl !== undefined && (!pfpUrl || !isAccountsHostedPfpUrl(pfpUrl));
+      pfpUrl !== undefined && (!normalizedPfp || !isAccountsHostedPfpUrl(normalizedPfp, user.id, env));
 
     if (updates.length === 0) {
       return new Response(JSON.stringify({ success: true }), {
