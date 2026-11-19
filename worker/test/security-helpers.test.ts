@@ -10,7 +10,7 @@ import {
 } from "../src/lib/redirect-uri.ts";
 import { isReservedClientExpired, expiresAtForReservedClient } from "../src/lib/desqta-client.ts";
 import { isSafeInternalPath } from "../src/lib/safe-internal-path.ts";
-import { userRequiresEmailVerification } from "../src/lib/email-verification.ts";
+import { isEmailVerificationDisabled, userRequiresEmailVerification } from "../src/lib/email-verification.ts";
 import { oauthRedirectUrisEquivalent } from "../src/lib/oauth-redirect.ts";
 
 const SAMPLE_EXT_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -140,5 +140,11 @@ describe("userRequiresEmailVerification", () => {
   it("requires verification when timestamp missing", () => {
     assert.equal(userRequiresEmailVerification({ email: "a@b.com", email_verified_at: null }), true);
     assert.equal(userRequiresEmailVerification({ email: "a@b.com", email_verified_at: 1 }), false);
+  });
+
+  it("skips requirement when DISABLE_EMAIL_VERIFICATION is set", () => {
+    const env = { DISABLE_EMAIL_VERIFICATION: "1" };
+    assert.equal(isEmailVerificationDisabled(env), true);
+    assert.equal(userRequiresEmailVerification({ email: "a@b.com", email_verified_at: null }, env), false);
   });
 });

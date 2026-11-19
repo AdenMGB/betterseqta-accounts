@@ -21,7 +21,12 @@ import {
   websiteSessionCookies,
 } from "../lib/session-cookies";
 import { sendPasswordResetEmail } from "../lib/email";
-import { sendUserEmailVerification, userRequiresEmailVerification, verifyEmailToken } from "../lib/email-verification";
+import {
+  isEmailVerificationDisabled,
+  sendUserEmailVerification,
+  userRequiresEmailVerification,
+  verifyEmailToken,
+} from "../lib/email-verification";
 import { checkRateLimit } from "../lib/rate-limit";
 import {
   createSession,
@@ -107,23 +112,43 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
 
     const id = crypto.randomUUID();
     const hashedPassword = await bcrypt.hash(password, 10);
+    const skipEmailVerification = isEmailVerificationDisabled(env);
 
     try {
-      await env.DB.prepare(
-        "INSERT INTO users (id, email, password, username, displayName, admin_level, privacy_policy_accepted_at, terms_of_service_accepted_at, age_13_confirmed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-        .bind(
-          id,
-          normalizedEmail,
-          hashedPassword,
-          trimmedUsername,
-          displayName || trimmedUsername,
-          0,
-          acknowledgedAt,
-          acknowledgedAt,
-          acknowledgedAt,
+      if (skipEmailVerification) {
+        await env.DB.prepare(
+          "INSERT INTO users (id, email, password, username, displayName, admin_level, privacy_policy_accepted_at, terms_of_service_accepted_at, age_13_confirmed_at, email_verified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .run();
+          .bind(
+            id,
+            normalizedEmail,
+            hashedPassword,
+            trimmedUsername,
+            displayName || trimmedUsername,
+            0,
+            acknowledgedAt,
+            acknowledgedAt,
+            acknowledgedAt,
+            acknowledgedAt,
+          )
+          .run();
+      } else {
+        await env.DB.prepare(
+          "INSERT INTO users (id, email, password, username, displayName, admin_level, privacy_policy_accepted_at, terms_of_service_accepted_at, age_13_confirmed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+          .bind(
+            id,
+            normalizedEmail,
+            hashedPassword,
+            trimmedUsername,
+            displayName || trimmedUsername,
+            0,
+            acknowledgedAt,
+            acknowledgedAt,
+            acknowledgedAt,
+          )
+          .run();
+      }
       await ensureUserDesqtaSettings(env.DB, id);
     } catch {
       return new Response(JSON.stringify({ error: "This email or username is already in use" }), {
@@ -135,24 +160,51 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
     const signupNumber = await assignSignupNumber(env.DB, id);
     await awardBadgesForUser(env.DB, id, signupNumber);
 
-    try {
-      await sendUserEmailVerification(env, id, normalizedEmail, displayName || trimmedUsername);
-    } catch (emailErr) {
-      console.error("Registration verification email error:", emailErr);
-      await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(id).run();
-      return new Response(JSON.stringify({ error: "Could not send verification email. Try again later." }), {
-        status: 503,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!skipEmailVerification) {
+      try {
+        await sendUserEmailVerification(env, id, normalizedEmail, displayName || trimmedUsername);
+      } catch (emailErr) {
+        console.error("Registration verification email error:", emailErr);
+        await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(id).run();
+        return new Response(JSON.stringify({ error: "Could not send verification email. Try again later." }), {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(
+        JSON.stringify({
+          needs_email_verification: true,
+          message: "Check your email for a verification link before signing in.",
+          user: { id, email: normalizedEmail, username: trimmedUsername },
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    return new Response(
-      JSON.stringify({
-        needs_email_verification: true,
-        message: "Check your email for a verification link before signing in.",
-        user: { id, email: normalizedEmail, username: trimmedUsername },
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    const token = await createAccessToken(
+      { id, email: normalizedEmail, username: trimmedUsername },
+      jwtSecret,
+    );
+    const session = await createSession(env, {
+      userId: id,
+      platform: "web",
+      deviceName: deviceNameForNewSession(request),
+      request,
+      refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
+    });
+    const freshUser = (await env.DB.prepare(`${USER_PUBLIC_SELECT} WHERE id = ?`).bind(id).first()) as Record<
+      string,
+      unknown
+    > | null;
+    return authJson(
+      {
+        expires_in: WEBSITE_ACCESS_EXPIRES_IN,
+        user: freshUser ? await enrichUserPublic(env.DB, mapUserPublic(freshUser)) : { id, email: normalizedEmail, username: trimmedUsername },
+      },
+      {
+        "Set-Cookie": websiteSessionCookies(token, session.refreshToken),
+      },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -175,7 +227,7 @@ export async function handleLogin({ env, request, jwtSecret }: RequestContext): 
       });
     }
 
-    if (userRequiresEmailVerification(user)) {
+    if (userRequiresEmailVerification(user, env)) {
       return new Response(
         JSON.stringify({
           error: "Verify your email before signing in. Check your inbox or request a new verification link.",
@@ -449,21 +501,27 @@ export async function handleChangeEmail({ env, request, jwtSecret }: RequestCont
       });
     }
 
-    await env.DB.prepare("UPDATE users SET email = ?, email_verified_at = NULL WHERE id = ?")
-      .bind(normalizedNewEmail, userPayload.id)
+    const skipEmailVerification = isEmailVerificationDisabled(env);
+    const verifiedAt = skipEmailVerification ? Math.floor(Date.now() / 1000) : null;
+    await env.DB.prepare("UPDATE users SET email = ?, email_verified_at = ? WHERE id = ?")
+      .bind(normalizedNewEmail, verifiedAt, userPayload.id)
       .run();
     await revokeAllUserSessions(env, userPayload.id);
-    try {
-      await sendUserEmailVerification(env, userPayload.id, normalizedNewEmail, null);
-    } catch (emailErr) {
-      console.error("Change email verification send error:", emailErr);
+    if (!skipEmailVerification) {
+      try {
+        await sendUserEmailVerification(env, userPayload.id, normalizedNewEmail, null);
+      } catch (emailErr) {
+        console.error("Change email verification send error:", emailErr);
+      }
     }
 
     return new Response(
       JSON.stringify({
         success: true,
         email: normalizedNewEmail,
-        message: "Email updated. Verify the new address from your inbox before signing in again.",
+        message: skipEmailVerification
+          ? "Email updated."
+          : "Email updated. Verify the new address from your inbox before signing in again.",
       }),
       {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -25,6 +25,8 @@ export interface Env {
   BSPLUS_URL?: string;
   DEV_BSPLUS_URL?: string;
   CF_DEV?: string;
+  /** Set to 1/true/yes/on to skip verification emails and login checks (temporary dev/staging only) */
+  DISABLE_EMAIL_VERIFICATION?: string;
   /** Set to 0/false/off to silence temporary timetable relay observability logs */
   TQ_RELAY_OBS?: string;
   /** When set (e.g. https://bsapi.adenmgb.com), hot paths proxy to the Ubuntu edge API */

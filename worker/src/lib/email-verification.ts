@@ -4,7 +4,16 @@ import { sendEmailVerificationEmail } from "./email";
 
 const VERIFY_TTL_SEC = 24 * 60 * 60;
 
-export function userRequiresEmailVerification(user: { email?: string | null; email_verified_at?: number | null }): boolean {
+export function isEmailVerificationDisabled(env?: Pick<Env, "DISABLE_EMAIL_VERIFICATION">): boolean {
+  const v = (env?.DISABLE_EMAIL_VERIFICATION ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+export function userRequiresEmailVerification(
+  user: { email?: string | null; email_verified_at?: number | null },
+  env?: Pick<Env, "DISABLE_EMAIL_VERIFICATION">,
+): boolean {
+  if (env && isEmailVerificationDisabled(env)) return false;
   const email = (user.email || "").toLowerCase();
   if (!email || email.endsWith("@discord.local")) return false;
   const at = user.email_verified_at;

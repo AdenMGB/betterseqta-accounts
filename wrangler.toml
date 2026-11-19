@@ -9,6 +9,7 @@ routes = [
 
 [vars]
 APP_URL = "https://accounts.betterseqta.org"
+DISABLE_EMAIL_VERIFICATION = "1"
 
 [dev]
 ip = "localhost"

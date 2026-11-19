@@ -6,6 +6,7 @@ import {
   getMaxAdminLevel,
 } from "../lib/auth";
 import { sendPasswordResetEmail } from "../lib/email";
+import { isEmailVerificationDisabled } from "../lib/email-verification";
 import { recordAdminAction, AUDIT_HIDE_NOOP_UPDATES, isDisplayableAuditEntry } from "../lib/adminAudit";
 import { buildPfpAuditContext, resolvePfpAuditRefs, type PfpAuditRef } from "../lib/auditPfpResolve";
 import { auditTargetForUser, labelFromDetails, resolveAuditTargets } from "../lib/auditTarget";
@@ -835,7 +836,7 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
       updates.push("email = ?");
       values.push(normalizedEmail);
       updates.push("email_verified_at = ?");
-      values.push(null);
+      values.push(isEmailVerificationDisabled(env) ? Math.floor(Date.now() / 1000) : null);
       emailChanged = true;
       changes.email = { from: targetUser.email, to: normalizedEmail };
     }
