@@ -70,8 +70,19 @@ import { useAuth } from '~/composables/useAuth'
 import { ShieldExclamationIcon, CheckCircleIcon, UserCircleIcon } from '@heroicons/vue/24/solid'
 import LoadingSpinner from '~/components/ui/LoadingSpinner.vue'
 import { loginLocation, setPostLoginRedirect } from '~/utils/postLoginRedirect'
+import { buildOAuthAccessDeniedUrl } from '~/utils/oauth-redirect'
 
 definePageMeta({ layout: false })
+
+useHead({
+  meta: [
+    {
+      'http-equiv': 'Content-Security-Policy',
+      content:
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    },
+  ],
+})
 
 const route = useRoute()
 const router = useRouter()
@@ -81,6 +92,7 @@ const loading = ref(true)
 const processing = ref(false)
 const error = ref('')
 const clientName = ref('')
+const registeredRedirectUri = ref('')
 
 const clientId = route.query.client_id as string
 const redirectUri = route.query.redirect_uri as string
@@ -101,13 +113,12 @@ const approve = async () => {
 }
 
 const deny = () => {
-    if (redirectUri) {
-        const url = new URL(redirectUri)
-        url.searchParams.set('error', 'access_denied')
-        window.location.href = url.toString()
-    } else {
-        router.push('/')
+    const target = buildOAuthAccessDeniedUrl(redirectUri, registeredRedirectUri.value)
+    if (target) {
+        window.location.assign(target)
+        return
     }
+    router.push('/')
 }
 
 onMounted(async () => {
@@ -130,10 +141,19 @@ onMounted(async () => {
 
     // 3. Fetch Client Info
     try {
-        const client = await $fetch<{ name: string }>('/api/oauth/client', {
+        const client = await $fetch<{ name: string; redirect_uri?: string }>('/api/oauth/client', {
             params: { client_id: clientId }
         })
         clientName.value = client.name
+        registeredRedirectUri.value = client.redirect_uri ?? ''
+        if (
+            redirectUri &&
+            registeredRedirectUri.value &&
+            redirectUri.trim() !== registeredRedirectUri.value.trim()
+        ) {
+            error.value = 'redirect_uri does not match this client.'
+            return
+        }
     } catch (e) {
         error.value = 'Invalid Client ID.'
     } finally {

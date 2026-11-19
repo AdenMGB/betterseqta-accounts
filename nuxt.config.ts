@@ -75,7 +75,14 @@ export default defineNuxtConfig({
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization'
         }
-      }
+      },
+      '/oauth/authorize': {
+        headers: {
+          'X-Frame-Options': 'DENY',
+          'Content-Security-Policy':
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        },
+      },
     }
   },
   postcss: {

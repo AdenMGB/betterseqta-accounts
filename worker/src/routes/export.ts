@@ -1,10 +1,34 @@
 import { corsHeaders } from "../constants";
-import { verifyApiKey, apiKeyUnauthorized, apiKeyDbError } from "../lib/auth";
+import {
+  verifyApiKey,
+  apiKeyUnauthorized,
+  apiKeyDbError,
+  apiKeyHasRequiredScope,
+  apiKeyForbiddenScope,
+  type ApiKeyAuth,
+} from "../lib/auth";
 import { checkRateLimit } from "../lib/rate-limit";
+import { USER_PUBLIC_SELECT } from "../lib/userPublic";
 import type { RequestContext } from "../types/context";
+
+export const EXPORT_SCOPE_USERS_COUNT = "export:users:count";
+export const EXPORT_SCOPE_USERS_FULL = "export:users:full";
+export const EXPORT_SCOPE_USERS_CONTACT = "export:users:contact";
+export const EXPORT_SCOPE_RESERVED_CLIENTS = "export:reserved-clients";
 
 async function exportRateLimit(env: RequestContext["env"], request: Request): Promise<Response | null> {
   return checkRateLimit(env, request, "export", { limit: 30, windowSec: 3600 });
+}
+
+async function requireExportScope(
+  env: RequestContext["env"],
+  request: Request,
+  scope: string,
+): Promise<ApiKeyAuth | Response> {
+  const apiKey = await verifyApiKey(env, request);
+  if (!apiKey) return apiKeyUnauthorized();
+  if (!apiKeyHasRequiredScope(apiKey, scope)) return apiKeyForbiddenScope(scope);
+  return apiKey;
 }
 
 export async function handleExportUsersCount({ env, request }: RequestContext): Promise<Response> {
@@ -12,8 +36,8 @@ export async function handleExportUsersCount({ env, request }: RequestContext): 
     const rateLimited = await exportRateLimit(env, request);
     if (rateLimited) return rateLimited;
 
-    const apiKey = await verifyApiKey(env, request);
-    if (!apiKey) return apiKeyUnauthorized();
+    const apiKey = await requireExportScope(env, request, EXPORT_SCOPE_USERS_COUNT);
+    if (apiKey instanceof Response) return apiKey;
     const totalResult = await env.DB.prepare("SELECT COUNT(*) as total FROM users").first();
     return new Response(JSON.stringify({ total: (totalResult?.total as number) ?? 0 }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -28,8 +52,8 @@ export async function handleExportReservedClients({ env, request }: RequestConte
     const rateLimited = await exportRateLimit(env, request);
     if (rateLimited) return rateLimited;
 
-    const apiKey = await verifyApiKey(env, request);
-    if (!apiKey) return apiKeyUnauthorized();
+    const apiKey = await requireExportScope(env, request, EXPORT_SCOPE_RESERVED_CLIENTS);
+    if (apiKey instanceof Response) return apiKey;
     const result = await env.DB.prepare("SELECT COUNT(*) as count FROM desqta_reserved_clients").first();
     return new Response(JSON.stringify({ count: (result?.count as number) ?? 0 }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -44,22 +68,23 @@ export async function handleExportUsersFull({ env, request }: RequestContext): P
     const rateLimited = await exportRateLimit(env, request);
     if (rateLimited) return rateLimited;
 
-    const apiKey = await verifyApiKey(env, request);
-    if (!apiKey) return apiKeyUnauthorized();
+    const apiKey = await requireExportScope(env, request, EXPORT_SCOPE_USERS_FULL);
+    if (apiKey instanceof Response) return apiKey;
     let rows: Record<string, unknown>[];
+    const selectUsersPublic = `SELECT ${USER_PUBLIC_SELECT} FROM users`;
     try {
-      const r = await env.DB.prepare("SELECT * FROM users ORDER BY createdAt ASC").all();
+      const r = await env.DB.prepare(`${selectUsersPublic} ORDER BY createdAt ASC`).all();
       rows = (r.results ?? []) as Record<string, unknown>[];
     } catch {
       try {
-        const r = await env.DB.prepare("SELECT * FROM users ORDER BY created_at ASC").all();
+        const r = await env.DB.prepare(`${selectUsersPublic} ORDER BY created_at ASC`).all();
         rows = (r.results ?? []) as Record<string, unknown>[];
       } catch {
-        const r = await env.DB.prepare("SELECT * FROM users ORDER BY id ASC").all();
+        const r = await env.DB.prepare(`${selectUsersPublic} ORDER BY id ASC`).all();
         rows = (r.results ?? []) as Record<string, unknown>[];
       }
     }
-    const users = rows.map(({ password: _p, ...rest }) => rest);
+    const users = rows;
     return new Response(JSON.stringify({ users, count: users.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -73,8 +98,8 @@ export async function handleExportUsersContact({ env, request, url }: RequestCon
     const rateLimited = await exportRateLimit(env, request);
     if (rateLimited) return rateLimited;
 
-    const apiKey = await verifyApiKey(env, request);
-    if (!apiKey) return apiKeyUnauthorized();
+    const apiKey = await requireExportScope(env, request, EXPORT_SCOPE_USERS_CONTACT);
+    if (apiKey instanceof Response) return apiKey;
 
     const pageParam = parseInt(url.searchParams.get("page") || "1", 10);
     const limitParam = parseInt(url.searchParams.get("limit") || "1000", 10);

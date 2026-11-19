@@ -440,6 +440,12 @@
         <!-- Create API Key -->
         <div class="bg-zinc-50 dark:bg-zinc-900/30 p-6 rounded-xl border border-zinc-200 dark:border-zinc-700">
             <h3 class="text-lg font-semibold text-zinc-900 dark:text-white mb-4">Create New API Key</h3>
+            <p class="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+              Senior admins only. New keys include export scopes:
+              <code class="text-xs bg-zinc-200 dark:bg-zinc-800 px-1 rounded">export:users:*</code>,
+              <code class="text-xs bg-zinc-200 dark:bg-zinc-800 px-1 rounded">export:reserved-clients</code>,
+              <code class="text-xs bg-zinc-200 dark:bg-zinc-800 px-1 rounded">export:signup-order</code>.
+            </p>
             <form @submit.prevent="createApiKey" class="flex flex-col sm:flex-row gap-4 sm:items-end">
                 <div class="flex-1 min-w-0">
                     <label class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">Name (e.g. Discord Bot)</label>
@@ -1187,6 +1193,14 @@ const deletingClientId = ref<string | null>(null)
 // API Keys State
 const apiKeys = ref<any[]>([])
 const newApiKeyName = ref('')
+/** Scopes required on new keys (export endpoints no longer accept empty-scope keys). */
+const defaultIntegrationApiKeyScopes = [
+  'export:users:count',
+  'export:users:full',
+  'export:users:contact',
+  'export:reserved-clients',
+  'export:signup-order',
+]
 const creatingApiKey = ref(false)
 const lastCreatedApiKey = ref<any>(null)
 const deletingApiKeyId = ref<string | null>(null)
@@ -2197,7 +2211,10 @@ const createApiKey = async () => {
     try {
         const res = await $fetch<any>('/api/admin/api-keys', {
             method: 'POST',
-            body: { name: newApiKeyName.value.trim() },
+            body: {
+              name: newApiKeyName.value.trim(),
+              scopes: defaultIntegrationApiKeyScopes,
+            },
             credentials: 'include'
         })
         lastCreatedApiKey.value = res

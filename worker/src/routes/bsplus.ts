@@ -89,6 +89,9 @@ export async function handleBsplusConfig({ env, url }: RequestContext): Promise<
 
 export async function handleBsplusRefresh({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   try {
+    const rateLimited = await checkRateLimit(env, request, "oauth-refresh", { limit: 60, windowSec: 900 });
+    if (rateLimited) return rateLimited;
+
     const body = (await request.json()) as { refresh_token?: string; client_id?: string };
     const { refresh_token, client_id } = body || {};
     const sessionResult = await getSessionByRefreshToken(env, refresh_token);
@@ -131,6 +134,9 @@ export async function handleBsplusRefresh({ env, request, jwtSecret }: RequestCo
 
 export async function handleBsplusLogin({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   try {
+    const rateLimited = await checkRateLimit(env, request, "auth-login", { limit: 10, windowSec: 900 });
+    if (rateLimited) return rateLimited;
+
     const body = (await request.json()) as {
       client_id?: string;
       redirect_uri?: string;

@@ -512,7 +512,9 @@ export async function handleAdminClientsGet({ env, request, jwtSecret }: Request
   const admin = await getAdminUser(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
 
-  const clients = await env.DB.prepare("SELECT * FROM oauth_clients ORDER BY created_at DESC").all();
+  const clients = await env.DB.prepare(
+    "SELECT id, name, redirect_uri, created_by, created_at FROM oauth_clients ORDER BY created_at DESC",
+  ).all();
   return new Response(JSON.stringify(clients.results), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
@@ -644,8 +646,16 @@ export async function handleAdminApiKeysGet({ env, request, jwtSecret }: Request
 }
 
 export async function handleAdminApiKeysPost({ env, request, jwtSecret }: RequestContext): Promise<Response> {
-  const admin = await getAdminUser(env, request, jwtSecret);
+  const admin = await getAdminUserWithLevel(env, request, jwtSecret);
   if (!admin) return new Response("Forbidden", { status: 403, headers: corsHeaders });
+
+  const maxAdminLevel = await getMaxAdminLevel(env);
+  if (admin.adminLevel < maxAdminLevel) {
+    return new Response(JSON.stringify({ error: "Only senior admins can create API keys" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   const { name, scopes } = (await request.json()) as { name?: string; scopes?: string[] };
   if (!name || typeof name !== "string" || !name.trim()) {
@@ -654,10 +664,16 @@ export async function handleAdminApiKeysPost({ env, request, jwtSecret }: Reques
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+  const scopeList = Array.isArray(scopes) ? scopes.filter((s) => typeof s === "string" && s.trim()) : [];
+  if (scopeList.length === 0) {
+    return new Response(JSON.stringify({ error: "At least one scope is required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
   const id = crypto.randomUUID();
   const token = "bs_" + crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-  const scopesJson =
-    Array.isArray(scopes) && scopes.length > 0 ? JSON.stringify(scopes.filter((s) => typeof s === "string")) : null;
+  const scopesJson = JSON.stringify(scopeList);
   await env.DB.prepare("INSERT INTO api_keys (id, name, token, scopes) VALUES (?, ?, ?, ?)")
     .bind(id, name.trim(), token, scopesJson)
     .run();
@@ -675,7 +691,7 @@ export async function handleAdminApiKeysPost({ env, request, jwtSecret }: Reques
       id,
       name: name.trim(),
       token,
-      scopes: scopesJson ? JSON.parse(scopesJson) : [],
+      scopes: scopeList,
       createdAt: Math.floor(Date.now() / 1000),
     }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },

@@ -123,6 +123,11 @@ export function apiKeyHasScope(auth: ApiKeyAuth, scope: string): boolean {
   return auth.scopes.includes(scope);
 }
 
+/** Export and other sensitive routes — empty scopes are never sufficient. */
+export function apiKeyHasRequiredScope(auth: ApiKeyAuth, scope: string): boolean {
+  return auth.scopes.includes(scope);
+}
+
 export function apiKeyForbiddenScope(scope: string): Response {
   return new Response(JSON.stringify({ error: `API key missing required scope: ${scope}` }), {
     status: 403,

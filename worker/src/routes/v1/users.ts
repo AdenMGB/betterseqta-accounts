@@ -3,7 +3,7 @@ import {
   verifyApiKey,
   apiKeyUnauthorized,
   apiKeyDbError,
-  apiKeyHasScope,
+  apiKeyHasRequiredScope,
   apiKeyForbiddenScope,
 } from "../../lib/auth";
 import { checkRateLimit } from "../../lib/rate-limit";
@@ -18,7 +18,7 @@ async function requireScopedApiKey(
 ): Promise<{ id: string; scopes: string[] } | Response> {
   const apiKey = await verifyApiKey(env, request);
   if (!apiKey) return apiKeyUnauthorized();
-  if (!apiKeyHasScope(apiKey, scope)) return apiKeyForbiddenScope(scope);
+  if (!apiKeyHasRequiredScope(apiKey, scope)) return apiKeyForbiddenScope(scope);
   return apiKey;
 }
 
