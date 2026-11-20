@@ -27,7 +27,6 @@ import {
   userRequiresEmailVerification,
   verifyEmailToken,
 } from "../lib/email-verification";
-import { checkRateLimit } from "../lib/rate-limit";
 import {
   createSession,
   getSessionByRefreshToken,
@@ -51,9 +50,6 @@ import type { RequestContext } from "../types/context";
 
 export async function handleRegister({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   try {
-    const rateLimited = await checkRateLimit(env, request, "auth-register", { limit: 10, windowSec: 900 });
-    if (rateLimited) return rateLimited;
-
     const { email, password, username, displayName, privacyPolicyAccepted, termsOfServiceAccepted, age13Confirmed } =
       (await request.json()) as {
         email?: string;
@@ -115,46 +111,38 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
     const skipEmailVerification = isEmailVerificationDisabled(env);
 
     try {
-      if (skipEmailVerification) {
-        await env.DB.prepare(
-          "INSERT INTO users (id, email, password, username, displayName, admin_level, privacy_policy_accepted_at, terms_of_service_accepted_at, age_13_confirmed_at, email_verified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      await env.DB.prepare(
+        "INSERT INTO users (id, email, password, username, displayName, admin_level, privacy_policy_accepted_at, terms_of_service_accepted_at, age_13_confirmed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+        .bind(
+          id,
+          normalizedEmail,
+          hashedPassword,
+          trimmedUsername,
+          displayName || trimmedUsername,
+          0,
+          acknowledgedAt,
+          acknowledgedAt,
+          acknowledgedAt,
         )
-          .bind(
-            id,
-            normalizedEmail,
-            hashedPassword,
-            trimmedUsername,
-            displayName || trimmedUsername,
-            0,
-            acknowledgedAt,
-            acknowledgedAt,
-            acknowledgedAt,
-            acknowledgedAt,
-          )
-          .run();
-      } else {
-        await env.DB.prepare(
-          "INSERT INTO users (id, email, password, username, displayName, admin_level, privacy_policy_accepted_at, terms_of_service_accepted_at, age_13_confirmed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-          .bind(
-            id,
-            normalizedEmail,
-            hashedPassword,
-            trimmedUsername,
-            displayName || trimmedUsername,
-            0,
-            acknowledgedAt,
-            acknowledgedAt,
-            acknowledgedAt,
-          )
-          .run();
-      }
+        .run();
       await ensureUserDesqtaSettings(env.DB, id);
-    } catch {
-      return new Response(JSON.stringify({ error: "This email or username is already in use" }), {
-        status: 409,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Registration user insert error:", message);
+      if (/UNIQUE constraint failed/i.test(message)) {
+        return new Response(JSON.stringify({ error: "This email or username is already in use" }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const devDetail = env.CF_DEV === "1" || env.CF_DEV === "true" ? message : null;
+      return new Response(
+        JSON.stringify({
+          error: devDetail ? `Registration failed: ${devDetail}` : "Registration failed. Please try again.",
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const signupNumber = await assignSignupNumber(env.DB, id);
@@ -193,7 +181,7 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
       request,
       refreshDays: WEBSITE_REFRESH_EXPIRY_DAYS,
     });
-    const freshUser = (await env.DB.prepare(`${USER_PUBLIC_SELECT} WHERE id = ?`).bind(id).first()) as Record<
+    const freshUser = (await env.DB.prepare(`SELECT ${USER_PUBLIC_SELECT} FROM users WHERE id = ?`).bind(id).first()) as Record<
       string,
       unknown
     > | null;
@@ -214,9 +202,6 @@ export async function handleRegister({ env, request, jwtSecret }: RequestContext
 
 export async function handleLogin({ env, request, jwtSecret }: RequestContext): Promise<Response> {
   try {
-    const rateLimited = await checkRateLimit(env, request, "auth-login", { limit: 10, windowSec: 900 });
-    if (rateLimited) return rateLimited;
-
     const { login, password } = (await request.json()) as { login?: string; password?: string };
     const user = (await findUserByCredentialsLogin(env.DB, login!)) as Record<string, string> | null;
 
@@ -502,10 +487,13 @@ export async function handleChangeEmail({ env, request, jwtSecret }: RequestCont
     }
 
     const skipEmailVerification = isEmailVerificationDisabled(env);
-    const verifiedAt = skipEmailVerification ? Math.floor(Date.now() / 1000) : null;
-    await env.DB.prepare("UPDATE users SET email = ?, email_verified_at = ? WHERE id = ?")
-      .bind(normalizedNewEmail, verifiedAt, userPayload.id)
-      .run();
+    if (skipEmailVerification) {
+      await env.DB.prepare("UPDATE users SET email = ? WHERE id = ?").bind(normalizedNewEmail, userPayload.id).run();
+    } else {
+      await env.DB.prepare("UPDATE users SET email = ?, email_verified_at = ? WHERE id = ?")
+        .bind(normalizedNewEmail, null, userPayload.id)
+        .run();
+    }
     await revokeAllUserSessions(env, userPayload.id);
     if (!skipEmailVerification) {
       try {
@@ -540,8 +528,6 @@ export async function handleChangeEmail({ env, request, jwtSecret }: RequestCont
 
 export async function handleForgotPassword({ env, request }: RequestContext): Promise<Response> {
   try {
-    const rateLimited = await checkRateLimit(env, request, "auth-forgot-password", { limit: 10, windowSec: 900 });
-    if (rateLimited) return rateLimited;
 
     const { login } = (await request.json()) as { login?: string };
     if (!login) {

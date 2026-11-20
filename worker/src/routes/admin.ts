@@ -835,8 +835,10 @@ export async function handleAdminUpdateUser({ env, request, jwtSecret }: Request
       }
       updates.push("email = ?");
       values.push(normalizedEmail);
-      updates.push("email_verified_at = ?");
-      values.push(isEmailVerificationDisabled(env) ? Math.floor(Date.now() / 1000) : null);
+      if (!isEmailVerificationDisabled(env)) {
+        updates.push("email_verified_at = ?");
+        values.push(null);
+      }
       emailChanged = true;
       changes.email = { from: targetUser.email, to: normalizedEmail };
     }
