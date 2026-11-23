@@ -9,11 +9,18 @@ export type DiscordUserProfile = {
   username?: string;
   global_name?: string;
   avatar?: string;
+  verified?: boolean;
 };
 
 export type ResolveDiscordUserResult =
   | { ok: true; user: Record<string, unknown> }
-  | { ok: false; reason: "email_account_exists" | "discord_linked_elsewhere" };
+  | {
+      ok: false;
+      reason:
+        | "email_account_exists"
+        | "discord_linked_elsewhere"
+        | "discord_email_not_verified";
+    };
 
 function discordAvatarUrl(discordUser: DiscordUserProfile): string | null {
   return discordUser.avatar
@@ -38,7 +45,8 @@ export async function exchangeDiscordOAuthCode(
 ): Promise<{ accessToken: string } | { error: string }> {
   const discordClientId = cleanEnvVar(env.DISCORD_CLIENT_ID);
   const discordClientSecret = cleanEnvVar(env.DISCORD_CLIENT_SECRET);
-  if (!discordClientId || !discordClientSecret) return { error: "not_configured" };
+  if (!discordClientId || !discordClientSecret)
+    return { error: "not_configured" };
 
   const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
     method: "POST",
@@ -63,7 +71,9 @@ export async function exchangeDiscordOAuthCode(
   return { accessToken: tokenData.access_token };
 }
 
-export async function fetchDiscordUser(accessToken: string): Promise<DiscordUserProfile | null> {
+export async function fetchDiscordUser(
+  accessToken: string,
+): Promise<DiscordUserProfile | null> {
   const userResponse = await fetch("https://discord.com/api/users/@me", {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -81,36 +91,44 @@ export async function resolveUserFromDiscord(
   const now = Math.floor(Date.now() / 1000);
   const pfpUrl = discordAvatarUrl(discordUser);
   const displayName =
-    discordUser.global_name || discordUser.username || `discord_${discordUser.id}`;
+    discordUser.global_name ||
+    discordUser.username ||
+    `discord_${discordUser.id}`;
 
-  const byDiscord = (await env.DB.prepare("SELECT * FROM users WHERE discord_id = ?").bind(discordId).first()) as Record<
-    string,
-    unknown
-  > | null;
+  const byDiscord = (await env.DB.prepare(
+    "SELECT * FROM users WHERE discord_id = ?",
+  )
+    .bind(discordId)
+    .first()) as Record<string, unknown> | null;
   if (byDiscord) {
-    await env.DB.prepare("UPDATE users SET displayName = ?, pfpUrl = ? WHERE id = ?")
+    await env.DB.prepare(
+      "UPDATE users SET displayName = ?, pfpUrl = ? WHERE id = ?",
+    )
       .bind(displayName, pfpUrl, byDiscord.id)
       .run();
-    const refreshed = (await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(byDiscord.id).first()) as Record<
-      string,
-      unknown
-    >;
+    const refreshed = (await env.DB.prepare("SELECT * FROM users WHERE id = ?")
+      .bind(byDiscord.id)
+      .first()) as Record<string, unknown>;
     return { ok: true, user: refreshed };
   }
 
   const byEmail = placeholder
     ? null
-    : ((await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(normalizedEmail).first()) as Record<
-        string,
-        unknown
-      > | null);
+    : ((await env.DB.prepare("SELECT * FROM users WHERE email = ?")
+        .bind(normalizedEmail)
+        .first()) as Record<string, unknown> | null);
 
   if (byEmail) {
-    const existingDiscordId = typeof byEmail.discord_id === "string" ? byEmail.discord_id : null;
+    const existingDiscordId =
+      typeof byEmail.discord_id === "string" ? byEmail.discord_id : null;
     if (existingDiscordId && existingDiscordId !== discordId) {
       return { ok: false, reason: "discord_linked_elsewhere" };
     }
     return { ok: false, reason: "email_account_exists" };
+  }
+
+  if (discordUser.verified == false) {
+    return { ok: false, reason: "discord_email_not_verified" };
   }
 
   const userId = crypto.randomUUID();
@@ -122,10 +140,22 @@ export async function resolveUserFromDiscord(
   await env.DB.prepare(
     "INSERT INTO users (id, email, password, username, displayName, pfpUrl, admin_level, discord_id, email_verified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
   )
-    .bind(userId, normalizedEmail, hashedPassword, username, displayName, pfpUrl, 0, discordId, emailVerifiedAt)
+    .bind(
+      userId,
+      normalizedEmail,
+      hashedPassword,
+      username,
+      displayName,
+      pfpUrl,
+      0,
+      discordId,
+      emailVerifiedAt,
+    )
     .run();
   await ensureUserDesqtaSettings(env.DB, userId);
 
-  const user = (await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first()) as Record<string, unknown>;
+  const user = (await env.DB.prepare("SELECT * FROM users WHERE id = ?")
+    .bind(userId)
+    .first()) as Record<string, unknown>;
   return { ok: true, user };
 }
