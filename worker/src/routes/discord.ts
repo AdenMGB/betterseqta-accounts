@@ -159,7 +159,7 @@ export async function handleDiscordOAuthCallback({
             return "discord_email_not_verified";
         }
       };
-      return redirectWithCookies(`${base}/login?error=${err}`, [clearCookie]);
+      return redirectWithCookies(`${base}/login?error=${err()}`, [clearCookie]);
     }
 
     const user = resolved.user;
@@ -386,7 +386,7 @@ export async function handleDesqtaDiscordCallback({
             return "Your Discord email is not verified. Please verify your email in Discord and try again.";
         }
       };
-      return new Response(JSON.stringify({ error: message }), {
+      return new Response(JSON.stringify({ error: message() }), {
         status: 409,
         headers: jsonHeaders,
       });
