@@ -33,6 +33,10 @@ binding = "PFP_BUCKET"
 bucket_name = "betterseqta-pfps"
 
 [[migrations]]
+tag = "v0-to-satisfy-wrangler-check"
+new_classes = ["TimetableClassmatesRelay"]
+
+[[migrations]]
 tag = "v3-remove-timetable-classmates-relay-do"
 deleted_classes = ["TimetableClassmatesRelay"]
 
