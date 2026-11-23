@@ -1,3 +1,5 @@
+-- THIS SCHEMA FILE IS INCONSISTENT, USE MIGRATIONS INSTEAD OF MANUAL CHANGES
+
 -- Users Table
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -6,8 +8,8 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE NOT NULL,
     displayName TEXT,
     pfpUrl TEXT,
-    pfp_hash TEXT,
-    admin_level INTEGER DEFAULT 0, -- 0 = user, 1 = junior admin, 2 = middle admin, 3 = senior admin
+--    pfp_hash TEXT,
+--    admin_level INTEGER DEFAULT 0, -- 0 = user, 1 = junior admin, 2 = middle admin, 3 = senior admin
     created_at INTEGER DEFAULT (unixepoch())
 );
 
@@ -39,8 +41,8 @@ CREATE TABLE IF NOT EXISTS system_meta (
 CREATE TABLE IF NOT EXISTS desqta_reserved_clients (
     id TEXT PRIMARY KEY,
     redirect_uri TEXT NOT NULL,
-    created_at INTEGER DEFAULT (unixepoch()),
-    expires_at INTEGER
+    created_at INTEGER DEFAULT (unixepoch())
+--    expires_at INTEGER
 );
 
 -- Shared user sessions across web, DesQTA, and BetterSEQTA Plus

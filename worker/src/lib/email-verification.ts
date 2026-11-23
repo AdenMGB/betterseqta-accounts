@@ -4,7 +4,9 @@ import { sendEmailVerificationEmail } from "./email";
 
 const VERIFY_TTL_SEC = 24 * 60 * 60;
 
-export function isEmailVerificationDisabled(env?: Pick<Env, "DISABLE_EMAIL_VERIFICATION">): boolean {
+export function isEmailVerificationDisabled(
+  env?: Pick<Env, "DISABLE_EMAIL_VERIFICATION">,
+): boolean {
   const v = (env?.DISABLE_EMAIL_VERIFICATION ?? "").trim().toLowerCase();
   return v === "1" || v === "true" || v === "yes" || v === "on";
 }
@@ -20,11 +22,18 @@ export function userRequiresEmailVerification(
   return at == null || at === 0;
 }
 
-export async function issueEmailVerificationToken(env: Env, userId: string): Promise<string> {
+export async function issueEmailVerificationToken(
+  env: Env,
+  userId: string,
+): Promise<string> {
   const token = crypto.randomUUID();
   const hashedToken = await bcrypt.hash(token, 10);
   const expiresAt = Math.floor(Date.now() / 1000) + VERIFY_TTL_SEC;
-  await env.DB.prepare("UPDATE email_verification_tokens SET used = 1 WHERE user_id = ? AND used = 0").bind(userId).run();
+  await env.DB.prepare(
+    "UPDATE email_verification_tokens SET used = 1 WHERE user_id = ? AND used = 0",
+  )
+    .bind(userId)
+    .run();
   await env.DB.prepare(
     "INSERT INTO email_verification_tokens (token, user_id, expires_at, used) VALUES (?, ?, ?, 0)",
   )
@@ -57,10 +66,21 @@ export async function verifyEmailToken(
     .all();
 
   for (const dbToken of rows.results ?? []) {
-    const row = dbToken as { token: string; user_id: string; expires_at: number; used: number };
+    const row = dbToken as {
+      token: string;
+      user_id: string;
+      expires_at: number;
+      used: number;
+    };
     if (!(await bcrypt.compare(rawToken.trim(), row.token))) continue;
-    await env.DB.prepare("UPDATE email_verification_tokens SET used = 1 WHERE token = ?").bind(row.token).run();
-    await env.DB.prepare("UPDATE users SET email_verified_at = ? WHERE id = ?").bind(now, row.user_id).run();
+    await env.DB.prepare(
+      "UPDATE email_verification_tokens SET used = 1 WHERE token = ?",
+    )
+      .bind(row.token)
+      .run();
+    await env.DB.prepare("UPDATE users SET email_verified_at = ? WHERE id = ?")
+      .bind(now, row.user_id)
+      .run();
     return { ok: true, userId: row.user_id };
   }
   return { ok: false, reason: "invalid_or_expired" };

@@ -147,6 +147,15 @@
               </div>
             </section>
 
+            <section>
+              <h3 class="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Connections</h3>
+              <div class="overflow-hidden rounded-xl border border-zinc-200/80 bg-white/40 dark:border-zinc-700/60 dark:bg-zinc-950/20">
+                <div class="divide-y divide-zinc-200/70 dark:divide-zinc-700/70">
+                  <!-- Discord Connection -->
+                </div>
+              </div>
+            </section>
+
             <section class="rounded-xl border border-red-200/80 bg-red-50/40 dark:border-red-900/50 dark:bg-red-950/20">
               <h3 class="mb-2 px-4 pt-4 text-sm font-semibold uppercase tracking-wide text-red-700 dark:text-red-400 sm:px-5">
                 Delete account
